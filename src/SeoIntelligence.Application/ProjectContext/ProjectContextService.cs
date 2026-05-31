@@ -32,7 +32,20 @@ public sealed class ProjectContextService : IProjectContextService
     }
 
     public bool IsInProjectScope(ProjectContext context, Guid resourceProjectId)
-        => context.ProjectId.HasValue
-            && context.ProjectId.Value == resourceProjectId
-            && resourceProjectId != Guid.Empty;
+        => ValidateScope(context, resourceProjectId).IsAllowed;
+
+    public ProjectScopeDecision ValidateScope(
+        ProjectContext context,
+        Guid resourceProjectId,
+        ProjectScopeMismatchBehavior mismatchBehavior = ProjectScopeMismatchBehavior.NotFound)
+    {
+        if (!context.ProjectId.HasValue || resourceProjectId == Guid.Empty)
+        {
+            return ProjectScopeDecision.Rejected(mismatchBehavior);
+        }
+
+        return context.ProjectId.Value == resourceProjectId
+            ? ProjectScopeDecision.Allowed
+            : ProjectScopeDecision.Rejected(mismatchBehavior);
+    }
 }

@@ -2,7 +2,7 @@ namespace SeoIntelligence.Application.Common;
 
 public sealed record PageRequest(int Page = 1, int PageSize = 50)
 {
-    public const int MaxPageSize = 500;
+    public const int MaxPageSize = 200;
 
     public int Offset => (Page - 1) * PageSize;
 
