@@ -50,7 +50,7 @@ public sealed class ProjectReferenceTests
                 .Where(value => !string.IsNullOrWhiteSpace(value))
                 .Select(value => Path.GetRelativePath(
                     repositoryRoot,
-                    Path.GetFullPath(value!, projectDirectory)))
+                    Path.GetFullPath(ToNativePath(value!), projectDirectory)))
                 .Select(NormalizePath)
                 .Order(StringComparer.Ordinal)
                 .ToArray();
@@ -83,4 +83,9 @@ public sealed class ProjectReferenceTests
 
     private static string NormalizePath(string path)
         => path.Replace('\\', '/');
+
+    private static string ToNativePath(string path)
+        => path
+            .Replace('\\', Path.DirectorySeparatorChar)
+            .Replace('/', Path.DirectorySeparatorChar);
 }
