@@ -16,6 +16,10 @@ if ! find "$infrastructure_dir" \
   exit 0
 fi
 
+if [[ -f ".config/dotnet-tools.json" ]]; then
+  dotnet tool restore >/dev/null
+fi
+
 if ! dotnet ef --version >/dev/null 2>&1; then
   echo "dotnet-ef is required when EF Core DbContext exists."
   exit 1
