@@ -16,10 +16,11 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | 版 | 日付 | 内容 | 作成/更新 |
 | --- | --- | --- | --- |
 | 1.0 | 2026-05-30 | 初版作成。ローカル開発環境、環境変数、Secret、DB初期化、起動確認を定義。 | ChatGPT |
+| 1.1 | 2026-05-31 | ソリューション骨格作成後の基本ビルド、テスト、起動コマンドを追記。 | Codex |
 
 ## 1. 目的
 
-本書は、SEOインテリジェンス基盤をローカルまたはテスト環境で起動するための前提、設定、Secret、DB、Storage、確認手順を定義する。現時点では実装前の設計手順であり、実際のコマンドはソリューション作成後に更新する。
+本書は、SEOインテリジェンス基盤をローカルまたはテスト環境で起動するための前提、設定、Secret、DB、Storage、確認手順を定義する。
 
 ## 2. 前提ツール
 
@@ -61,6 +62,16 @@ tests/
   ContractTests/
   E2ETests/
 docs/
+```
+
+ソリューション骨格の確認と最小起動は以下を使う。
+
+```text
+dotnet build
+dotnet test --filter Category=Unit
+dotnet run --project src/SeoIntelligence.Api
+dotnet run --project src/SeoIntelligence.Web
+dotnet run --project src/SeoIntelligence.Worker
 ```
 
 ## 5. 環境変数
@@ -148,7 +159,7 @@ dotnet run --project src/SeoIntelligence.Worker
 | 項目 | 追記タイミング |
 | --- | --- |
 | 正式なDocker Compose | インフラ雛形作成後。 |
-| 正式な起動コマンド | ソリューション作成後。 |
-| テストコマンド | testsプロジェクト作成後。 |
+| 正式な起動コマンド | ソリューション骨格作成時点の最小コマンドは追記済み。Docker/DB依存を含む正式手順はインフラ雛形作成後。 |
+| テストコマンド | Unitテストの最小コマンドは追記済み。Integration/Contract/E2Eの正式手順は各テスト整備後。 |
 | CI/CD環境変数 | CI定義作成後。 |
 | デプロイ手順 | ステージング環境作成後。 |

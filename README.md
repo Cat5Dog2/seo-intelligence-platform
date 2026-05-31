@@ -6,7 +6,7 @@
 
 ## 現在の状態
 
-このリポジトリは設計ドキュメントと実装バックログを整備している段階です。ソリューション、アプリケーションコード、テストプロジェクトは今後 `todo.md` のIssue順に作成します。
+このリポジトリは設計ドキュメントと実装バックログを整備し、.NET 10 / Clean Architecture の最小ソリューション骨格を作成済みです。機能実装は今後 `todo.md` のIssue順に追加します。
 
 ## 主なスコープ
 
@@ -72,7 +72,7 @@ docs/
 
 ## 開発の始め方
 
-実装は `todo.md` のIssue順に進めます。最初の作業はソリューション骨格の作成です。
+実装は `todo.md` のIssue順に進めます。
 
 ```text
 ISSUE-P0-001 ソリューション骨格を作成する
@@ -80,7 +80,7 @@ ISSUE-P0-002 ローカル開発基盤とCI雛形を作成する
 ISSUE-MVP-001 Domain/Application共通基盤を実装する
 ```
 
-実装後に想定している代表コマンド:
+代表コマンド:
 
 ```text
 dotnet build
@@ -90,10 +90,9 @@ dotnet test --filter Category=Integration
 dotnet test --filter Category=Contract
 dotnet ef database update --project src/SeoIntelligence.Infrastructure --startup-project src/SeoIntelligence.Api
 dotnet run --project src/SeoIntelligence.Api
+dotnet run --project src/SeoIntelligence.Web
 dotnet run --project src/SeoIntelligence.Worker
 ```
-
-現時点ではソリューション未作成のため、上記コマンドは実装後に有効になります。正式な手順は `docs/environment_setup.md` に追記していきます。
 
 ## ローカル環境の前提
 
