@@ -1,7 +1,9 @@
 using System.Diagnostics;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using SeoIntelligence.Api.Common;
 using SeoIntelligence.Api.Health;
+using SeoIntelligence.Contracts.Api;
 using SeoIntelligence.Application.Diagnostics;
 using SeoIntelligence.Infrastructure;
 
@@ -31,11 +33,11 @@ builder.Services
 
 var app = builder.Build();
 
+app.UseMiddleware<ExceptionHandlingMiddleware>();
+app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseHttpsRedirection();
 app.Use(async (context, next) =>
 {
-    var correlationId = GetCorrelationId(context);
-    using var scope = app.Logger.BeginScope(new SeoIntelligenceLogContext(CorrelationId: correlationId).ToScopeDictionary());
     var stopwatch = Stopwatch.StartNew();
 
     try
@@ -53,32 +55,54 @@ app.Use(async (context, next) =>
     }
 });
 
-app.MapGet("/", () => Results.Ok(new
-{
-    service = "SeoIntelligence.Api",
-    diagnostics = SeoIntelligenceDiagnostics.ServiceName,
-    status = "running"
-}));
+app.MapGet(
+    "/api",
+    (
+        HttpContext context,
+        int page = ListQueryParameters.DefaultPage,
+        int pageSize = ListQueryParameters.DefaultPageSize,
+        string status = "active",
+        string sortBy = "createdAt",
+        string orderBy = "desc",
+        string? q = null) =>
+    {
+        var query = new ListQueryParameters
+        {
+            Page = page,
+            PageSize = pageSize,
+            Status = status,
+            SortBy = sortBy,
+            OrderBy = orderBy,
+            Q = q
+        };
+        var validationErrors = query.Validate();
+        if (validationErrors.Count > 0)
+        {
+            return ApiResponseResults.ValidationFailure(context, validationErrors);
+        }
+
+        return ApiResponseResults.Ok(
+            context,
+            new ApiStatusResponse(
+                "SeoIntelligence.Api",
+                SeoIntelligenceDiagnostics.ServiceName,
+                "running"));
+    });
+
+app.MapGet("/openapi/v1.json", OpenApiDocumentEndpoint.GetV1);
 
 app.MapHealthChecks("/healthz", new HealthCheckOptions
 {
-    Predicate = check => check.Tags.Contains("live")
+    Predicate = check => check.Tags.Contains("live"),
+    ResponseWriter = HealthCheckResponseWriter.WriteAsync
 });
 
 app.MapHealthChecks("/readyz", new HealthCheckOptions
 {
-    Predicate = check => check.Tags.Contains("ready")
+    Predicate = check => check.Tags.Contains("ready"),
+    ResponseWriter = HealthCheckResponseWriter.WriteAsync
 });
 
 app.Run();
 
-static string GetCorrelationId(HttpContext context)
-{
-    if (context.Request.Headers.TryGetValue("X-Correlation-Id", out var values)
-        && !string.IsNullOrWhiteSpace(values.FirstOrDefault()))
-    {
-        return values.First()!;
-    }
-
-    return Activity.Current?.TraceId.ToString() ?? Guid.NewGuid().ToString("N");
-}
+public partial class Program;

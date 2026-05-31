@@ -100,7 +100,7 @@ ISSUE-MVP-00X の続きから再開してください。
 - [x] ISSUE-MVP-001 Domain/Application共通基盤を実装する
 - [x] ISSUE-MVP-002 MVP DBスキーマとSeedDataを実装する
 - [x] ISSUE-MVP-003 Infrastructure共通基盤を実装する
-- [ ] ISSUE-MVP-004 API共通仕様を実装する
+- [x] ISSUE-MVP-004 API共通仕様を実装する
 - [ ] ISSUE-MVP-005 管理API、プロジェクトAPI、サイトAPIを実装する
 - [ ] ISSUE-MVP-006 Secret管理と監査ログを実装する
 - [ ] ISSUE-MVP-007 ラッコキーワードAPIクライアントとMockを実装する
@@ -284,25 +284,25 @@ ISSUE-MVP-00X の続きから再開してください。
 
 範囲:
 
-- [ ] `/healthz` を実装する。
-- [ ] `/readyz` を実装し、DB/Redis接続を確認する。
-- [ ] `/openapi/v1.json` を出力する。
-- [ ] 共通レスポンスenvelopeを適用する。
-- [ ] 共通エラー形式を実装する。
-- [ ] `X-Correlation-Id` の受け取り、未指定時生成、ログ/DB保存を実装する。
-- [ ] 一覧API共通の `page`, `pageSize`, `status`, `sortBy`, `orderBy`, `q` を実装する。
-- [ ] プロジェクトスコープ不一致時の403/404方針を実装する。
-- [ ] サーバー側バリデーションを導入する。
+- [x] `/healthz` を実装する。
+- [x] `/readyz` を実装し、DB/Redis接続を確認する。
+- [x] `/openapi/v1.json` を出力する。
+- [x] 共通レスポンスenvelopeを適用する。
+- [x] 共通エラー形式を実装する。
+- [x] `X-Correlation-Id` の受け取り、未指定時生成、ログ/DB保存を実装する。
+- [x] 一覧API共通の `page`, `pageSize`, `status`, `sortBy`, `orderBy`, `q` を実装する。
+- [x] プロジェクトスコープ不一致時の403/404方針を実装する。
+- [x] サーバー側バリデーションを導入する。
 
 受入条件:
 
-- [ ] API smoke testで共通envelopeとエラー形式を確認できる。
-- [ ] OpenAPIが出力される。
-- [ ] scope不一致が拒否される。
+- [x] API smoke testで共通envelopeとエラー形式を確認できる。
+- [x] OpenAPIが出力される。
+- [x] scope不一致が拒否される。
 
 検証:
 
-- [ ] `dotnet test --filter Category=Integration`
+- [x] `dotnet test --filter Category=Integration`
 
 ### ISSUE-MVP-005 管理API、プロジェクトAPI、サイトAPIを実装する
 

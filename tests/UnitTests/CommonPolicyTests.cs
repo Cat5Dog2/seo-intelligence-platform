@@ -19,6 +19,11 @@ public sealed class CommonPolicyTests
         Assert.Equal(TimeSpan.Zero, context.RequestedAtUtc.Offset);
         Assert.Equal("correlation-1", context.CorrelationId);
         Assert.True(service.IsInProjectScope(context, projectId));
+        Assert.Equal(ProjectScopeDecisionKind.Allowed, service.ValidateScope(context, projectId).Kind);
+        Assert.Equal(ProjectScopeDecisionKind.NotFound, service.ValidateScope(context, Guid.NewGuid()).Kind);
+        Assert.Equal(
+            ProjectScopeDecisionKind.Forbidden,
+            service.ValidateScope(context, Guid.NewGuid(), ProjectScopeMismatchBehavior.Forbidden).Kind);
     }
 
     [Fact]
