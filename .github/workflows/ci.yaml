@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_VERSION: 10.0.x
+  CONFIGURATION: Release
+  ASPNETCORE_ENVIRONMENT: Development
+
+jobs:
+  build-test-smoke:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore
+        run: dotnet restore SeoIntelligence.sln
+
+      - name: Build
+        run: bash scripts/build.sh
+
+      - name: Test
+        run: bash scripts/test.sh
+
+      - name: Migration dry-run
+        run: bash scripts/migration-dry-run.sh
+
+      - name: Start local dependencies
+        run: docker compose up -d postgres redis minio minio-init
+
+      - name: Show dependency status
+        run: docker compose ps
+
+      - name: Smoke test
+        run: bash scripts/smoke-test.sh
+
+      - name: Stop local dependencies
+        if: always()
+        run: docker compose down --volumes --remove-orphans
+
+  container-scan:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - postgres:16-alpine
+          - redis:7-alpine
+          - minio/minio:latest
+          - minio/mc:latest
+
+    steps:
+      - name: Scan ${{ matrix.image }}
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ matrix.image }}
+          format: table
+          exit-code: "0"
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: HIGH,CRITICAL

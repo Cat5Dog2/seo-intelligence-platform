@@ -16,6 +16,7 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | 版 | 日付 | 内容 | 作成/更新 |
 | --- | --- | --- | --- |
 | 1.0 | 2026-05-30 | 初版作成。テストレベル、MVP受入、障害系、契約テスト、実行方針を定義。 | ChatGPT |
+| 1.1 | 2026-05-31 | CI雛形、ローカル依存サービス、migration dry-run、smoke testの実行方針を追記。 | Codex |
 
 ## 1. 目的
 
@@ -140,16 +141,36 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 
 ## 10. 実行コマンド方針
 
-現時点では実装コードがないため、具体的なテストコマンドはソリューション作成後に確定する。想定は以下。
+ローカルとCIの最小確認は以下を使う。
 
 ```text
+dotnet build
 dotnet test
 dotnet test --filter Category=Unit
 dotnet test --filter Category=Integration
 dotnet test --filter Category=Contract
+docker compose up -d postgres redis minio minio-init
 ```
 
-リポジトリに`tests/`とCIが追加された時点で、本書に正式なコマンド、必要な環境変数、テストDB起動手順を追記する。
+GitHub Actionsと同じスクリプトで確認する場合は以下を使う。
+
+```text
+bash scripts/build.sh
+bash scripts/test.sh
+bash scripts/migration-dry-run.sh
+bash scripts/smoke-test.sh
+```
+
+PowerShell環境では以下を使う。
+
+```text
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test.ps1 -Filter Category=Unit
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/migration-dry-run.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-test.ps1
+```
+
+現時点のmigration dry-runは、EF Core `DbContext` が未実装の場合にskipして成功終了する。Integration/Contract/E2Eの正式な実行条件、テストDB初期化、外部API Mockの固定データは各実装Issueで追記する。
 
 ## 11. 完了条件
 
