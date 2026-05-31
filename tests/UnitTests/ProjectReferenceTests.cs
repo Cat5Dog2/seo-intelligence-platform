@@ -25,7 +25,8 @@ public sealed class ProjectReferenceTests
             ],
             ["src/SeoIntelligence.Api/SeoIntelligence.Api.csproj"] =
             [
-                "src/SeoIntelligence.Application/SeoIntelligence.Application.csproj"
+                "src/SeoIntelligence.Application/SeoIntelligence.Application.csproj",
+                "src/SeoIntelligence.Infrastructure/SeoIntelligence.Infrastructure.csproj"
             ],
             ["src/SeoIntelligence.Web/SeoIntelligence.Web.csproj"] =
             [
