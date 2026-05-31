@@ -16,6 +16,10 @@ if (-not $dbContextMatch) {
     exit 0
 }
 
+if (Test-Path ".config/dotnet-tools.json") {
+    dotnet tool restore | Out-Null
+}
+
 dotnet ef --version | Out-Null
 
 $outputDirectory = Split-Path -Parent $OutputPath

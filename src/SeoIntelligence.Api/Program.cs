@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using SeoIntelligence.Application.Configuration;
 using SeoIntelligence.Application.Diagnostics;
+using SeoIntelligence.Infrastructure.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -50,9 +51,18 @@ app.Run();
 
 static void RegisterSeoIntelligenceOptions(IServiceCollection services, IConfiguration configuration)
 {
+    var databaseOptions = new DatabaseOptions
+    {
+        ConnectionString = configuration.GetConnectionString(DatabaseOptions.DefaultConnectionName)
+    };
+
     services.AddOptions<DatabaseOptions>()
-        .Configure(options => options.ConnectionString =
-            configuration.GetConnectionString(DatabaseOptions.DefaultConnectionName));
+        .Configure(options => options.ConnectionString = databaseOptions.ConnectionString);
+
+    if (!string.IsNullOrWhiteSpace(databaseOptions.ConnectionString))
+    {
+        services.AddSeoIntelligencePersistence(databaseOptions);
+    }
 
     services.Configure<RedisOptions>(configuration.GetSection(RedisOptions.SectionName));
     services.Configure<HangfireOptions>(configuration.GetSection(HangfireOptions.SectionName));

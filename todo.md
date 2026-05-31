@@ -98,7 +98,7 @@ ISSUE-MVP-00X の続きから再開してください。
 - [x] ISSUE-P0-001 ソリューション骨格を作成する
 - [x] ISSUE-P0-002 ローカル開発基盤とCI雛形を作成する
 - [x] ISSUE-MVP-001 Domain/Application共通基盤を実装する
-- [ ] ISSUE-MVP-002 MVP DBスキーマとSeedDataを実装する
+- [x] ISSUE-MVP-002 MVP DBスキーマとSeedDataを実装する
 - [ ] ISSUE-MVP-003 Infrastructure共通基盤を実装する
 - [ ] ISSUE-MVP-004 API共通仕様を実装する
 - [ ] ISSUE-MVP-005 管理API、プロジェクトAPI、サイトAPIを実装する
@@ -226,27 +226,27 @@ ISSUE-MVP-00X の続きから再開してください。
 
 範囲:
 
-- [ ] EF Core DbContextとPostgreSQL接続を実装する。
-- [ ] 初回migrationで `pg_trgm` 拡張を有効化する。
-- [ ] 管理系テーブルを作る: `workspaces`, `projects`, `sites`, `api_credentials`, `api_contract_scopes`, `notification_channels`, `notification_deliveries`, `audit_logs`。
-- [ ] 外部API/ジョブ系テーブルを作る: `locations`, `languages`, `external_api_calls`, `jobs`, `job_external_requests`。
-- [ ] キーワード系テーブルを作る: `keyword_seeds`, `keywords`, `keyword_suggestions`, `related_keywords`, `questions`, `lsi_paa_items`, `ranking_keywords`。
-- [ ] 検索ボリューム系テーブルを作る: `search_volume_jobs`, `search_volume_results`, `keyword_metrics`, `keyword_monthly_volumes`, `project_keyword_scores`。
-- [ ] 出力系テーブルを作る: `data_exports`。
-- [ ] `db_design.md` のMVP対象インデックスを追加する。
-- [ ] 既定workspaceのSeedDataを作成する。
-- [ ] `api_contract_scopes` の初期データを作成する。
+- [x] EF Core DbContextとPostgreSQL接続を実装する。
+- [x] 初回migrationで `pg_trgm` 拡張を有効化する。
+- [x] 管理系テーブルを作る: `workspaces`, `projects`, `sites`, `api_credentials`, `api_contract_scopes`, `notification_channels`, `notification_deliveries`, `audit_logs`。
+- [x] 外部API/ジョブ系テーブルを作る: `locations`, `languages`, `external_api_calls`, `jobs`, `job_external_requests`。
+- [x] キーワード系テーブルを作る: `keyword_seeds`, `keywords`, `keyword_suggestions`, `related_keywords`, `questions`, `lsi_paa_items`, `ranking_keywords`。
+- [x] 検索ボリューム系テーブルを作る: `search_volume_jobs`, `search_volume_results`, `keyword_metrics`, `keyword_monthly_volumes`, `project_keyword_scores`。
+- [x] 出力系テーブルを作る: `data_exports`。
+- [x] `db_design.md` のMVP対象インデックスを追加する。
+- [x] 既定workspaceのSeedDataを作成する。
+- [x] `api_contract_scopes` の初期データを作成する。
 
 受入条件:
 
-- [ ] migration適用でMVPテーブルが作成される。
-- [ ] `keywords` の重複排除、`jobs` のIdempotency制約、主要検索インデックスが存在する。
-- [ ] 初期workspaceと契約スコープが登録される。
+- [x] migration適用でMVPテーブルが作成される。
+- [x] `keywords` の重複排除、`jobs` のIdempotency制約、主要検索インデックスが存在する。
+- [x] 初期workspaceと契約スコープが登録される。
 
 検証:
 
-- [ ] `dotnet ef database update --project src/SeoIntelligence.Infrastructure --startup-project src/SeoIntelligence.Api`
-- [ ] `dotnet test --filter Category=Integration`
+- [x] `dotnet ef database update --project src/SeoIntelligence.Infrastructure --startup-project src/SeoIntelligence.Api`
+- [x] `dotnet test --filter Category=Integration`
 
 ### ISSUE-MVP-003 Infrastructure共通基盤を実装する
 
