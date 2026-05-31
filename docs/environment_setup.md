@@ -18,6 +18,7 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | 1.0 | 2026-05-30 | 初版作成。ローカル開発環境、環境変数、Secret、DB初期化、起動確認を定義。 | ChatGPT |
 | 1.1 | 2026-05-31 | ソリューション骨格作成後の基本ビルド、テスト、起動コマンドを追記。 | Codex |
 | 1.2 | 2026-05-31 | Docker Compose、CI雛形、共通設定/診断の起動手順を追記。 | Codex |
+| 1.3 | 2026-05-31 | Infrastructure共通基盤のDI、Storage/Secret/Redis/Hangfire、Readiness疎通確認を追記。 | Codex |
 
 ## 1. 目的
 
@@ -106,10 +107,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-test.ps1
 | `ConnectionStrings__Default` | PostgreSQL接続 | `Host=localhost;Port=5432;Database=seo;Username=seo;Password=seo_dev_password` |
 | `Redis__ConnectionString` | Redis接続 | `localhost:6379` |
 | `Hangfire__Storage` | Hangfire storage | `PostgreSQL` |
-| `Storage__Provider` | ローデータ/出力保存先 | `Local`または`MinIO` |
+| `Storage__Provider` | ローデータ/出力保存先 | MVP既定は`Local`。`MinIO`は疎通確認のみ。 |
 | `Storage__BasePath` | ローカル保存先 | `./.data/storage` |
 | `Storage__Endpoint` | MinIO API URL | `http://localhost:9000` |
 | `Storage__BucketName` | Storage bucket | `seo-intelligence` |
+| `SecretStore__Provider` | Secret Store実装 | `Configuration` |
+| `SecretStore__ConfigurationPrefix` | User Secrets/環境変数上のSecret prefix | `Secrets` |
 | `OpenTelemetry__Enabled` | OTel exporter有効化 | `false` |
 | `OpenTelemetry__ServiceName` | OTel service name | `SeoIntelligence.Api` |
 | `OpenTelemetry__OtlpEndpoint` | OTLP endpoint | `http://localhost:4317` |
@@ -130,7 +133,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-test.ps1
 | `discord-webhook-dev` | Discord Webhook URL | DBへ実値保存しない。 |
 | `ai-api-key-dev` | AI APIキー | Phase 3。必要時のみ設定。 |
 
-ローカルでは.NET User Secrets、開発用Key Vault、または安全なSecret管理を使う。`.env`や設定ファイルへ実値をコミットしない。
+ローカルでは.NET User Secrets、開発用Key Vault、または安全なSecret管理を使う。MVPの`Configuration` Secret Storeは `Secrets:{secretName}` を参照する。`.env`や設定ファイルへ実値をコミットしない。
 
 ## 7. DB初期化
 
@@ -158,7 +161,7 @@ dotnet run --project src/SeoIntelligence.Worker
 | 確認 | 期待結果 |
 | --- | --- |
 | API Health | `/healthz`が成功する。 |
-| Readiness | 現時点ではhost self checkとして`/readyz`が成功する。DB/Redis実接続確認は該当実装Issueで追加する。 |
+| Readiness | `/readyz`でDB、Redis、Storage、Secret Storeの疎通確認ができる。未設定のDB/Redisはskip扱い、設定済みで接続不可の場合はunhealthy。 |
 | OpenAPI | `/openapi/v1.json`が取得できる。 |
 | プロジェクト一覧 | `GET /api/projects`が成功する。 |
 | Worker | ジョブ一覧にWorker処理結果が反映される。 |
@@ -202,6 +205,6 @@ GitHub Actionsは `.github/workflows/ci.yaml` を使う。
 | 項目 | 追記タイミング |
 | --- | --- |
 | Integration/Contract/E2Eの正式手順 | 各テスト整備後。 |
-| DB/Redis readinessの実接続チェック | Infrastructure/DB/Redis実装後。 |
+| MinIOの署名付きObject Storage adapter | Storage credential参照方式確定後。 |
 | CI/CD Secretと品質ゲート | Secret管理、外部API Mock、コンテナポリシー確定後。 |
 | デプロイ手順 | ステージング環境作成後。 |

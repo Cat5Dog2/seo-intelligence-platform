@@ -35,5 +35,8 @@ public static class PersistenceServiceCollectionExtensions
     {
         services.AddDbContext<SeoIntelligenceDbContext>(options =>
             options.UseSeoIntelligencePostgres(connectionString));
+
+        services.AddDbContextFactory<SeoIntelligenceDbContext>(options =>
+            options.UseSeoIntelligencePostgres(connectionString));
     }
 }

@@ -1,12 +1,11 @@
+using System.Diagnostics;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
-using SeoIntelligence.Application.Configuration;
+using SeoIntelligence.Api.Health;
 using SeoIntelligence.Application.Diagnostics;
-using SeoIntelligence.Infrastructure.Persistence;
+using SeoIntelligence.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
-
-RegisterSeoIntelligenceOptions(builder.Services, builder.Configuration);
 
 builder.Logging.Configure(options =>
 {
@@ -19,16 +18,40 @@ builder.Logging.Configure(options =>
 
 builder.Services.AddSingleton(SeoIntelligenceDiagnostics.ActivitySource);
 builder.Services.AddSingleton(SeoIntelligenceDiagnostics.Meter);
+builder.Services.AddSeoIntelligenceInfrastructure(builder.Configuration);
 builder.Services
     .AddHealthChecks()
     .AddCheck(
         "self",
         () => HealthCheckResult.Healthy("API host is running."),
-        tags: ["live", "ready"]);
+        tags: ["live"])
+    .AddCheck<InfrastructureReadinessHealthCheck>(
+        "infrastructure",
+        tags: ["ready"]);
 
 var app = builder.Build();
 
 app.UseHttpsRedirection();
+app.Use(async (context, next) =>
+{
+    var correlationId = GetCorrelationId(context);
+    using var scope = app.Logger.BeginScope(new SeoIntelligenceLogContext(CorrelationId: correlationId).ToScopeDictionary());
+    var stopwatch = Stopwatch.StartNew();
+
+    try
+    {
+        await next(context);
+    }
+    finally
+    {
+        stopwatch.Stop();
+        app.Logger.LogInformation(
+            "HTTP request completed for {endpoint} with {status_code} in {elapsed_ms} ms.",
+            context.Request.Path.Value,
+            context.Response.StatusCode,
+            stopwatch.ElapsedMilliseconds);
+    }
+});
 
 app.MapGet("/", () => Results.Ok(new
 {
@@ -49,23 +72,13 @@ app.MapHealthChecks("/readyz", new HealthCheckOptions
 
 app.Run();
 
-static void RegisterSeoIntelligenceOptions(IServiceCollection services, IConfiguration configuration)
+static string GetCorrelationId(HttpContext context)
 {
-    var databaseOptions = new DatabaseOptions
+    if (context.Request.Headers.TryGetValue("X-Correlation-Id", out var values)
+        && !string.IsNullOrWhiteSpace(values.FirstOrDefault()))
     {
-        ConnectionString = configuration.GetConnectionString(DatabaseOptions.DefaultConnectionName)
-    };
-
-    services.AddOptions<DatabaseOptions>()
-        .Configure(options => options.ConnectionString = databaseOptions.ConnectionString);
-
-    if (!string.IsNullOrWhiteSpace(databaseOptions.ConnectionString))
-    {
-        services.AddSeoIntelligencePersistence(databaseOptions);
+        return values.First()!;
     }
 
-    services.Configure<RedisOptions>(configuration.GetSection(RedisOptions.SectionName));
-    services.Configure<HangfireOptions>(configuration.GetSection(HangfireOptions.SectionName));
-    services.Configure<StorageOptions>(configuration.GetSection(StorageOptions.SectionName));
-    services.Configure<OpenTelemetryOptions>(configuration.GetSection(OpenTelemetryOptions.SectionName));
+    return Activity.Current?.TraceId.ToString() ?? Guid.NewGuid().ToString("N");
 }
