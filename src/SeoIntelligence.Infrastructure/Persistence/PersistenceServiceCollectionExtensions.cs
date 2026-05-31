@@ -33,8 +33,10 @@ public static class PersistenceServiceCollectionExtensions
 
     private static void ConfigureDbContext(IServiceCollection services, string connectionString)
     {
-        services.AddDbContext<SeoIntelligenceDbContext>(options =>
-            options.UseSeoIntelligencePostgres(connectionString));
+        services.AddDbContext<SeoIntelligenceDbContext>(
+            options => options.UseSeoIntelligencePostgres(connectionString),
+            contextLifetime: ServiceLifetime.Scoped,
+            optionsLifetime: ServiceLifetime.Singleton);
 
         services.AddDbContextFactory<SeoIntelligenceDbContext>(options =>
             options.UseSeoIntelligencePostgres(connectionString));
