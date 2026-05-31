@@ -99,7 +99,7 @@ ISSUE-MVP-00X の続きから再開してください。
 - [x] ISSUE-P0-002 ローカル開発基盤とCI雛形を作成する
 - [x] ISSUE-MVP-001 Domain/Application共通基盤を実装する
 - [x] ISSUE-MVP-002 MVP DBスキーマとSeedDataを実装する
-- [ ] ISSUE-MVP-003 Infrastructure共通基盤を実装する
+- [x] ISSUE-MVP-003 Infrastructure共通基盤を実装する
 - [ ] ISSUE-MVP-004 API共通仕様を実装する
 - [ ] ISSUE-MVP-005 管理API、プロジェクトAPI、サイトAPIを実装する
 - [ ] ISSUE-MVP-006 Secret管理と監査ログを実装する
@@ -258,21 +258,21 @@ ISSUE-MVP-00X の続きから再開してください。
 
 範囲:
 
-- [ ] RepositoryまたはDbContext利用方針を整備する。
-- [ ] Storage抽象を実装する。
-- [ ] Secret Store抽象を実装する。
-- [ ] Redis抽象を実装する。
-- [ ] Hangfire PostgreSQL storageを構成する。
-- [ ] 構造化ログに `workspace_id`, `project_id`, `job_id`, `external_request_id`, `correlation_id` を含める。
+- [x] RepositoryまたはDbContext利用方針を整備する。
+- [x] Storage抽象を実装する。
+- [x] Secret Store抽象を実装する。
+- [x] Redis抽象を実装する。
+- [x] Hangfire PostgreSQL storageを構成する。
+- [x] 構造化ログに `workspace_id`, `project_id`, `job_id`, `external_request_id`, `correlation_id` を含める。
 
 受入条件:
 
-- [ ] DB、Redis、Storage、Secret Storeの疎通確認ができる。
-- [ ] 秘密値実体をログに出さない。
+- [x] DB、Redis、Storage、Secret Storeの疎通確認ができる。
+- [x] 秘密値実体をログに出さない。
 
 検証:
 
-- [ ] `dotnet test --filter Category=Integration`
+- [x] `dotnet test --filter Category=Integration`
 
 ### ISSUE-MVP-004 API共通仕様を実装する
 

@@ -182,6 +182,8 @@ SeoIntelligence.sln
 
 - Api/Web/WorkerはApplicationを呼び出す。Workerはジョブ起点でユースケースを実行する。
 
+- MVPの永続化アクセスはInfrastructure層の`SeoIntelligenceDbContext`と`IDbContextFactory<SeoIntelligenceDbContext>`を基本とし、汎用Repositoryは導入しない。Application層にはEF Core型を公開しない。
+
 ## 5. 主要コンポーネント設計
 
 | コンポーネント | 責務 |

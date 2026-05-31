@@ -34,7 +34,8 @@ public sealed class ProjectReferenceTests
             ],
             ["src/SeoIntelligence.Worker/SeoIntelligence.Worker.csproj"] =
             [
-                "src/SeoIntelligence.Application/SeoIntelligence.Application.csproj"
+                "src/SeoIntelligence.Application/SeoIntelligence.Application.csproj",
+                "src/SeoIntelligence.Infrastructure/SeoIntelligence.Infrastructure.csproj"
             ]
         };
 
