@@ -96,7 +96,7 @@ ISSUE-MVP-00X の続きから再開してください。
 ## 実装順
 
 - [x] ISSUE-P0-001 ソリューション骨格を作成する
-- [ ] ISSUE-P0-002 ローカル開発基盤とCI雛形を作成する
+- [x] ISSUE-P0-002 ローカル開発基盤とCI雛形を作成する
 - [ ] ISSUE-MVP-001 Domain/Application共通基盤を実装する
 - [ ] ISSUE-MVP-002 MVP DBスキーマとSeedDataを実装する
 - [ ] ISSUE-MVP-003 Infrastructure共通基盤を実装する
@@ -171,21 +171,21 @@ ISSUE-MVP-00X の続きから再開してください。
 
 範囲:
 
-- [ ] Docker ComposeでPostgreSQL、Redis、Storage代替を起動できるようにする。
-- [ ] 共通設定、Options、DI、Loggingの雛形を作る。
-- [ ] OpenTelemetryの導入口を作る。
-- [ ] CIでbuild、test、migration dry-run、container scan、smoke testを実行する雛形を作る。
-- [ ] `docs/environment_setup.md` に正式な起動コマンドを追記する。
+- [x] Docker ComposeでPostgreSQL、Redis、Storage代替を起動できるようにする。
+- [x] 共通設定、Options、DI、Loggingの雛形を作る。
+- [x] OpenTelemetryの導入口を作る。
+- [x] CIでbuild、test、migration dry-run、container scan、smoke testを実行する雛形を作る。
+- [x] `docs/environment_setup.md` に正式な起動コマンドを追記する。
 
 受入条件:
 
-- [ ] ローカル依存サービスを起動できる。
-- [ ] CI定義が最低限のbuild/testを実行できる。
+- [x] ローカル依存サービスを起動できる。
+- [x] CI定義が最低限のbuild/testを実行できる。
 
 検証:
 
-- [ ] `dotnet build`
-- [ ] Docker Compose起動確認
+- [x] `dotnet build`
+- [x] Docker Compose起動確認
 
 ## Phase 1: MVP
 
