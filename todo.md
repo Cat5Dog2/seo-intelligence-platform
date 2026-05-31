@@ -97,7 +97,7 @@ ISSUE-MVP-00X の続きから再開してください。
 
 - [x] ISSUE-P0-001 ソリューション骨格を作成する
 - [x] ISSUE-P0-002 ローカル開発基盤とCI雛形を作成する
-- [ ] ISSUE-MVP-001 Domain/Application共通基盤を実装する
+- [x] ISSUE-MVP-001 Domain/Application共通基盤を実装する
 - [ ] ISSUE-MVP-002 MVP DBスキーマとSeedDataを実装する
 - [ ] ISSUE-MVP-003 Infrastructure共通基盤を実装する
 - [ ] ISSUE-MVP-004 API共通仕様を実装する
@@ -199,22 +199,22 @@ ISSUE-MVP-00X の続きから再開してください。
 
 範囲:
 
-- [ ] UUID v7相当ID、UTC日時、Asia/Tokyo集計境界、固定actor `developer` の共通方針を実装する。
-- [ ] 共通Result型、ページング、検索、ソート、エラーコードを実装する。
-- [ ] キーワードtrim、Unicode正規化、空行除外、重複排除、URL/ドメイン正規化を実装する。
-- [ ] 共通ステータス値を定義する。
-- [ ] `ProjectContextService` を実装する。
-- [ ] `AdministrationService`, `MasterDataService`, `KeywordDiscoveryService`, `SearchVolumeService`, `ScoringService`, `DataTransferService`, `ExternalApiUsageService`, `NotificationService`, `DashboardService` の境界を作る。
+- [x] UUID v7相当ID、UTC日時、Asia/Tokyo集計境界、固定actor `developer` の共通方針を実装する。
+- [x] 共通Result型、ページング、検索、ソート、エラーコードを実装する。
+- [x] キーワードtrim、Unicode正規化、空行除外、重複排除、URL/ドメイン正規化を実装する。
+- [x] 共通ステータス値を定義する。
+- [x] `ProjectContextService` を実装する。
+- [x] `AdministrationService`, `MasterDataService`, `KeywordDiscoveryService`, `SearchVolumeService`, `ScoringService`, `DataTransferService`, `ExternalApiUsageService`, `NotificationService`, `DashboardService` の境界を作る。
 
 受入条件:
 
-- [ ] Domainは他プロジェクトへ依存しない。
-- [ ] ApplicationはInfrastructureへ依存しない。
-- [ ] 入力正規化とステータス遷移のUnit testがある。
+- [x] Domainは他プロジェクトへ依存しない。
+- [x] ApplicationはInfrastructureへ依存しない。
+- [x] 入力正規化とステータス遷移のUnit testがある。
 
 検証:
 
-- [ ] `dotnet test --filter Category=Unit`
+- [x] `dotnet test --filter Category=Unit`
 
 ### ISSUE-MVP-002 MVP DBスキーマとSeedDataを実装する
 
