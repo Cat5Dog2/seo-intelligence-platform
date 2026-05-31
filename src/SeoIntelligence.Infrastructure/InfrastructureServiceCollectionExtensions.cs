@@ -11,6 +11,7 @@ using SeoIntelligence.Application.Storage;
 using SeoIntelligence.Infrastructure.Persistence;
 using SeoIntelligence.Infrastructure.Redis;
 using SeoIntelligence.Infrastructure.Secrets;
+using SeoIntelligence.Infrastructure.Services;
 using SeoIntelligence.Infrastructure.Storage;
 
 namespace SeoIntelligence.Infrastructure;
@@ -40,6 +41,7 @@ public static class InfrastructureServiceCollectionExtensions
         }
 
         AddStorage(services, storageOptions);
+        services.AddSeoIntelligenceAdministration();
         services.AddSingleton<ISecretStore, ConfigurationSecretStore>();
 
         if (!string.IsNullOrWhiteSpace(redisOptions.ConnectionString))
