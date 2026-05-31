@@ -95,7 +95,7 @@ ISSUE-MVP-00X の続きから再開してください。
 
 ## 実装順
 
-- [ ] ISSUE-P0-001 ソリューション骨格を作成する
+- [x] ISSUE-P0-001 ソリューション骨格を作成する
 - [ ] ISSUE-P0-002 ローカル開発基盤とCI雛形を作成する
 - [ ] ISSUE-MVP-001 Domain/Application共通基盤を実装する
 - [ ] ISSUE-MVP-002 MVP DBスキーマとSeedDataを実装する
@@ -143,25 +143,25 @@ ISSUE-MVP-00X の続きから再開してください。
 
 範囲:
 
-- [ ] `SeoIntelligence.sln` を作成する。
-- [ ] `src/SeoIntelligence.Domain` を作成する。
-- [ ] `src/SeoIntelligence.Application` を作成する。
-- [ ] `src/SeoIntelligence.Contracts` を作成する。
-- [ ] `src/SeoIntelligence.Infrastructure` を作成する。
-- [ ] `src/SeoIntelligence.Api` を作成する。
-- [ ] `src/SeoIntelligence.Web` を Blazor Web App として作成する。
-- [ ] `src/SeoIntelligence.Worker` を Worker Service として作成する。
-- [ ] `tests/UnitTests`, `tests/IntegrationTests`, `tests/ContractTests`, `tests/E2ETests` を作成する。
-- [ ] 依存方向を Domain -> なし、Application -> Domain/Contracts、Infrastructure -> Application実装、Api/Web/Worker -> Application に揃える。
+- [x] `SeoIntelligence.sln` を作成する。
+- [x] `src/SeoIntelligence.Domain` を作成する。
+- [x] `src/SeoIntelligence.Application` を作成する。
+- [x] `src/SeoIntelligence.Contracts` を作成する。
+- [x] `src/SeoIntelligence.Infrastructure` を作成する。
+- [x] `src/SeoIntelligence.Api` を作成する。
+- [x] `src/SeoIntelligence.Web` を Blazor Web App として作成する。
+- [x] `src/SeoIntelligence.Worker` を Worker Service として作成する。
+- [x] `tests/UnitTests`, `tests/IntegrationTests`, `tests/ContractTests`, `tests/E2ETests` を作成する。
+- [x] 依存方向を Domain -> なし、Application -> Domain/Contracts、Infrastructure -> Application実装、Api/Web/Worker -> Application に揃える。
 
 受入条件:
 
-- [ ] `dotnet build` が成功する。
-- [ ] 各プロジェクトの依存方向が設計通りである。
+- [x] `dotnet build` が成功する。
+- [x] 各プロジェクトの依存方向が設計通りである。
 
 検証:
 
-- [ ] `dotnet build`
+- [x] `dotnet build`
 
 ### ISSUE-P0-002 ローカル開発基盤とCI雛形を作成する
 
