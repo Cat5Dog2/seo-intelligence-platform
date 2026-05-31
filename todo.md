@@ -101,7 +101,7 @@ ISSUE-MVP-00X の続きから再開してください。
 - [x] ISSUE-MVP-002 MVP DBスキーマとSeedDataを実装する
 - [x] ISSUE-MVP-003 Infrastructure共通基盤を実装する
 - [x] ISSUE-MVP-004 API共通仕様を実装する
-- [ ] ISSUE-MVP-005 管理API、プロジェクトAPI、サイトAPIを実装する
+- [x] ISSUE-MVP-005 管理API、プロジェクトAPI、サイトAPIを実装する
 - [ ] ISSUE-MVP-006 Secret管理と監査ログを実装する
 - [ ] ISSUE-MVP-007 ラッコキーワードAPIクライアントとMockを実装する
 - [ ] ISSUE-MVP-008 ジョブ基盤を実装する
@@ -314,38 +314,38 @@ ISSUE-MVP-00X の続きから再開してください。
 
 範囲:
 
-- [ ] `GET/PUT /api/admin/workspace`
-- [ ] `GET/POST /api/admin/api-credentials`
-- [ ] `GET/PUT/DELETE /api/admin/api-credentials/{credentialId}`
-- [ ] `POST /api/admin/api-credentials/{credentialId}/enable`
-- [ ] `POST /api/admin/api-credentials/{credentialId}/rotate`
-- [ ] `GET/POST /api/admin/notification-channels`
-- [ ] `GET/PUT/DELETE /api/admin/notification-channels/{channelId}`
-- [ ] `POST /api/admin/notification-channels/{channelId}/enable`
-- [ ] `POST /api/admin/notification-channels/{channelId}/test`
-- [ ] `GET /api/admin/notification-deliveries`
-- [ ] `GET /api/admin/notification-deliveries/{deliveryId}`
-- [ ] `POST /api/admin/notification-deliveries/{deliveryId}/retry`
-- [ ] `GET /api/admin/external-api-calls`
-- [ ] `GET /api/admin/audit-logs`
-- [ ] `GET /api/admin/audit-logs/{auditLogId}`
-- [ ] `GET/POST /api/projects`
-- [ ] `GET/PUT/DELETE /api/projects/{projectId}`
-- [ ] `POST /api/projects/{projectId}/restore`
-- [ ] `GET/POST /api/projects/{projectId}/sites`
-- [ ] `GET/PUT/DELETE /api/projects/{projectId}/sites/{siteId}`
-- [ ] `POST /api/projects/{projectId}/sites/{siteId}/restore`
+- [x] `GET/PUT /api/admin/workspace`
+- [x] `GET/POST /api/admin/api-credentials`
+- [x] `GET/PUT/DELETE /api/admin/api-credentials/{credentialId}`
+- [x] `POST /api/admin/api-credentials/{credentialId}/enable`
+- [x] `POST /api/admin/api-credentials/{credentialId}/rotate`
+- [x] `GET/POST /api/admin/notification-channels`
+- [x] `GET/PUT/DELETE /api/admin/notification-channels/{channelId}`
+- [x] `POST /api/admin/notification-channels/{channelId}/enable`
+- [x] `POST /api/admin/notification-channels/{channelId}/test`
+- [x] `GET /api/admin/notification-deliveries`
+- [x] `GET /api/admin/notification-deliveries/{deliveryId}`
+- [x] `POST /api/admin/notification-deliveries/{deliveryId}/retry`
+- [x] `GET /api/admin/external-api-calls`
+- [x] `GET /api/admin/audit-logs`
+- [x] `GET /api/admin/audit-logs/{auditLogId}`
+- [x] `GET/POST /api/projects`
+- [x] `GET/PUT/DELETE /api/projects/{projectId}`
+- [x] `POST /api/projects/{projectId}/restore`
+- [x] `GET/POST /api/projects/{projectId}/sites`
+- [x] `GET/PUT/DELETE /api/projects/{projectId}/sites/{siteId}`
+- [x] `POST /api/projects/{projectId}/sites/{siteId}/restore`
 
 受入条件:
 
-- [ ] 管理系CRUDが通る。
-- [ ] DELETEは物理削除せず `archived` または `disabled` へ更新する。
-- [ ] 復元/再有効化で `active` へ戻せる。
-- [ ] 別プロジェクト参照を拒否する。
+- [x] 管理系CRUDが通る。
+- [x] DELETEは物理削除せず `archived` または `disabled` へ更新する。
+- [x] 復元/再有効化で `active` へ戻せる。
+- [x] 別プロジェクト参照を拒否する。
 
 検証:
 
-- [ ] `dotnet test --filter Category=Integration`
+- [x] `dotnet test --filter Category=Integration`
 
 ### ISSUE-MVP-006 Secret管理と監査ログを実装する
 

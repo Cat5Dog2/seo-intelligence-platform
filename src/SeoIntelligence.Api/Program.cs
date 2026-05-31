@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using SeoIntelligence.Api.Common;
+using SeoIntelligence.Api.Endpoints;
 using SeoIntelligence.Api.Health;
 using SeoIntelligence.Contracts.Api;
 using SeoIntelligence.Application.Diagnostics;
@@ -88,6 +89,8 @@ app.MapGet(
                 SeoIntelligenceDiagnostics.ServiceName,
                 "running"));
     });
+
+app.MapAdministrationEndpoints();
 
 app.MapGet("/openapi/v1.json", OpenApiDocumentEndpoint.GetV1);
 

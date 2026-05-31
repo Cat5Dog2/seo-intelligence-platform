@@ -8,6 +8,36 @@ internal static class ApiResponseResults
     public static IResult Ok<T>(HttpContext context, T data, ApiResponseMeta? meta = null)
         => Results.Json(ApiResponseEnvelope<T>.Success(context.GetCorrelationId(), data, meta));
 
+    public static IResult Created<T>(HttpContext context, T data, ApiResponseMeta? meta = null)
+        => Results.Json(
+            ApiResponseEnvelope<T>.Success(context.GetCorrelationId(), data, meta),
+            statusCode: StatusCodes.Status201Created);
+
+    public static IResult Paged<T>(HttpContext context, PagedResult<T> page)
+        => Ok(
+            context,
+            page.Items,
+            new ApiResponseMeta(Page: new PageMeta(
+                page.Page,
+                page.PageSize,
+                page.TotalCount,
+                page.TotalPages)));
+
+    public static IResult FromResult<T>(HttpContext context, Result<T> result)
+        => result.IsSuccess
+            ? Ok(context, result.Value!)
+            : FromError(context, result.Error!);
+
+    public static IResult FromCreatedResult<T>(HttpContext context, Result<T> result)
+        => result.IsSuccess
+            ? Created(context, result.Value!)
+            : FromError(context, result.Error!);
+
+    public static IResult FromPagedResult<T>(HttpContext context, Result<PagedResult<T>> result)
+        => result.IsSuccess
+            ? Paged(context, result.Value!)
+            : FromError(context, result.Error!);
+
     public static IResult ValidationFailure(
         HttpContext context,
         IReadOnlyDictionary<string, string[]> validationErrors)
