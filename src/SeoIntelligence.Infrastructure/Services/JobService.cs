@@ -826,35 +826,52 @@ internal sealed class JobDispatcher(
     SeoIntelligenceDbContext dbContext,
     MasterDataSyncJob masterDataSyncJob,
     KeywordDiscoveryJob keywordDiscoveryJob,
+    RegisterSearchVolumeJob registerSearchVolumeJob,
+    PollSearchVolumeStatusJob pollSearchVolumeStatusJob,
     ILogger<JobDispatcher> logger)
     : IJobDispatcher
 {
     public async Task DispatchAsync(Guid jobId)
     {
-        var jobType = await dbContext.Jobs
+        var job = await dbContext.Jobs
             .AsNoTracking()
             .Where(entity => entity.Id == jobId)
-            .Select(entity => entity.JobType)
+            .Select(entity => new { entity.JobType, entity.Status })
             .FirstOrDefaultAsync();
 
-        if (jobType is null)
+        if (job is null)
         {
             logger.LogWarning("Job {job_id} was dequeued but no job row was found.", jobId);
             return;
         }
 
-        if (string.Equals(jobType, MasterDataSyncJob.JobType, StringComparison.Ordinal))
+        if (string.Equals(job.JobType, MasterDataSyncJob.JobType, StringComparison.Ordinal))
         {
             await masterDataSyncJob.ExecuteAsync(jobId);
             return;
         }
 
-        if (string.Equals(jobType, KeywordDiscoveryJob.JobType, StringComparison.Ordinal))
+        if (string.Equals(job.JobType, KeywordDiscoveryJob.JobType, StringComparison.Ordinal))
         {
             await keywordDiscoveryJob.ExecuteAsync(jobId);
             return;
         }
 
-        logger.LogInformation("Job {job_id} of type {job_type} was dequeued but no concrete handler is registered.", jobId, jobType);
+        if (string.Equals(job.JobType, RegisterSearchVolumeJob.JobType, StringComparison.Ordinal))
+        {
+            if (string.Equals(job.Status, StatusValues.Queued, StringComparison.Ordinal))
+            {
+                await registerSearchVolumeJob.ExecuteAsync(jobId);
+                return;
+            }
+
+            if (string.Equals(job.Status, StatusValues.WaitingExternal, StringComparison.Ordinal))
+            {
+                await pollSearchVolumeStatusJob.ExecuteAsync(jobId);
+                return;
+            }
+        }
+
+        logger.LogInformation("Job {job_id} of type {job_type} and status {status} was dequeued but no concrete handler is registered.", jobId, job.JobType, job.Status);
     }
 }

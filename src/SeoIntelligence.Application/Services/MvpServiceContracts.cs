@@ -374,14 +374,19 @@ public sealed record SearchVolumeJobRequest(
     IReadOnlyList<string> Keywords,
     string Location,
     string Language,
-    int AggregationPeriodMonths = 12);
+    int AggregationPeriodMonths = 12,
+    bool SeoDifficulty = true);
 
 public sealed record SearchVolumeResultRow(
     string Keyword,
     int? SearchVolume,
     decimal? SeoDifficulty,
     decimal? Cpc,
-    decimal? Competition);
+    decimal? Competition,
+    IReadOnlyDictionary<string, int>? MonthlySearchVolume = null,
+    string? DataSource = null,
+    bool CacheHit = false,
+    Guid? KeywordId = null);
 
 public sealed record OpportunityScoreRequest(IReadOnlyList<Guid> KeywordIds, string Location, string Language);
 
