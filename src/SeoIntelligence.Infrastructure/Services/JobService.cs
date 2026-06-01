@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -13,6 +14,7 @@ using SeoIntelligence.Application.Common;
 using SeoIntelligence.Application.Configuration;
 using SeoIntelligence.Application.Jobs;
 using SeoIntelligence.Application.Redis;
+using SeoIntelligence.Application.Services;
 using SeoIntelligence.Domain.Common;
 using SeoIntelligence.Infrastructure.Persistence;
 using SeoIntelligence.Infrastructure.Persistence.Entities;
@@ -31,7 +33,9 @@ internal sealed class JobService(
     IAuditLogWriter auditLogWriter,
     IOptions<HangfireOptions> hangfireOptions,
     IJobQueueClient jobQueueClient,
-    IEnumerable<IRedisCoordinator> redisCoordinators)
+    IEnumerable<IRedisCoordinator> redisCoordinators,
+    INotificationService notificationService,
+    ILogger<JobService> logger)
     : IJobService
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -391,6 +395,7 @@ internal sealed class JobService(
 
         AddJobAudit(context, AuditLogActionNames.JobFailed, job, before);
         await dbContext.SaveChangesAsync(cancellationToken);
+        await EnqueueFailureNotificationAsync(context, job, failure, cancellationToken);
         return Result<JobDetails>.Success(MapJob(job));
     }
 
@@ -688,6 +693,69 @@ internal sealed class JobService(
                     before,
                     after = ToJobAuditSnapshot(job)
                 }));
+
+    private async Task EnqueueFailureNotificationAsync(
+        ProjectExecutionContext context,
+        JobEntity job,
+        JobFailure failure,
+        CancellationToken cancellationToken)
+    {
+        var eventType = failure.HttpStatusCode == 402
+            ? NotificationService.CreditLowEventType
+            : NotificationService.JobFailedEventType;
+        var message = BuildFailureNotificationMessage(eventType, job, failure);
+
+        try
+        {
+            var result = await notificationService.EnqueueAsync(
+                context,
+                new NotificationRequest(
+                    eventType,
+                    ResourceType: AuditLogResourceTypes.Job,
+                    ResourceId: job.Id,
+                    message,
+                    JobId: job.Id),
+                cancellationToken);
+
+            if (!result.IsSuccess)
+            {
+                logger.LogWarning(
+                    "Notification for failed job {job_id} could not be queued: {message}",
+                    job.Id,
+                    result.Error?.Message);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception, "Notification for failed job {job_id} could not be queued.", job.Id);
+        }
+    }
+
+    private static string BuildFailureNotificationMessage(
+        string eventType,
+        JobEntity job,
+        JobFailure failure)
+    {
+        var heading = string.Equals(eventType, NotificationService.CreditLowEventType, StringComparison.Ordinal)
+            ? "[credit_low] Rakko Keyword API credit is insufficient."
+            : "[job_failed] SEO Intelligence job failed.";
+
+        return string.Join(
+            Environment.NewLine,
+            new[]
+            {
+                heading,
+                $"Job: {job.JobType} ({job.Id:D})",
+                $"Status: {job.Status}",
+                failure.HttpStatusCode.HasValue ? $"HTTP: {failure.HttpStatusCode.Value.ToString(CultureInfo.InvariantCulture)}" : null,
+                string.IsNullOrWhiteSpace(failure.ErrorCode) ? null : $"Error: {failure.ErrorCode}",
+                $"Message: {failure.Message}"
+            }.Where(value => !string.IsNullOrWhiteSpace(value)));
+    }
 
     private static object ToJobAuditSnapshot(JobEntity entity)
         => new

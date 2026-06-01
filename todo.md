@@ -110,7 +110,7 @@ ISSUE-MVP-00X の続きから再開してください。
 - [x] ISSUE-MVP-011 一括検索ボリューム調査を実装する
 - [ ] ISSUE-MVP-012 機会スコアとMVPダッシュボード集計を実装する
 - [ ] ISSUE-MVP-013 CSV出力を実装する
-- [ ] ISSUE-MVP-014 Discord通知を実装する
+- [x] ISSUE-MVP-014 Discord通知を実装する
 - [ ] ISSUE-MVP-015 Blazor共通UIと管理画面を実装する
 - [ ] ISSUE-MVP-016 Blazorキーワード探索、検索ボリューム、ダッシュボードを実装する
 - [ ] ISSUE-MVP-017 MVP受入テストを整備する
@@ -593,22 +593,22 @@ ISSUE-MVP-00X の続きから再開してください。
 
 範囲:
 
-- [ ] `NotificationDeliveryJob` を実装する。
-- [ ] 通知種別 `job_failed`, `credit_low` を実装する。
-- [ ] Webhook URLをSecret Storeから取得する。
-- [ ] 送信履歴を `notification_deliveries` に保存する。
-- [ ] 429/5xx/timeoutは `retrying`、最大5回後 `failed` にする。
-- [ ] 手動テスト通知と手動再送を実装する。
+- [x] `NotificationDeliveryJob` を実装する。
+- [x] 通知種別 `job_failed`, `credit_low` を実装する。
+- [x] Webhook URLをSecret Storeから取得する。
+- [x] 送信履歴を `notification_deliveries` に保存する。
+- [x] 429/5xx/timeoutは `retrying`、最大5回後 `failed` にする。
+- [x] 手動テスト通知と手動再送を実装する。
 
 受入条件:
 
-- [ ] Phase 1通知と送信履歴、失敗時再送状態を確認できる。
-- [ ] 402 Mockで `failed_fatal`、Discord通知、監査ログ記録へ分岐する。
+- [x] Phase 1通知と送信履歴、失敗時再送状態を確認できる。
+- [x] 402 Mockで `failed_fatal`、Discord通知、監査ログ記録へ分岐する。
 
 検証:
 
-- [ ] `dotnet test --filter Category=Integration`
-- [ ] `dotnet test --filter Category=Operational`
+- [x] `dotnet test --filter Category=Integration`
+- [x] `dotnet test --filter Category=Operational`
 
 ### ISSUE-MVP-015 Blazor共通UIと管理画面を実装する
 
