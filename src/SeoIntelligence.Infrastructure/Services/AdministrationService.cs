@@ -30,11 +30,17 @@ public static class AdministrationServiceCollectionExtensions
         services.TryAddScoped<IMasterDataService, MasterDataService>();
         services.TryAddScoped<KeywordDiscoveryService>();
         services.TryAddScoped<IKeywordDiscoveryService>(serviceProvider => serviceProvider.GetRequiredService<KeywordDiscoveryService>());
+        services.TryAddScoped<SearchVolumeService>();
+        services.TryAddScoped<ISearchVolumeService>(serviceProvider => serviceProvider.GetRequiredService<SearchVolumeService>());
         services.TryAddScoped<IJobService, JobService>();
         services.TryAddScoped<IJobQueueClient, HangfireJobQueueClient>();
         services.TryAddScoped<IJobDispatcher, JobDispatcher>();
+        services.TryAddScoped<ISearchVolumeJobScheduler, SearchVolumeHangfireJobScheduler>();
         services.TryAddScoped<MasterDataSyncJob>();
         services.TryAddScoped<KeywordDiscoveryJob>();
+        services.TryAddScoped<RegisterSearchVolumeJob>();
+        services.TryAddScoped<PollSearchVolumeStatusJob>();
+        services.TryAddScoped<FetchSearchVolumeResultsJob>();
         return services;
     }
 }

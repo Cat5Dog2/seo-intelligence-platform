@@ -124,6 +124,55 @@ public sealed class RakkoKeywordClientContractTests
         }
     }
 
+    [Fact]
+    [Trait("Category", "Contract")]
+    public async Task MockClientMapsSearchVolumeRegisterStatusAndResults()
+    {
+        var storagePath = CreateTempStoragePath();
+        await using var provider = BuildProvider(storagePath);
+
+        try
+        {
+            await using var scope = provider.CreateAsyncScope();
+            var client = scope.ServiceProvider.GetRequiredService<IRakkoKeywordClient>();
+            var context = CreateContext(correlationId: "corr-contract-search-volume");
+
+            var registration = await client.RegisterSearchVolumeAsync(
+                context,
+                new RakkoSearchVolumeRegistrationRequest(
+                    ["seo", "content marketing"],
+                    SeoDifficulty: true,
+                    Location: "JP",
+                    Language: "ja"));
+            var status = await client.GetSearchVolumeStatusAsync(context, registration.Data!.RequestId);
+            var results = await client.GetSearchVolumeResultsAsync(
+                context,
+                registration.Data.RequestId,
+                new RakkoSearchVolumeResultsRequest(Limit: 50_000));
+
+            Assert.True(registration.IsSuccess);
+            Assert.Equal(1000001, registration.Data.RequestId);
+            Assert.StartsWith("storage://local/raw/rakko-keyword/", registration.ExternalCall.RequestUri, StringComparison.Ordinal);
+
+            Assert.True(status.IsSuccess);
+            Assert.True(status.Data!.IsCompleted);
+            Assert.Equal("completed", status.Data.Statuses["overall"]);
+
+            Assert.True(results.IsSuccess);
+            Assert.Equal(5m, results.ConsumedCredit);
+            var item = Assert.Single(results.Data!.Items);
+            Assert.Equal("sample keyword", item.Keyword);
+            Assert.Equal(1300, item.Metrics.SearchVolume);
+            Assert.Equal(2, item.MonthlySearchVolume.Count);
+            Assert.Equal(1300, item.MonthlySearchVolume["2026-05"]);
+            Assert.StartsWith("storage://local/raw/rakko-keyword/", results.ExternalCall.ResponseUri, StringComparison.Ordinal);
+        }
+        finally
+        {
+            DeleteTempStoragePath(storagePath);
+        }
+    }
+
     [Theory]
     [Trait("Category", "Contract")]
     [InlineData(429, RakkoKeywordFailureKind.Retryable, "rate_limited")]

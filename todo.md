@@ -103,11 +103,11 @@ ISSUE-MVP-00X の続きから再開してください。
 - [x] ISSUE-MVP-004 API共通仕様を実装する
 - [x] ISSUE-MVP-005 管理API、プロジェクトAPI、サイトAPIを実装する
 - [x] ISSUE-MVP-006 Secret管理と監査ログを実装する
-- [ ] ISSUE-MVP-007 ラッコキーワードAPIクライアントとMockを実装する
-- [ ] ISSUE-MVP-008 ジョブ基盤を実装する
-- [ ] ISSUE-MVP-009 マスタ同期を実装する
+- [x] ISSUE-MVP-007 ラッコキーワードAPIクライアントとMockを実装する
+- [x] ISSUE-MVP-008 ジョブ基盤を実装する
+- [x] ISSUE-MVP-009 マスタ同期を実装する
 - [x] ISSUE-MVP-010 キーワード探索を実装する
-- [ ] ISSUE-MVP-011 一括検索ボリューム調査を実装する
+- [x] ISSUE-MVP-011 一括検索ボリューム調査を実装する
 - [ ] ISSUE-MVP-012 機会スコアとMVPダッシュボード集計を実装する
 - [ ] ISSUE-MVP-013 CSV出力を実装する
 - [ ] ISSUE-MVP-014 Discord通知を実装する
@@ -505,26 +505,26 @@ ISSUE-MVP-00X の続きから再開してください。
 
 範囲:
 
-- [ ] `RegisterSearchVolumeJob` を実装する。
-- [ ] 最大50,000語を重複除外し、推定クレジットを記録する。
-- [ ] 外部API上限、レート制御、入力件数に応じて分割する。
-- [ ] `PollSearchVolumeStatusJob` を60秒間隔で再スケジュールする。
-- [ ] `FetchSearchVolumeResultsJob` を実装する。
-- [ ] `search_volume_results`, `keyword_metrics`, `keyword_monthly_volumes` を保存する。
-- [ ] `POST /api/projects/{projectId}/search-volume/jobs` を実装する。
-- [ ] `GET /api/projects/{projectId}/search-volume/jobs/{jobId}` を実装する。
-- [ ] `GET /api/projects/{projectId}/search-volume/jobs/{jobId}/results` を実装する。
+- [x] `RegisterSearchVolumeJob` を実装する。
+- [x] 最大50,000語を重複除外し、推定クレジットを記録する。
+- [x] 外部API上限、レート制御、入力件数に応じて分割する。
+- [x] `PollSearchVolumeStatusJob` を60秒間隔で再スケジュールする。
+- [x] `FetchSearchVolumeResultsJob` を実装する。
+- [x] `search_volume_results`, `keyword_metrics`, `keyword_monthly_volumes` を保存する。
+- [x] `POST /api/projects/{projectId}/search-volume/jobs` を実装する。
+- [x] `GET /api/projects/{projectId}/search-volume/jobs/{jobId}` を実装する。
+- [x] `GET /api/projects/{projectId}/search-volume/jobs/{jobId}/results` を実装する。
 
 受入条件:
 
-- [ ] 1,000語以上のジョブ登録、完了監視、結果保存ができる。
-- [ ] `job_external_requests.external_request_id` が保存される。
-- [ ] `waiting_external` キャンセル後は結果取込されない。
+- [x] 1,000語以上のジョブ登録、完了監視、結果保存ができる。
+- [x] `job_external_requests.external_request_id` が保存される。
+- [x] `waiting_external` キャンセル後は結果取込されない。
 
 検証:
 
-- [ ] `dotnet test --filter Category=Integration`
-- [ ] `dotnet test --filter Category=Contract`
+- [x] `dotnet test --filter Category=Integration`
+- [x] `dotnet test --filter Category=Contract`
 
 ### ISSUE-MVP-012 機会スコアとMVPダッシュボード集計を実装する
 
