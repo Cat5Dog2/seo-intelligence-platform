@@ -32,6 +32,8 @@ public static class AdministrationServiceCollectionExtensions
         services.TryAddScoped<IKeywordDiscoveryService>(serviceProvider => serviceProvider.GetRequiredService<KeywordDiscoveryService>());
         services.TryAddScoped<SearchVolumeService>();
         services.TryAddScoped<ISearchVolumeService>(serviceProvider => serviceProvider.GetRequiredService<SearchVolumeService>());
+        services.TryAddScoped<IScoringService, ScoringService>();
+        services.TryAddScoped<IDashboardService, DashboardService>();
         services.TryAddScoped<IJobService, JobService>();
         services.TryAddScoped<IJobQueueClient, HangfireJobQueueClient>();
         services.TryAddScoped<IJobDispatcher, JobDispatcher>();
@@ -41,6 +43,7 @@ public static class AdministrationServiceCollectionExtensions
         services.TryAddScoped<RegisterSearchVolumeJob>();
         services.TryAddScoped<PollSearchVolumeStatusJob>();
         services.TryAddScoped<FetchSearchVolumeResultsJob>();
+        services.TryAddScoped<OpportunityScoringJob>();
         return services;
     }
 }

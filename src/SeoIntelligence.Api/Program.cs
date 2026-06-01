@@ -92,6 +92,7 @@ app.MapGet(
 
 app.MapAdministrationEndpoints();
 app.MapJobEndpoints();
+app.MapDashboardEndpoints();
 app.MapKeywordDiscoveryEndpoints();
 app.MapSearchVolumeEndpoints();
 

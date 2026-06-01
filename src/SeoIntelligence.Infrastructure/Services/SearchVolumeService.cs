@@ -1159,6 +1159,7 @@ internal sealed class PollSearchVolumeStatusJob(
 internal sealed class FetchSearchVolumeResultsJob(
     SeoIntelligenceDbContext dbContext,
     SearchVolumeService searchVolumeService,
+    OpportunityScoringJob opportunityScoringJob,
     IJobService jobService,
     IProjectContextService contextService,
     ILogger<FetchSearchVolumeResultsJob> logger)
@@ -1183,6 +1184,12 @@ internal sealed class FetchSearchVolumeResultsJob(
             if (!result.IsSuccess)
             {
                 await jobService.RecordFailureAsync(context, jobId, ToJobFailure(result.Error!));
+                return;
+            }
+
+            if (string.Equals(result.Value!.Status, StatusValues.Succeeded, StringComparison.Ordinal))
+            {
+                await RegisterAndRunOpportunityScoringAsync(context, jobId);
             }
         }
         catch (DbUpdateException exception)
@@ -1200,6 +1207,37 @@ internal sealed class FetchSearchVolumeResultsJob(
                 context,
                 jobId,
                 new JobFailure(JobFailureKind.Unexpected, null, "unexpected", "Search volume result fetch failed unexpectedly."));
+        }
+    }
+
+    private async Task RegisterAndRunOpportunityScoringAsync(ProjectExecutionContext context, Guid searchVolumeJobId)
+    {
+        var payload = JsonSerializer.SerializeToElement(new
+        {
+            version = 1,
+            sourceSearchVolumeJobId = searchVolumeJobId
+        });
+        var scoringJob = await jobService.RegisterAsync(
+            context,
+            new JobRegistrationRequest(
+                OpportunityScoringJob.JobType,
+                payload,
+                IdempotencyKey: $"opportunity-scoring:{searchVolumeJobId:N}",
+                TargetKey: searchVolumeJobId.ToString("N"),
+                Queue: "analysis",
+                InitialResource: new JobResultResource(SearchVolumeService.ResultResourceType, searchVolumeJobId)));
+        if (!scoringJob.IsSuccess)
+        {
+            logger.LogWarning(
+                "Opportunity scoring job for search volume job {job_id} could not be registered: {message}",
+                searchVolumeJobId,
+                scoringJob.Error?.Message);
+            return;
+        }
+
+        if (string.Equals(scoringJob.Value!.Status, StatusValues.Queued, StringComparison.Ordinal))
+        {
+            await opportunityScoringJob.ExecuteAsync(scoringJob.Value.JobId);
         }
     }
 

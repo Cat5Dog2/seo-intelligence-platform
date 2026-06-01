@@ -92,6 +92,20 @@ public sealed class SearchVolumeIntegrationTests
                 Assert.Equal(1005, await dbContext.SearchVolumeResults.CountAsync(entity => entity.JobId == jobId));
                 Assert.Equal(1005, await dbContext.KeywordMetrics.CountAsync());
                 Assert.Equal(2010, await dbContext.KeywordMonthlyVolumes.CountAsync());
+                Assert.Equal(1005, await dbContext.ProjectKeywordScores.CountAsync(entity => entity.ProjectId == projectId));
+
+                var topScore = await dbContext.ProjectKeywordScores
+                    .AsNoTracking()
+                    .OrderByDescending(entity => entity.OpportunityScore)
+                    .FirstAsync(entity => entity.ProjectId == projectId);
+                using var components = JsonDocument.Parse(topScore.ScoreComponentsJson);
+                Assert.True(topScore.OpportunityScore > 0m);
+                Assert.True(components.RootElement.TryGetProperty("volumeScore", out _));
+                Assert.True(components.RootElement.TryGetProperty("difficultyScore", out _));
+                Assert.True(components.RootElement.TryGetProperty("trendScore", out _));
+                Assert.True(components.RootElement.TryGetProperty("commercialScore", out _));
+                Assert.True(components.RootElement.TryGetProperty("relevanceScore", out _));
+                Assert.True(components.RootElement.TryGetProperty("sourceCallId", out _));
             }
 
             using var resultsResponse = await client.GetAsync(
@@ -105,6 +119,24 @@ public sealed class SearchVolumeIntegrationTests
             Assert.Equal("keyword 1005", rows[0].GetProperty("keyword").GetString());
             Assert.Equal(2005, rows[0].GetProperty("searchVolume").GetInt32());
             Assert.True(rows[0].GetProperty("monthlySearchVolume").TryGetProperty("2026-05", out _));
+
+            await SeedDashboardFailureAndCreditAsync(factory, projectId);
+
+            using var dashboardResponse = await client.GetAsync($"/api/projects/{projectId}/dashboard");
+            using var dashboardDocument = await ReadJsonAsync(dashboardResponse);
+
+            Assert.Equal(HttpStatusCode.OK, dashboardResponse.StatusCode);
+            var dashboard = dashboardDocument.RootElement.GetProperty("data");
+            Assert.Equal(1, dashboard.GetProperty("searchVolumeJobCount").GetInt32());
+            Assert.Equal(1005, dashboard.GetProperty("searchVolumeResultCount").GetInt32());
+            Assert.Equal(1005, dashboard.GetProperty("opportunityScoreCount").GetInt32());
+            Assert.Equal(7, dashboard.GetProperty("consumedCredit").GetInt32());
+            Assert.Equal(1, dashboard.GetProperty("failedJobCount").GetInt32());
+            Assert.Equal(1, dashboard.GetProperty("notificationFailureCount").GetInt32());
+            var topOpportunityScores = dashboard.GetProperty("topOpportunityScores").EnumerateArray().ToArray();
+            Assert.Equal(10, topOpportunityScores.Length);
+            Assert.False(string.IsNullOrWhiteSpace(topOpportunityScores[0].GetProperty("keyword").GetString()));
+            Assert.True(topOpportunityScores[0].GetProperty("opportunityScore").GetDecimal() > 0m);
         }
         finally
         {
@@ -186,6 +218,75 @@ public sealed class SearchVolumeIntegrationTests
         });
         await dbContext.SaveChangesAsync();
         return projectId;
+    }
+
+    private static async Task SeedDashboardFailureAndCreditAsync(SearchVolumeApiFactory factory, Guid projectId)
+    {
+        await using var scope = factory.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<SeoIntelligenceDbContext>();
+        var now = DateTime.UtcNow;
+        var channelId = Guid.NewGuid();
+        dbContext.NotificationChannels.Add(new NotificationChannelEntity
+        {
+            Id = channelId,
+            WorkspaceId = SeoIntelligenceSeedData.DefaultWorkspaceId,
+            ProjectId = projectId,
+            ChannelType = "discord",
+            Name = "Dashboard failure test",
+            WebhookSecretRef = "secret/ref",
+            EventTypesJson = """["job_failed"]""",
+            Status = StatusValues.Active,
+            CreatedAt = now,
+            UpdatedAt = now
+        });
+        dbContext.NotificationDeliveries.Add(new NotificationDeliveryEntity
+        {
+            Id = Guid.NewGuid(),
+            WorkspaceId = SeoIntelligenceSeedData.DefaultWorkspaceId,
+            ProjectId = projectId,
+            ChannelId = channelId,
+            EventType = "job_failed",
+            PayloadHash = "payload-hash",
+            Status = StatusValues.Failed,
+            ErrorMessage = "delivery failed",
+            RetryCount = 1,
+            CreatedAt = now
+        });
+        dbContext.ExternalApiCalls.Add(new ExternalApiCallEntity
+        {
+            Id = Guid.NewGuid(),
+            WorkspaceId = SeoIntelligenceSeedData.DefaultWorkspaceId,
+            ProjectId = projectId,
+            Provider = SeoIntelligenceSeedData.RakkoKeywordProvider,
+            Endpoint = "/v1/search-volume",
+            RequestHash = "dashboard-credit-request-hash",
+            RequestUri = "storage://local/dashboard-credit-request.json.gz",
+            ResponseHash = "dashboard-credit-response-hash",
+            ResponseUri = "storage://local/dashboard-credit-response.json.gz",
+            ContractScopeKey = SeoIntelligenceSeedData.RakkoKeywordScopeKey,
+            CacheHit = false,
+            StatusCode = 200,
+            ConsumedCredit = 7m,
+            DurationMs = 120,
+            Actor = "developer",
+            RetainedUntil = now.AddMonths(3),
+            CreatedAt = now
+        });
+        dbContext.Jobs.Add(new JobEntity
+        {
+            Id = Guid.NewGuid(),
+            WorkspaceId = SeoIntelligenceSeedData.DefaultWorkspaceId,
+            ProjectId = projectId,
+            JobType = "KeywordDiscoveryJob",
+            Status = StatusValues.FailedFatal,
+            Progress = 50,
+            RetryCount = 0,
+            RequestedBy = "developer",
+            CreatedAt = now,
+            UpdatedAt = now,
+            CompletedAt = now
+        });
+        await dbContext.SaveChangesAsync();
     }
 
     private static HttpClient CreateClient(SearchVolumeApiFactory factory)

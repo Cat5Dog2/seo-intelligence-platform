@@ -536,23 +536,23 @@ ISSUE-MVP-00X の続きから再開してください。
 
 範囲:
 
-- [ ] `OpportunityScoringJob` を実装する。
-- [ ] 検索ボリューム、SEO難易度、CPC、競合性、トレンド、関連度をスコアリングする。
-- [ ] スコア算出で`maxVolume`、CPC/競合性の正規化範囲、関連度欠損時、トレンド欠損時の既定値を`basic_design.md`通りに扱う。
-- [ ] `project_keyword_scores` に結果を保存する。
-- [ ] `score_components_json` に算出根拠を保存する。
-- [ ] `GET /api/projects/{projectId}/dashboard` を実装する。
-- [ ] キーワード探索件数、一括調査件数、機会スコア上位、クレジット消費、失敗ジョブ、通知失敗を集計する。
+- [x] `OpportunityScoringJob` を実装する。
+- [x] 検索ボリューム、SEO難易度、CPC、競合性、トレンド、関連度をスコアリングする。
+- [x] スコア算出で`maxVolume`、CPC/競合性の正規化範囲、関連度欠損時、トレンド欠損時の既定値を`basic_design.md`通りに扱う。
+- [x] `project_keyword_scores` に結果を保存する。
+- [x] `score_components_json` に算出根拠を保存する。
+- [x] `GET /api/projects/{projectId}/dashboard` を実装する。
+- [x] キーワード探索件数、一括調査件数、機会スコア上位、クレジット消費、失敗ジョブ、通知失敗を集計する。
 
 受入条件:
 
-- [ ] 検索ボリューム結果取得後に機会スコアが再計算される。
-- [ ] ダッシュボードAPIでMVP指標が返る。
+- [x] 検索ボリューム結果取得後に機会スコアが再計算される。
+- [x] ダッシュボードAPIでMVP指標が返る。
 
 検証:
 
-- [ ] `dotnet test --filter Category=Unit`
-- [ ] `dotnet test --filter Category=Integration`
+- [x] `dotnet test --filter Category=Unit`
+- [x] `dotnet test --filter Category=Integration`
 
 ### ISSUE-MVP-013 CSV出力を実装する
 
