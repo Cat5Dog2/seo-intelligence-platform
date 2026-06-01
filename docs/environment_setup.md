@@ -133,7 +133,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-test.ps1
 | `discord-webhook-dev` | Discord Webhook URL | DBへ実値保存しない。 |
 | `ai-api-key-dev` | AI APIキー | Phase 3。必要時のみ設定。 |
 
-ローカルでは.NET User Secrets、開発用Key Vault、または安全なSecret管理を使う。MVPの`Configuration` Secret Storeは `Secrets:{secretName}` を参照する。`.env`や設定ファイルへ実値をコミットしない。
+ローカルでは.NET User Secrets、開発用Key Vault、または安全なSecret管理を使う。MVPの`Configuration` Secret Storeは `Secrets:{secretName}` を参照する。APIが`secretValue`を受け取った場合は生成したSecret名へ登録し、DBには参照名だけを保存する。`Configuration`実装のAPI経由登録はプロセス内の設定値として扱い、`.env`や設定ファイルへ実値をコミットしない。
 
 ## 7. DB初期化
 

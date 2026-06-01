@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using SeoIntelligence.Api.Common;
+using SeoIntelligence.Application.Auditing;
 using SeoIntelligence.Application.Common;
 using SeoIntelligence.Application.ProjectContext;
 using SeoIntelligence.Application.Services;
@@ -316,11 +317,18 @@ internal static class AdministrationEndpoints
         string status = "all",
         string sortBy = "createdAt",
         string orderBy = "desc",
-        string? q = null)
+        string? q = null,
+        string? actor = null,
+        string? resourceType = null,
+        string? resourceId = null,
+        string? correlationId = null,
+        [FromQuery(Name = "correlation_id")] string? correlationIdSnake = null,
+        DateTimeOffset? from = null,
+        DateTimeOffset? to = null)
     {
-        var query = CreateSearchQuery(httpContext, page, pageSize, status, sortBy, orderBy, q, AuditStatuses, ["actor", "action", "resourceType", "createdAt"]);
+        var query = CreateAuditLogSearchQuery(page, pageSize, status, sortBy, orderBy, q, actor, resourceType, resourceId, correlationId ?? correlationIdSnake, from, to);
         return query is null
-            ? InvalidQuery(httpContext, page, pageSize, status, sortBy, orderBy, q, AuditStatuses, ["actor", "action", "resourceType", "createdAt"])
+            ? InvalidAuditLogQuery(httpContext, page, pageSize, status, sortBy, orderBy, q, actor, resourceType, resourceId, correlationId ?? correlationIdSnake, from, to)
             : ApiResponseResults.FromPagedResult(
                 httpContext,
                 await service.SearchAuditLogsAsync(CreateContext(contextService, httpContext), query, cancellationToken));
@@ -529,6 +537,133 @@ internal static class AdministrationEndpoints
                     : SortDirection.Desc),
             new PageRequest(parameters.Page, parameters.PageSize));
     }
+
+    private static AuditLogSearchQuery? CreateAuditLogSearchQuery(
+        int page,
+        int pageSize,
+        string status,
+        string sortBy,
+        string orderBy,
+        string? q,
+        string? actor,
+        string? resourceType,
+        string? resourceId,
+        string? correlationId,
+        DateTimeOffset? from,
+        DateTimeOffset? to)
+    {
+        if (ValidateAuditLogQueryParameters(page, pageSize, status, sortBy, orderBy, q, actor, resourceType, resourceId, correlationId, from, to).Count > 0)
+        {
+            return null;
+        }
+
+        return new AuditLogSearchQuery(
+            new SearchQuery(
+                q,
+                status.Trim(),
+                new SortRequest(
+                    sortBy.Trim(),
+                    string.Equals(orderBy, "asc", StringComparison.OrdinalIgnoreCase)
+                        ? SortDirection.Asc
+                        : SortDirection.Desc),
+                new PageRequest(page, pageSize)),
+            actor,
+            resourceType,
+            resourceId,
+            correlationId,
+            from,
+            to);
+    }
+
+    private static IReadOnlyDictionary<string, string[]> ValidateAuditLogQueryParameters(
+        int page,
+        int pageSize,
+        string status,
+        string sortBy,
+        string orderBy,
+        string? q,
+        string? actor,
+        string? resourceType,
+        string? resourceId,
+        string? correlationId,
+        DateTimeOffset? from,
+        DateTimeOffset? to)
+    {
+        var parameters = new ListQueryParameters
+        {
+            Page = page,
+            PageSize = pageSize,
+            Status = status,
+            SortBy = sortBy,
+            OrderBy = orderBy,
+            Q = q
+        };
+
+        var errors = parameters
+            .Validate(AuditStatuses, ["actor", "action", "resourceType", "createdAt"])
+            .ToDictionary(
+                pair => pair.Key,
+                pair => pair.Value.ToList(),
+                StringComparer.OrdinalIgnoreCase);
+
+        ValidateOptionalFilterText(actor, nameof(actor), errors);
+        ValidateOptionalFilterText(resourceType, nameof(resourceType), errors);
+        ValidateOptionalFilterText(resourceId, nameof(resourceId), errors);
+        ValidateOptionalFilterText(correlationId, nameof(correlationId), errors);
+
+        if (from.HasValue && to.HasValue && from.Value > to.Value)
+        {
+            AddValidationError(errors, nameof(from), "from must be earlier than or equal to to.");
+        }
+
+        return errors.ToDictionary(
+            pair => pair.Key,
+            pair => pair.Value.ToArray(),
+            StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static void ValidateOptionalFilterText(
+        string? value,
+        string target,
+        IDictionary<string, List<string>> errors)
+    {
+        if (value is { Length: > ListQueryParameters.MaxSearchTextLength })
+        {
+            AddValidationError(errors, target, $"{target} must be {ListQueryParameters.MaxSearchTextLength} characters or fewer.");
+        }
+    }
+
+    private static void AddValidationError(
+        IDictionary<string, List<string>> errors,
+        string target,
+        string message)
+    {
+        if (!errors.TryGetValue(target, out var messages))
+        {
+            messages = [];
+            errors[target] = messages;
+        }
+
+        messages.Add(message);
+    }
+
+    private static IResult InvalidAuditLogQuery(
+        HttpContext httpContext,
+        int page,
+        int pageSize,
+        string status,
+        string sortBy,
+        string orderBy,
+        string? q,
+        string? actor,
+        string? resourceType,
+        string? resourceId,
+        string? correlationId,
+        DateTimeOffset? from,
+        DateTimeOffset? to)
+        => ApiResponseResults.ValidationFailure(
+            httpContext,
+            ValidateAuditLogQueryParameters(page, pageSize, status, sortBy, orderBy, q, actor, resourceType, resourceId, correlationId, from, to));
 
     private static IResult InvalidQuery(
         HttpContext httpContext,

@@ -1,11 +1,14 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using SeoIntelligence.Application.Auditing;
 using SeoIntelligence.Application.Common;
 using SeoIntelligence.Application.ProjectContext;
+using SeoIntelligence.Application.Secrets;
 using SeoIntelligence.Application.Services;
 using SeoIntelligence.Domain.Common;
 using SeoIntelligence.Domain.Normalization;
@@ -21,6 +24,7 @@ public static class AdministrationServiceCollectionExtensions
     {
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton<IProjectContextService, ProjectContextService>();
+        services.TryAddScoped<IAuditLogWriter, AuditLogWriter>();
         services.TryAddScoped<IAdministrationService, AdministrationService>();
         return services;
     }
@@ -28,7 +32,9 @@ public static class AdministrationServiceCollectionExtensions
 
 internal sealed class AdministrationService(
     SeoIntelligenceDbContext dbContext,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    ISecretStore secretStore,
+    IAuditLogWriter auditLogWriter)
     : IAdministrationService
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -114,7 +120,7 @@ internal sealed class AdministrationService(
         var provider = RequireText(request.Provider, nameof(request.Provider), errors);
         var keyRef = OptionalText(request.KeyRef);
         var secretValue = OptionalText(request.SecretValue);
-        ValidateInputOnlySecretReference(keyRef, secretValue, nameof(request.KeyRef), nameof(request.SecretValue), errors);
+        ValidateSecretReferenceInput(keyRef, secretValue, nameof(request.KeyRef), nameof(request.SecretValue), errors);
 
         if (errors.HasErrors)
         {
@@ -122,9 +128,24 @@ internal sealed class AdministrationService(
         }
 
         var now = NowUtc();
+        var credentialId = UuidV7.New();
+        if (secretValue is not null)
+        {
+            var secretResult = await StoreApiCredentialSecretAsync(
+                BuildApiCredentialSecretName(provider!, credentialId),
+                secretValue,
+                cancellationToken);
+            if (!secretResult.IsSuccess)
+            {
+                return Failure<ApiCredentialDetails>(secretResult.Error!.Code, secretResult.Error.Message);
+            }
+
+            keyRef = secretResult.Value!.Name;
+        }
+
         var credential = new ApiCredentialEntity
         {
-            Id = UuidV7.New(),
+            Id = credentialId,
             WorkspaceId = context.WorkspaceId,
             Provider = provider!,
             KeyRef = keyRef!,
@@ -134,6 +155,7 @@ internal sealed class AdministrationService(
         };
 
         dbContext.ApiCredentials.Add(credential);
+        AddApiCredentialAudit(context, AuditLogActionNames.ApiCredentialCreated, credential, before: null);
         await dbContext.SaveChangesAsync(cancellationToken);
 
         return Result<ApiCredentialDetails>.Success(MapApiCredential(credential));
@@ -169,8 +191,10 @@ internal sealed class AdministrationService(
             return Failure<ApiCredentialDetails>(ErrorCode.NotFound, "API credential was not found.");
         }
 
+        var before = ToApiCredentialAuditSnapshot(credential);
         credential.Provider = provider!;
         credential.UpdatedAt = NowUtc();
+        AddApiCredentialAudit(context, AuditLogActionNames.ApiCredentialUpdated, credential, before);
         await dbContext.SaveChangesAsync(cancellationToken);
 
         return Result<ApiCredentialDetails>.Success(MapApiCredential(credential));
@@ -197,7 +221,7 @@ internal sealed class AdministrationService(
         var errors = new ValidationErrors();
         var keyRef = OptionalText(request.NewKeyRef);
         var secretValue = OptionalText(request.NewSecretValue);
-        ValidateInputOnlySecretReference(keyRef, secretValue, nameof(request.NewKeyRef), nameof(request.NewSecretValue), errors);
+        ValidateSecretReferenceInput(keyRef, secretValue, nameof(request.NewKeyRef), nameof(request.NewSecretValue), errors);
         if (errors.HasErrors)
         {
             return ValidationFailure<ApiCredentialDetails>(errors);
@@ -209,8 +233,25 @@ internal sealed class AdministrationService(
             return Failure<ApiCredentialDetails>(ErrorCode.NotFound, "API credential was not found.");
         }
 
+        var before = ToApiCredentialAuditSnapshot(credential);
+        var now = NowUtc();
+        if (secretValue is not null)
+        {
+            var secretResult = await StoreApiCredentialSecretAsync(
+                BuildRotatedApiCredentialSecretName(credential.Provider, credential.Id, now),
+                secretValue,
+                cancellationToken);
+            if (!secretResult.IsSuccess)
+            {
+                return Failure<ApiCredentialDetails>(secretResult.Error!.Code, secretResult.Error.Message);
+            }
+
+            keyRef = secretResult.Value!.Name;
+        }
+
         credential.KeyRef = keyRef!;
-        credential.UpdatedAt = NowUtc();
+        credential.UpdatedAt = now;
+        AddApiCredentialAudit(context, AuditLogActionNames.ApiCredentialRotated, credential, before);
         await dbContext.SaveChangesAsync(cancellationToken);
 
         return Result<ApiCredentialDetails>.Success(MapApiCredential(credential));
@@ -466,14 +507,14 @@ internal sealed class AdministrationService(
 
     public async Task<Result<PagedResult<AuditLogDetails>>> SearchAuditLogsAsync(
         ProjectExecutionContext context,
-        SearchQuery query,
+        AuditLogSearchQuery query,
         CancellationToken cancellationToken = default)
     {
         var source = dbContext.AuditLogs
             .AsNoTracking()
             .Where(entity => entity.WorkspaceId == context.WorkspaceId);
 
-        var q = NormalizeSearchText(query.Q);
+        var q = NormalizeSearchText(query.Query.Q);
         if (q is not null)
         {
             source = source.Where(entity =>
@@ -484,9 +525,45 @@ internal sealed class AdministrationService(
                 (entity.CorrelationId != null && entity.CorrelationId.ToLower().Contains(q)));
         }
 
-        source = SortAuditLogs(source, query.Sort);
+        var actor = NormalizeSearchText(query.Actor);
+        if (actor is not null)
+        {
+            source = source.Where(entity => entity.Actor.ToLower() == actor);
+        }
+
+        var resourceType = NormalizeSearchText(query.ResourceType);
+        if (resourceType is not null)
+        {
+            source = source.Where(entity => entity.ResourceType.ToLower() == resourceType);
+        }
+
+        var resourceId = OptionalText(query.ResourceId);
+        if (resourceId is not null)
+        {
+            source = source.Where(entity => entity.ResourceId == resourceId);
+        }
+
+        var correlationId = NormalizeSearchText(query.CorrelationId);
+        if (correlationId is not null)
+        {
+            source = source.Where(entity => entity.CorrelationId != null && entity.CorrelationId.ToLower() == correlationId);
+        }
+
+        if (query.CreatedFrom.HasValue)
+        {
+            var createdFromUtc = query.CreatedFrom.Value.UtcDateTime;
+            source = source.Where(entity => entity.CreatedAt >= createdFromUtc);
+        }
+
+        if (query.CreatedTo.HasValue)
+        {
+            var createdToUtc = query.CreatedTo.Value.UtcDateTime;
+            source = source.Where(entity => entity.CreatedAt <= createdToUtc);
+        }
+
+        source = SortAuditLogs(source, query.Query.Sort);
         return Result<PagedResult<AuditLogDetails>>.Success(
-            await ToPagedResultAsync(source, query, MapAuditLog, cancellationToken));
+            await ToPagedResultAsync(source, query.Query, MapAuditLog, cancellationToken));
     }
 
     public async Task<Result<AuditLogDetails>> GetAuditLogAsync(
@@ -779,10 +856,16 @@ internal sealed class AdministrationService(
             return Failure<ApiCredentialDetails>(ErrorCode.NotFound, "API credential was not found.");
         }
 
+        var before = ToApiCredentialAuditSnapshot(credential);
         var now = NowUtc();
         credential.Status = status;
         credential.DisabledAt = status == StatusValues.Disabled ? now : null;
         credential.UpdatedAt = now;
+        AddApiCredentialAudit(
+            context,
+            status == StatusValues.Disabled ? AuditLogActionNames.ApiCredentialDisabled : AuditLogActionNames.ApiCredentialEnabled,
+            credential,
+            before);
         await dbContext.SaveChangesAsync(cancellationToken);
 
         return Result<ApiCredentialDetails>.Success(MapApiCredential(credential));
@@ -808,6 +891,45 @@ internal sealed class AdministrationService(
 
         return Result<NotificationChannelDetails>.Success(MapNotificationChannel(channel));
     }
+
+    private async Task<Result<SecretReference>> StoreApiCredentialSecretAsync(
+        string secretName,
+        string secretValue,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var reference = new SecretReference(secretName);
+            await secretStore.PutAsync(reference, new SecretValue(secretValue), cancellationToken);
+            return Result<SecretReference>.Success(reference);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            return Result<SecretReference>.Failure(
+                new Error(ErrorCode.SecretUnavailable, "Secret Store could not save the API credential secret."));
+        }
+    }
+
+    private void AddApiCredentialAudit(
+        ProjectExecutionContext context,
+        string action,
+        ApiCredentialEntity credential,
+        object? before)
+        => auditLogWriter.Add(
+            context,
+            new AuditLogWriteRequest(
+                action,
+                AuditLogResourceTypes.ApiCredential,
+                credential.Id.ToString("D"),
+                new
+                {
+                    before,
+                    after = ToApiCredentialAuditSnapshot(credential)
+                }));
 
     private async Task<Result<ProjectDetails>> SetProjectStatusAsync(
         ProjectExecutionContext context,
@@ -1103,7 +1225,7 @@ internal sealed class AdministrationService(
             || string.Equals(type, "competitor", StringComparison.OrdinalIgnoreCase)
             || string.Equals(type, "reference", StringComparison.OrdinalIgnoreCase);
 
-    private static void ValidateInputOnlySecretReference(
+    private static void ValidateSecretReferenceInput(
         string? keyRef,
         string? secretValue,
         string keyRefTarget,
@@ -1117,13 +1239,39 @@ internal sealed class AdministrationService(
 
         if (string.IsNullOrWhiteSpace(keyRef) && string.IsNullOrWhiteSpace(secretValue))
         {
-            errors.Add(keyRefTarget, "keyRef is required until writable Secret Store support is enabled.");
+            errors.Add(keyRefTarget, "Specify either keyRef or secretValue.");
+        }
+    }
+
+    private static string BuildApiCredentialSecretName(string provider, Guid credentialId)
+        => $"api-credential-{NormalizeSecretNameSegment(provider)}-{credentialId:N}";
+
+    private static string BuildRotatedApiCredentialSecretName(string provider, Guid credentialId, DateTime rotatedAtUtc)
+        => $"{BuildApiCredentialSecretName(provider, credentialId)}-rotated-{rotatedAtUtc.ToString("yyyyMMddHHmmssfff", CultureInfo.InvariantCulture)}";
+
+    private static string NormalizeSecretNameSegment(string value)
+    {
+        var builder = new StringBuilder(value.Length);
+        var previousWasSeparator = false;
+
+        foreach (var character in value.Trim().ToLowerInvariant())
+        {
+            if (char.IsLetterOrDigit(character))
+            {
+                builder.Append(character);
+                previousWasSeparator = false;
+                continue;
+            }
+
+            if (!previousWasSeparator)
+            {
+                builder.Append('-');
+                previousWasSeparator = true;
+            }
         }
 
-        if (!string.IsNullOrWhiteSpace(secretValue))
-        {
-            errors.Add(secretValueTarget, "secretValue storage is handled by Secret management; use keyRef for this endpoint.");
-        }
+        var normalized = builder.ToString().Trim('-');
+        return string.IsNullOrWhiteSpace(normalized) ? "provider" : normalized;
     }
 
     private static string? OptionalJsonObject(JsonElement? value, string target, ValidationErrors errors)
@@ -1177,6 +1325,15 @@ internal sealed class AdministrationService(
 
     private static Result<T> Failure<T>(ErrorCode code, string message)
         => Result<T>.Failure(new Error(code, message));
+
+    private static object ToApiCredentialAuditSnapshot(ApiCredentialEntity entity)
+        => new
+        {
+            provider = entity.Provider,
+            keyRef = entity.KeyRef,
+            status = entity.Status,
+            disabledAt = entity.DisabledAt
+        };
 
     private static WorkspaceDetails MapWorkspace(WorkspaceEntity entity)
         => new(

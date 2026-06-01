@@ -6,6 +6,9 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using SeoIntelligence.Application.Auditing;
+using SeoIntelligence.Application.ProjectContext;
+using SeoIntelligence.Application.Secrets;
 using SeoIntelligence.Infrastructure.Persistence;
 
 namespace IntegrationTests;
@@ -202,7 +205,183 @@ public sealed class ManagementApiIntegrationTests
             {
                 Assert.Equal(HttpStatusCode.OK, auditLogsResponse.StatusCode);
                 Assert.True(auditLogsDocument.RootElement.GetProperty("result").GetBoolean());
-                Assert.Empty(auditLogsDocument.RootElement.GetProperty("data").EnumerateArray());
+                var actions = auditLogsDocument.RootElement
+                    .GetProperty("data")
+                    .EnumerateArray()
+                    .Select(item => item.GetProperty("action").GetString())
+                    .ToArray();
+
+                Assert.Contains(AuditLogActionNames.ApiCredentialCreated, actions);
+                Assert.Contains(AuditLogActionNames.ApiCredentialRotated, actions);
+                Assert.Contains(AuditLogActionNames.ApiCredentialDisabled, actions);
+                Assert.Contains(AuditLogActionNames.ApiCredentialEnabled, actions);
+            }
+        }
+        finally
+        {
+            DeleteTempStoragePath(factory.StoragePath);
+        }
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    [Trait("Category", "Security")]
+    public async Task ApiCredentialSecretValueIsStoredAsReferenceAndNeverReturnedOrAudited()
+    {
+        await using var factory = new ManagementApiFactory();
+        using var client = CreateClient(factory);
+
+        try
+        {
+            const string inputSecret = "do-not-leak-api-key-value";
+            const string correlationId = "corr-secret-create";
+
+            using var createRequest = new HttpRequestMessage(HttpMethod.Post, "/api/admin/api-credentials")
+            {
+                Content = JsonContent.Create(new
+                {
+                    provider = "rakko_keyword",
+                    secretValue = inputSecret
+                })
+            };
+            createRequest.Headers.Add("X-Correlation-Id", correlationId);
+
+            using var createResponse = await client.SendAsync(createRequest);
+            var createContent = await createResponse.Content.ReadAsStringAsync();
+            using var createDocument = JsonDocument.Parse(createContent);
+
+            Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+            Assert.True(!createContent.Contains(inputSecret, StringComparison.Ordinal), "Create response contained the input secret.");
+
+            var credentialData = createDocument.RootElement.GetProperty("data");
+            var credentialId = credentialData.GetProperty("credentialId").GetGuid();
+            var keyRef = credentialData.GetProperty("keyRef").GetString();
+            Assert.False(credentialData.TryGetProperty("secretValue", out _));
+            Assert.False(string.IsNullOrWhiteSpace(keyRef));
+            Assert.StartsWith("api-credential-rakko-keyword-", keyRef);
+
+            await using (var scope = factory.Services.CreateAsyncScope())
+            {
+                var dbContext = scope.ServiceProvider.GetRequiredService<SeoIntelligenceDbContext>();
+                var credential = await dbContext.ApiCredentials
+                    .AsNoTracking()
+                    .SingleAsync(entity => entity.Id == credentialId);
+
+                Assert.Equal(keyRef, credential.KeyRef);
+                Assert.True(!string.Equals(inputSecret, credential.KeyRef, StringComparison.Ordinal), "DB key_ref contained the input secret.");
+
+                var secretStore = scope.ServiceProvider.GetRequiredService<ISecretStore>();
+                var storedSecret = await secretStore.GetAsync(new SecretReference(keyRef!));
+                Assert.NotNull(storedSecret);
+                Assert.True(string.Equals(inputSecret, storedSecret!.Value, StringComparison.Ordinal), "Secret Store did not return the original input secret.");
+
+                var auditPayloads = await dbContext.AuditLogs
+                    .AsNoTracking()
+                    .Where(entity => entity.CorrelationId == correlationId)
+                    .Select(entity => entity.BeforeAfterJson)
+                    .ToArrayAsync();
+
+                Assert.NotEmpty(auditPayloads);
+                Assert.All(auditPayloads, payload =>
+                    Assert.True(!payload.Contains(inputSecret, StringComparison.Ordinal), "Audit log contained the input secret."));
+            }
+
+            using (var auditResponse = await client.GetAsync($"/api/admin/audit-logs?resourceType=api_credential&resourceId={credentialId}&correlation_id={correlationId}&actor=developer&from=2000-01-01T00:00:00Z&to=2999-01-01T00:00:00Z"))
+            {
+                var auditContent = await auditResponse.Content.ReadAsStringAsync();
+                using var auditDocument = JsonDocument.Parse(auditContent);
+
+                Assert.Equal(HttpStatusCode.OK, auditResponse.StatusCode);
+                Assert.True(!auditContent.Contains(inputSecret, StringComparison.Ordinal), "Audit response contained the input secret.");
+                var auditItem = Assert.Single(auditDocument.RootElement.GetProperty("data").EnumerateArray());
+                Assert.Equal(AuditLogActionNames.ApiCredentialCreated, auditItem.GetProperty("action").GetString());
+                Assert.Equal(correlationId, auditItem.GetProperty("correlationId").GetString());
+            }
+
+            const string rejectedSecret = "rejected-do-not-leak";
+            using var rejectedResponse = await client.PostAsJsonAsync("/api/admin/api-credentials", new
+            {
+                provider = "rakko_keyword",
+                keyRef = "existing-ref",
+                secretValue = rejectedSecret
+            });
+            var rejectedContent = await rejectedResponse.Content.ReadAsStringAsync();
+
+            Assert.Equal(HttpStatusCode.BadRequest, rejectedResponse.StatusCode);
+            Assert.True(!rejectedContent.Contains(rejectedSecret, StringComparison.Ordinal), "Validation response contained the rejected secret.");
+        }
+        finally
+        {
+            DeleteTempStoragePath(factory.StoragePath);
+        }
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task AuditLogSearchFiltersActorResourceCorrelationAndPeriod()
+    {
+        await using var factory = new ManagementApiFactory();
+        using var client = CreateClient(factory);
+
+        try
+        {
+            const string correlationId = "corr-audit-filter";
+            var externalCallId = Guid.NewGuid().ToString("D");
+            var csvExportId = Guid.NewGuid().ToString("D");
+            var jobId = Guid.NewGuid().ToString("D");
+
+            await using (var scope = factory.Services.CreateAsyncScope())
+            {
+                var contextService = scope.ServiceProvider.GetRequiredService<IProjectContextService>();
+                var auditWriter = scope.ServiceProvider.GetRequiredService<IAuditLogWriter>();
+                var context = contextService.Create(SeoIntelligenceSeedData.DefaultWorkspaceId, correlationId: correlationId);
+
+                await auditWriter.RecordAsync(
+                    context,
+                    new AuditLogWriteRequest(
+                        AuditLogActionNames.ExternalApiExecuted,
+                        AuditLogResourceTypes.ExternalApiCall,
+                        externalCallId,
+                        new { after = new { provider = "rakko_keyword", endpoint = "/v1/suggest" } }));
+                await auditWriter.RecordAsync(
+                    context,
+                    new AuditLogWriteRequest(
+                        AuditLogActionNames.CsvExportCreated,
+                        AuditLogResourceTypes.CsvExport,
+                        csvExportId,
+                        new { after = new { format = "csv", status = "queued" } }));
+                await auditWriter.RecordAsync(
+                    context,
+                    new AuditLogWriteRequest(
+                        AuditLogActionNames.JobCanceled,
+                        AuditLogResourceTypes.Job,
+                        jobId,
+                        new { before = new { status = "waiting_external" }, after = new { status = "canceled" } }));
+            }
+
+            using (var correlationResponse = await client.GetAsync($"/api/admin/audit-logs?actor=developer&correlation_id={correlationId}&from=2000-01-01T00:00:00Z&to=2999-01-01T00:00:00Z&pageSize=10"))
+            using (var correlationDocument = await ReadJsonAsync(correlationResponse))
+            {
+                Assert.Equal(HttpStatusCode.OK, correlationResponse.StatusCode);
+                var actions = correlationDocument.RootElement
+                    .GetProperty("data")
+                    .EnumerateArray()
+                    .Select(item => item.GetProperty("action").GetString())
+                    .ToArray();
+
+                Assert.Contains(AuditLogActionNames.ExternalApiExecuted, actions);
+                Assert.Contains(AuditLogActionNames.CsvExportCreated, actions);
+                Assert.Contains(AuditLogActionNames.JobCanceled, actions);
+            }
+
+            using (var csvResponse = await client.GetAsync($"/api/admin/audit-logs?resourceType=csv_export&resourceId={csvExportId}&correlationId={correlationId}"))
+            using (var csvDocument = await ReadJsonAsync(csvResponse))
+            {
+                Assert.Equal(HttpStatusCode.OK, csvResponse.StatusCode);
+                var item = Assert.Single(csvDocument.RootElement.GetProperty("data").EnumerateArray());
+                Assert.Equal(AuditLogActionNames.CsvExportCreated, item.GetProperty("action").GetString());
+                Assert.Equal(AuditLogResourceTypes.CsvExport, item.GetProperty("resourceType").GetString());
+                Assert.Equal(csvExportId, item.GetProperty("resourceId").GetString());
             }
         }
         finally

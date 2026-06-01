@@ -10,6 +10,17 @@ internal sealed class ConfigurationSecretStore(
     IOptions<SecretStoreOptions> options)
     : ISecretStore
 {
+    public Task<SecretReference> PutAsync(
+        SecretReference reference,
+        SecretValue value,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        configuration[BuildConfigurationKey(reference)] = value.Value;
+        return Task.FromResult(reference);
+    }
+
     public Task<SecretValue?> GetAsync(SecretReference reference, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
