@@ -18,4 +18,9 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\SeoIntelligence.Application\SeoIntelligence.Application.csproj" />
+    <ProjectReference Include="..\..\src\SeoIntelligence.Infrastructure\SeoIntelligence.Infrastructure.csproj" />
+  </ItemGroup>
+
 </Project>
