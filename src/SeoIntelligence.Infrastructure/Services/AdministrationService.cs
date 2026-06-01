@@ -27,9 +27,11 @@ public static class AdministrationServiceCollectionExtensions
         services.TryAddSingleton<IProjectContextService, ProjectContextService>();
         services.TryAddScoped<IAuditLogWriter, AuditLogWriter>();
         services.TryAddScoped<IAdministrationService, AdministrationService>();
+        services.TryAddScoped<IMasterDataService, MasterDataService>();
         services.TryAddScoped<IJobService, JobService>();
         services.TryAddScoped<IJobQueueClient, HangfireJobQueueClient>();
         services.TryAddScoped<IJobDispatcher, JobDispatcher>();
+        services.TryAddScoped<MasterDataSyncJob>();
         return services;
     }
 }

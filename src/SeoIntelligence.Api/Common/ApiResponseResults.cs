@@ -13,6 +13,11 @@ internal static class ApiResponseResults
             ApiResponseEnvelope<T>.Success(context.GetCorrelationId(), data, meta),
             statusCode: StatusCodes.Status201Created);
 
+    public static IResult Accepted<T>(HttpContext context, T data, ApiResponseMeta? meta = null)
+        => Results.Json(
+            ApiResponseEnvelope<T>.Success(context.GetCorrelationId(), data, meta),
+            statusCode: StatusCodes.Status202Accepted);
+
     public static IResult Paged<T>(HttpContext context, PagedResult<T> page)
         => Ok(
             context,
@@ -31,6 +36,11 @@ internal static class ApiResponseResults
     public static IResult FromCreatedResult<T>(HttpContext context, Result<T> result)
         => result.IsSuccess
             ? Created(context, result.Value!)
+            : FromError(context, result.Error!);
+
+    public static IResult FromAcceptedResult<T>(HttpContext context, Result<T> result, ApiResponseMeta? meta = null)
+        => result.IsSuccess
+            ? Accepted(context, result.Value!, meta)
             : FromError(context, result.Error!);
 
     public static IResult FromPagedResult<T>(HttpContext context, Result<PagedResult<T>> result)
