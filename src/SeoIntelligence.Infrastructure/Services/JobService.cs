@@ -828,6 +828,7 @@ internal sealed class JobDispatcher(
     KeywordDiscoveryJob keywordDiscoveryJob,
     RegisterSearchVolumeJob registerSearchVolumeJob,
     PollSearchVolumeStatusJob pollSearchVolumeStatusJob,
+    OpportunityScoringJob opportunityScoringJob,
     ILogger<JobDispatcher> logger)
     : IJobDispatcher
 {
@@ -870,6 +871,12 @@ internal sealed class JobDispatcher(
                 await pollSearchVolumeStatusJob.ExecuteAsync(jobId);
                 return;
             }
+        }
+
+        if (string.Equals(job.JobType, OpportunityScoringJob.JobType, StringComparison.Ordinal))
+        {
+            await opportunityScoringJob.ExecuteAsync(jobId);
+            return;
         }
 
         logger.LogInformation("Job {job_id} of type {job_type} and status {status} was dequeued but no concrete handler is registered.", jobId, job.JobType, job.Status);

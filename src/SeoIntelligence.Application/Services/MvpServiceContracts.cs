@@ -410,6 +410,20 @@ public sealed record DashboardSnapshot(
     int KeywordCandidateCount,
     int RunningJobCount,
     int FailedJobCount,
-    int ConsumedCredit);
+    int ConsumedCredit,
+    int KeywordDiscoveryCount = 0,
+    int SearchVolumeJobCount = 0,
+    int SearchVolumeResultCount = 0,
+    int OpportunityScoreCount = 0,
+    IReadOnlyList<DashboardOpportunityScoreRow>? TopOpportunityScores = null,
+    int NotificationFailureCount = 0);
+
+public sealed record DashboardOpportunityScoreRow(
+    Guid KeywordId,
+    string Keyword,
+    decimal OpportunityScore,
+    string Location,
+    string Language,
+    DateTime ScoredAt);
 
 public sealed record JobReference(Guid JobId, string Status);

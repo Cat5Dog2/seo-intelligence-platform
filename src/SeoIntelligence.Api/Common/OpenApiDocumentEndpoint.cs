@@ -147,6 +147,7 @@ internal static class OpenApiDocumentEndpoint
         paths["/api/projects"] = PathItem(get: "List projects", post: "Create project", postSuccessCode: "201");
         paths["/api/projects/{projectId}"] = PathItem(get: "Get project", put: "Update project", delete: "Archive project");
         paths["/api/projects/{projectId}/restore"] = PathItem(post: "Restore project");
+        paths["/api/projects/{projectId}/dashboard"] = PathItem(get: "Get Phase 1 dashboard metrics");
         paths["/api/projects/{projectId}/sites"] = PathItem(get: "List sites", post: "Create site", postSuccessCode: "201");
         paths["/api/projects/{projectId}/sites/{siteId}"] = PathItem(get: "Get site", put: "Update site", delete: "Archive site");
         paths["/api/projects/{projectId}/sites/{siteId}/restore"] = PathItem(post: "Restore site");
