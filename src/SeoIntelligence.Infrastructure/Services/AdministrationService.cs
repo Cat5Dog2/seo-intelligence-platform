@@ -28,10 +28,13 @@ public static class AdministrationServiceCollectionExtensions
         services.TryAddScoped<IAuditLogWriter, AuditLogWriter>();
         services.TryAddScoped<IAdministrationService, AdministrationService>();
         services.TryAddScoped<IMasterDataService, MasterDataService>();
+        services.TryAddScoped<KeywordDiscoveryService>();
+        services.TryAddScoped<IKeywordDiscoveryService>(serviceProvider => serviceProvider.GetRequiredService<KeywordDiscoveryService>());
         services.TryAddScoped<IJobService, JobService>();
         services.TryAddScoped<IJobQueueClient, HangfireJobQueueClient>();
         services.TryAddScoped<IJobDispatcher, JobDispatcher>();
         services.TryAddScoped<MasterDataSyncJob>();
+        services.TryAddScoped<KeywordDiscoveryJob>();
         return services;
     }
 }

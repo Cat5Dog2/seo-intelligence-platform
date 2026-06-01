@@ -302,14 +302,73 @@ public sealed record LocationSummary(string Provider, string Code, string Name, 
 public sealed record LanguageSummary(string Provider, string Code, string Name, string Status);
 
 public sealed record KeywordDiscoveryRequest(
-    IReadOnlyList<string> Seeds,
-    IReadOnlyList<string> Engines,
-    string Location,
-    string Language);
+    IReadOnlyList<string>? Seeds = null,
+    IReadOnlyList<string>? Engines = null,
+    string? Location = null,
+    string? Language = null,
+    string? SeedKeyword = null,
+    IReadOnlyList<string>? Sources = null,
+    int? Limit = null,
+    KeywordDiscoveryFilter? Filter = null,
+    string? SortBy = null,
+    string? OrderBy = null,
+    bool? SyncPreferred = null);
 
-public sealed record KeywordDiscoveryResult(IReadOnlyList<KeywordCandidate> Candidates);
+public sealed record KeywordDiscoveryFilter(
+    decimal? MinSearchVolume = null,
+    decimal? MaxSearchVolume = null,
+    decimal? MinSeoDifficulty = null,
+    decimal? MaxSeoDifficulty = null,
+    decimal? MinCpc = null,
+    decimal? MaxCpc = null,
+    decimal? MinCompetition = null,
+    decimal? MaxCompetition = null,
+    string? FirstSeenRange = null,
+    string? SuggestClass = null,
+    IReadOnlyList<string>? Include = null,
+    IReadOnlyList<string>? Exclude = null);
 
-public sealed record KeywordCandidate(string Keyword, string Source, string? SuggestClass, decimal? OpportunityScore);
+public sealed record KeywordDiscoveryResult(
+    IReadOnlyList<KeywordCandidate> Candidates,
+    Guid? SeedId = null,
+    Guid? SeedKeywordId = null,
+    string? SeedKeyword = null,
+    string? Location = null,
+    string? Language = null,
+    IReadOnlyList<string>? Sources = null,
+    bool IsAccepted = false,
+    Guid? JobId = null,
+    string? StatusUrl = null,
+    IReadOnlyList<KeywordDiscoverySourceStatus>? SourceStatuses = null,
+    decimal ConsumedCredit = 0);
+
+public sealed record KeywordDiscoverySourceStatus(
+    string Source,
+    string Status,
+    int CandidateCount,
+    decimal ConsumedCredit = 0,
+    int? StatusCode = null,
+    string? ErrorCode = null,
+    string? Message = null);
+
+public sealed record KeywordCandidate(
+    string Keyword,
+    string Source,
+    string? SuggestClass,
+    decimal? OpportunityScore,
+    Guid? KeywordId = null,
+    string? Type = null,
+    string? Question = null,
+    string? Engine = null,
+    int? EngineCount = null,
+    decimal? SearchVolume = null,
+    decimal? SeoDifficulty = null,
+    decimal? Cpc = null,
+    decimal? Competition = null,
+    string? FirstSeenRange = null,
+    decimal? Importance = null,
+    int? WordCount = null,
+    decimal? Relevance = null);
 
 public sealed record SearchVolumeJobRequest(
     IReadOnlyList<string> Keywords,

@@ -246,6 +246,8 @@ API認証情報の作成/ローテーションでは、`secretValue`系と`keyRe
 | MVP | GET | `/api/projects/{projectId}/exports/{exportId}` | エクスポート状態/ファイル情報取得。MVPはCSVのみ |
 | MVP | GET | `/api/projects/{projectId}/exports/{exportId}/download` | CSVファイルダウンロード。発行/ダウンロードを監査する |
 
+`/api/projects/{projectId}/keyword-discovery/suggest` は、`syncPreferred=true` かつ `limit<=50` を軽量条件として同期実行し、同期条件外では `202 Accepted`、`jobId`、`statusUrl` を返す。
+
 ### 7.5 SEO分析API
 
 | Phase | Method | Path | 概要 |

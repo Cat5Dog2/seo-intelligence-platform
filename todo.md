@@ -106,7 +106,7 @@ ISSUE-MVP-00X の続きから再開してください。
 - [ ] ISSUE-MVP-007 ラッコキーワードAPIクライアントとMockを実装する
 - [ ] ISSUE-MVP-008 ジョブ基盤を実装する
 - [ ] ISSUE-MVP-009 マスタ同期を実装する
-- [ ] ISSUE-MVP-010 キーワード探索を実装する
+- [x] ISSUE-MVP-010 キーワード探索を実装する
 - [ ] ISSUE-MVP-011 一括検索ボリューム調査を実装する
 - [ ] ISSUE-MVP-012 機会スコアとMVPダッシュボード集計を実装する
 - [ ] ISSUE-MVP-013 CSV出力を実装する
@@ -476,24 +476,24 @@ ISSUE-MVP-00X の続きから再開してください。
 
 範囲:
 
-- [ ] `KeywordDiscoveryJob` を実装する。
-- [ ] suggest / related / other / question / ranking を条件に応じて呼び出す。
-- [ ] `keyword_seeds`, `keywords`, `keyword_suggestions`, `related_keywords`, `questions`, `lsi_paa_items`, `ranking_keywords` を保存する。
-- [ ] 冪等キーを `projectId + normalized seed + sources + filter hash` にする。
-- [ ] `POST /api/projects/{projectId}/keyword-discovery/suggest` を実装する。
-- [ ] 軽量条件では200、重い条件では202 + `jobId` + `statusUrl` を返す。
-- [ ] 候補語、ソース、階層、指標、機会スコア、フィルタ、ソートを返す。
+- [x] `KeywordDiscoveryJob` を実装する。
+- [x] suggest / related / other / question / ranking を条件に応じて呼び出す。
+- [x] `keyword_seeds`, `keywords`, `keyword_suggestions`, `related_keywords`, `questions`, `lsi_paa_items`, `ranking_keywords` を保存する。
+- [x] 冪等キーを `projectId + normalized seed + sources + filter hash` にする。
+- [x] `POST /api/projects/{projectId}/keyword-discovery/suggest` を実装する。
+- [x] 軽量条件では200、重い条件では202 + `jobId` + `statusUrl` を返す。
+- [x] 候補語、ソース、階層、指標、機会スコア、フィルタ、ソートを返す。
 
 受入条件:
 
-- [ ] 1シードから候補語を統合取得できる。
-- [ ] 統合結果を保存、フィルタできる。
-- [ ] 取得済みAPIの結果は保存し、未取得APIはretryableとして扱える。
+- [x] 1シードから候補語を統合取得できる。
+- [x] 統合結果を保存、フィルタできる。
+- [x] 取得済みAPIの結果は保存し、未取得APIはretryableとして扱える。
 
 検証:
 
-- [ ] `dotnet test --filter Category=Integration`
-- [ ] `dotnet test --filter Category=Contract`
+- [x] `dotnet test --filter Category=Integration`
+- [x] `dotnet test --filter Category=Contract`
 
 ### ISSUE-MVP-011 一括検索ボリューム調査を実装する
 

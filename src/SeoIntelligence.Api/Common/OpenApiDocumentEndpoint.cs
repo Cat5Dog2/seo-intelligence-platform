@@ -150,6 +150,7 @@ internal static class OpenApiDocumentEndpoint
         paths["/api/projects/{projectId}/sites"] = PathItem(get: "List sites", post: "Create site", postSuccessCode: "201");
         paths["/api/projects/{projectId}/sites/{siteId}"] = PathItem(get: "Get site", put: "Update site", delete: "Archive site");
         paths["/api/projects/{projectId}/sites/{siteId}/restore"] = PathItem(post: "Restore site");
+        paths["/api/projects/{projectId}/keyword-discovery/suggest"] = KeywordDiscoveryPathItem();
     }
 
     private static object PathItem(
@@ -183,6 +184,24 @@ internal static class OpenApiDocumentEndpoint
 
         return operations;
     }
+
+    private static object KeywordDiscoveryPathItem()
+        => new
+        {
+            post = new
+            {
+                summary = "Run keyword discovery",
+                responses = new Dictionary<string, object?>
+                {
+                    ["200"] = JsonResponse("Synchronous keyword discovery result envelope."),
+                    ["202"] = JsonResponse("Queued keyword discovery job envelope."),
+                    ["400"] = JsonResponse("Validation error envelope."),
+                    ["404"] = JsonResponse("Not found error envelope."),
+                    ["409"] = JsonResponse("Conflict error envelope."),
+                    ["503"] = JsonResponse("Retryable external API error envelope.")
+                }
+            }
+        };
 
     private static object Operation(string summary, string successCode)
         => new

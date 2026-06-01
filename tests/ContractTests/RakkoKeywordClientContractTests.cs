@@ -75,6 +75,55 @@ public sealed class RakkoKeywordClientContractTests
         }
     }
 
+    [Fact]
+    [Trait("Category", "Contract")]
+    public async Task MockClientMapsAllKeywordDiscoveryEndpoints()
+    {
+        var storagePath = CreateTempStoragePath();
+        await using var provider = BuildProvider(storagePath);
+
+        try
+        {
+            await using var scope = provider.CreateAsyncScope();
+            var client = scope.ServiceProvider.GetRequiredService<IRakkoKeywordClient>();
+            var context = CreateContext(correlationId: "corr-contract-discovery");
+
+            var suggest = await client.GetSuggestKeywordsAsync(
+                context,
+                new RakkoSuggestKeywordsRequest("seo", ["google"]));
+            var related = await client.GetRelatedKeywordsAsync(
+                context,
+                new RakkoRelatedKeywordsRequest("seo"));
+            var other = await client.GetOtherKeywordsAsync(
+                context,
+                new RakkoOtherKeywordsRequest("seo"));
+            var questions = await client.GetQuestionsAsync(
+                context,
+                new RakkoQuestionSearchRequest("seo"));
+            var ranking = await client.GetRankingKeywordsAsync(
+                context,
+                new RakkoRankingKeywordsRequest("seo"));
+
+            Assert.All(new[] { suggest, related, other, ranking }, result =>
+            {
+                Assert.True(result.IsSuccess);
+                Assert.Equal(200, result.StatusCode);
+                Assert.NotEmpty(result.Data!.Items);
+                Assert.StartsWith("storage://local/raw/rakko-keyword/", result.ExternalCall.RequestUri, StringComparison.Ordinal);
+            });
+            Assert.Equal("suggest", suggest.Data!.Source);
+            Assert.Equal("related", related.Data!.Source);
+            Assert.Equal("other", other.Data!.Source);
+            Assert.Equal("ranking", ranking.Data!.Source);
+            Assert.True(questions.IsSuccess);
+            Assert.NotEmpty(questions.Data!.Items);
+        }
+        finally
+        {
+            DeleteTempStoragePath(storagePath);
+        }
+    }
+
     [Theory]
     [Trait("Category", "Contract")]
     [InlineData(429, RakkoKeywordFailureKind.Retryable, "rate_limited")]
