@@ -829,6 +829,7 @@ internal sealed class JobDispatcher(
     RegisterSearchVolumeJob registerSearchVolumeJob,
     PollSearchVolumeStatusJob pollSearchVolumeStatusJob,
     OpportunityScoringJob opportunityScoringJob,
+    DataExportJob dataExportJob,
     ILogger<JobDispatcher> logger)
     : IJobDispatcher
 {
@@ -876,6 +877,12 @@ internal sealed class JobDispatcher(
         if (string.Equals(job.JobType, OpportunityScoringJob.JobType, StringComparison.Ordinal))
         {
             await opportunityScoringJob.ExecuteAsync(jobId);
+            return;
+        }
+
+        if (string.Equals(job.JobType, DataExportJob.JobType, StringComparison.Ordinal))
+        {
+            await dataExportJob.ExecuteAsync(jobId);
             return;
         }
 

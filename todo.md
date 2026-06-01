@@ -564,24 +564,24 @@ ISSUE-MVP-00X の続きから再開してください。
 
 範囲:
 
-- [ ] `DataExportJob` のMVP CSV出力を実装する。
-- [ ] `data_exports` を作成/更新する。
-- [ ] CSVファイルをStorageへ保存する。
-- [ ] 短時間downloadUrlを発行する。
-- [ ] 出力、URL発行、ダウンロードを `audit_logs` に記録する。
-- [ ] `POST /api/projects/{projectId}/exports/csv` を実装する。
-- [ ] `GET /api/projects/{projectId}/exports/{exportId}` を実装する。
-- [ ] `GET /api/projects/{projectId}/exports/{exportId}/download` を実装する。
+- [x] `DataExportJob` のMVP CSV出力を実装する。
+- [x] `data_exports` を作成/更新する。
+- [x] CSVファイルをStorageへ保存する。
+- [x] 短時間downloadUrlを発行する。
+- [x] 出力、URL発行、ダウンロードを `audit_logs` に記録する。
+- [x] `POST /api/projects/{projectId}/exports/csv` を実装する。
+- [x] `GET /api/projects/{projectId}/exports/{exportId}` を実装する。
+- [x] `GET /api/projects/{projectId}/exports/{exportId}/download` を実装する。
 
 受入条件:
 
-- [ ] CSV出力、状態取得、ダウンロードができる。
-- [ ] 出力履歴と監査ログを確認できる。
+- [x] CSV出力、状態取得、ダウンロードができる。
+- [x] 出力履歴と監査ログを確認できる。
 
 検証:
 
-- [ ] `dotnet test --filter Category=Integration`
-- [ ] `dotnet test --filter Category=E2E`
+- [x] `dotnet test --filter Category=Integration`
+- [x] `dotnet test --filter Category=E2E`
 
 ### ISSUE-MVP-014 Discord通知を実装する
 

@@ -155,6 +155,9 @@ internal static class OpenApiDocumentEndpoint
         paths["/api/projects/{projectId}/search-volume/jobs"] = PathItem(post: "Register search volume job", postSuccessCode: "202");
         paths["/api/projects/{projectId}/search-volume/jobs/{jobId}"] = PathItem(get: "Get search volume job");
         paths["/api/projects/{projectId}/search-volume/jobs/{jobId}/results"] = PathItem(get: "List search volume results");
+        paths["/api/projects/{projectId}/exports/csv"] = PathItem(post: "Register Phase 1 CSV export job", postSuccessCode: "202");
+        paths["/api/projects/{projectId}/exports/{exportId}"] = PathItem(get: "Get CSV export state and file metadata");
+        paths["/api/projects/{projectId}/exports/{exportId}/download"] = PathItem(get: "Issue a short-lived CSV download URL");
     }
 
     private static object PathItem(
