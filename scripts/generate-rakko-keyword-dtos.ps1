@@ -29,7 +29,11 @@ $requiredSchemas = @(
 )
 
 $spec = Get-Content -Encoding UTF8 -Raw $specPath | ConvertFrom-Json
-$hash = (Get-FileHash -Algorithm SHA256 $specPath).Hash.ToLowerInvariant()
+$specText = [System.IO.File]::ReadAllText($specPath, [System.Text.Encoding]::UTF8)
+$normalizedSpecText = $specText -replace "`r`n", "`n"
+$normalizedSpecBytes = [System.Text.Encoding]::UTF8.GetBytes($normalizedSpecText)
+$sha256 = [System.Security.Cryptography.SHA256]::Create()
+$hash = (($sha256.ComputeHash($normalizedSpecBytes) | ForEach-Object { $_.ToString("x2") }) -join "")
 $version = [string]$spec.info.version
 $schemaNames = @($spec.components.schemas.PSObject.Properties.Name)
 

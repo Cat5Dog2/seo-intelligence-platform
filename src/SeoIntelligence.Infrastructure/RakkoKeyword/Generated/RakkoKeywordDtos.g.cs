@@ -12,7 +12,7 @@ internal static class RakkoKeywordOpenApiMetadata
 {
     public const string SourcePath = "docs/rakko-keyword-api-docs.json";
     public const string OpenApiVersion = "1.4.1";
-    public const string SourceSha256 = "11b04586e790664bb7db8ac9ae284f5b5ec5c9e153c0c4920857447e91ae0b45";
+    public const string SourceSha256 = "42ad755cb9ad5b93a844c30b54ac85b9cd8ec6ce7f880cda5289dcc8d6d611bc";
 
     public static readonly IReadOnlySet<string> MvpSchemaNames = new HashSet<string>(StringComparer.Ordinal)
     {

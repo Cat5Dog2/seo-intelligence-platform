@@ -33,7 +33,8 @@ public sealed class RakkoKeywordClientContractTests
             .EnumerateObject()
             .Select(property => property.Name)
             .ToHashSet(StringComparer.Ordinal);
-        var hash = Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(specPath))).ToLowerInvariant();
+        var normalizedSpec = (await File.ReadAllTextAsync(specPath)).Replace("\r\n", "\n", StringComparison.Ordinal);
+        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(normalizedSpec))).ToLowerInvariant();
 
         Assert.Equal(RakkoKeywordOpenApiMetadata.OpenApiVersion, version);
         Assert.Equal(RakkoKeywordOpenApiMetadata.SourceSha256, hash);
