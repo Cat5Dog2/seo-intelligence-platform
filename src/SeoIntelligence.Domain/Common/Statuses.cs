@@ -83,7 +83,7 @@ public static class JobStatusTransitions
             };
 
     public static bool CanCancel(JobStatus current)
-        => current is JobStatus.Queued or JobStatus.WaitingExternal or JobStatus.FailedRetryable;
+        => current is JobStatus.Queued or JobStatus.WaitingExternal;
 
     public static bool IsTerminal(JobStatus status)
         => status is JobStatus.Succeeded or JobStatus.FailedFatal or JobStatus.Canceled;
@@ -103,6 +103,32 @@ public static class JobFailureClassifier
 
 public static class StatusExtensions
 {
+    public static JobStatus ToJobStatus(string status)
+    {
+        if (TryToJobStatus(status, out var parsed))
+        {
+            return parsed;
+        }
+
+        throw new ArgumentOutOfRangeException(nameof(status), status, null);
+    }
+
+    public static bool TryToJobStatus(string? status, out JobStatus parsed)
+    {
+        parsed = default;
+        return status?.Trim().ToLowerInvariant() switch
+        {
+            StatusValues.Queued => Set(JobStatus.Queued, out parsed),
+            StatusValues.Running => Set(JobStatus.Running, out parsed),
+            StatusValues.WaitingExternal => Set(JobStatus.WaitingExternal, out parsed),
+            StatusValues.Succeeded => Set(JobStatus.Succeeded, out parsed),
+            StatusValues.FailedRetryable => Set(JobStatus.FailedRetryable, out parsed),
+            StatusValues.FailedFatal => Set(JobStatus.FailedFatal, out parsed),
+            StatusValues.Canceled => Set(JobStatus.Canceled, out parsed),
+            _ => false
+        };
+    }
+
     public static string ToStorageValue(this LifecycleStatus status)
         => status switch
         {
@@ -134,4 +160,10 @@ public static class StatusExtensions
             JobStatus.Canceled => StatusValues.Canceled,
             _ => throw new ArgumentOutOfRangeException(nameof(status), status, null)
         };
+
+    private static bool Set(JobStatus value, out JobStatus parsed)
+    {
+        parsed = value;
+        return true;
+    }
 }

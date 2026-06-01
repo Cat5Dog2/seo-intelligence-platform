@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using SeoIntelligence.Application.Auditing;
 using SeoIntelligence.Application.Common;
+using SeoIntelligence.Application.Jobs;
 using SeoIntelligence.Application.ProjectContext;
 using SeoIntelligence.Application.Secrets;
 using SeoIntelligence.Application.Services;
@@ -26,6 +27,9 @@ public static class AdministrationServiceCollectionExtensions
         services.TryAddSingleton<IProjectContextService, ProjectContextService>();
         services.TryAddScoped<IAuditLogWriter, AuditLogWriter>();
         services.TryAddScoped<IAdministrationService, AdministrationService>();
+        services.TryAddScoped<IJobService, JobService>();
+        services.TryAddScoped<IJobQueueClient, HangfireJobQueueClient>();
+        services.TryAddScoped<IJobDispatcher, JobDispatcher>();
         return services;
     }
 }

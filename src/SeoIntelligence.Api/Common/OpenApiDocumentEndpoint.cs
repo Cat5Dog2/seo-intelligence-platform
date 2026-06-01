@@ -137,6 +137,10 @@ internal static class OpenApiDocumentEndpoint
         paths["/api/admin/external-api-calls"] = PathItem(get: "List external API calls");
         paths["/api/admin/audit-logs"] = PathItem(get: "List audit logs");
         paths["/api/admin/audit-logs/{auditLogId}"] = PathItem(get: "Get audit log");
+        paths["/api/jobs"] = PathItem(get: "List jobs");
+        paths["/api/jobs/{jobId}"] = PathItem(get: "Get job");
+        paths["/api/jobs/{jobId}/cancel"] = PathItem(post: "Cancel queued or waiting external job");
+        paths["/api/jobs/{jobId}/retry"] = PathItem(post: "Retry failed retryable job");
         paths["/api/projects"] = PathItem(get: "List projects", post: "Create project", postSuccessCode: "201");
         paths["/api/projects/{projectId}"] = PathItem(get: "Get project", put: "Update project", delete: "Archive project");
         paths["/api/projects/{projectId}/restore"] = PathItem(post: "Restore project");

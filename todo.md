@@ -417,29 +417,29 @@ ISSUE-MVP-00X の続きから再開してください。
 
 範囲:
 
-- [ ] Worker ServiceをHangfire + PostgreSQL storageで起動する。
-- [ ] キューを構成する: `default`, `external-api`, `polling`, `analysis`, `exports`, `notifications`。
-- [ ] ジョブ状態遷移を実装する。
-- [ ] `queued` と `waiting_external` のキャンセルを実装する。
-- [ ] `waiting_external` キャンセル後は以後のポーリング/結果取込を停止する。
-- [ ] `failed_retryable` の手動再実行を実装する。
-- [ ] `failed_fatal` と `canceled` は同一ジョブ再実行不可にする。
-- [ ] Redis lockで同一プロジェクト/同一ジョブ種別/同一対象の重複実行を抑止する。
-- [ ] `Idempotency-Key` + `request_hash` + scopeでジョブ二重登録を抑止する。
-- [ ] 429/500/503/timeout/DB一時障害のリトライを実装する。
-- [ ] 400/402/403を `failed_fatal` として扱う。
-- [ ] `GET /api/jobs`, `GET /api/jobs/{jobId}`, `POST /api/jobs/{jobId}/cancel`, `POST /api/jobs/{jobId}/retry` を実装する。
+- [x] Worker ServiceをHangfire + PostgreSQL storageで起動する。
+- [x] キューを構成する: `default`, `external-api`, `polling`, `analysis`, `exports`, `notifications`。
+- [x] ジョブ状態遷移を実装する。
+- [x] `queued` と `waiting_external` のキャンセルを実装する。
+- [x] `waiting_external` キャンセル後は以後のポーリング/結果取込を停止する。
+- [x] `failed_retryable` の手動再実行を実装する。
+- [x] `failed_fatal` と `canceled` は同一ジョブ再実行不可にする。
+- [x] Redis lockで同一プロジェクト/同一ジョブ種別/同一対象の重複実行を抑止する。
+- [x] `Idempotency-Key` + `request_hash` + scopeでジョブ二重登録を抑止する。
+- [x] 429/500/503/timeout/DB一時障害のリトライを実装する。
+- [x] 400/402/403を `failed_fatal` として扱う。
+- [x] `GET /api/jobs`, `GET /api/jobs/{jobId}`, `POST /api/jobs/{jobId}/cancel`, `POST /api/jobs/{jobId}/retry` を実装する。
 
 受入条件:
 
-- [ ] `jobs` が業務状態の正本になる。
-- [ ] Idempotency-Key重複登録で既存ジョブが返る。
-- [ ] 429はretryable、402/403はfatalへ分岐する。
-- [ ] ジョブ操作が監査ログに残る。
+- [x] `jobs` が業務状態の正本になる。
+- [x] Idempotency-Key重複登録で既存ジョブが返る。
+- [x] 429はretryable、402/403はfatalへ分岐する。
+- [x] ジョブ操作が監査ログに残る。
 
 検証:
 
-- [ ] `dotnet test --filter Category=Integration`
+- [x] `dotnet test --filter Category=Integration`
 
 ### ISSUE-MVP-009 マスタ同期を実装する
 

@@ -53,6 +53,7 @@ jobs:
 
   container-scan:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -63,12 +64,27 @@ jobs:
           - minio/mc:latest
 
     steps:
+      - name: Pull ${{ matrix.image }} with retries
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            if docker pull "${{ matrix.image }}"; then
+              exit 0
+            fi
+
+            sleep $((attempt * 20))
+          done
+
+          docker pull "${{ matrix.image }}"
+
       - name: Scan ${{ matrix.image }}
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ matrix.image }}
           format: table
           exit-code: "0"
+          scanners: vuln
           ignore-unfixed: true
           vuln-type: os,library
           severity: HIGH,CRITICAL
+          timeout: 10m

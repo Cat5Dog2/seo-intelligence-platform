@@ -69,6 +69,17 @@ public sealed class ConfigurationOptionsTests
 
     [Fact]
     [Trait("Category", "Unit")]
+    public void HangfireOptionsDefaultQueuesMatchJobDesign()
+    {
+        var options = new HangfireOptions();
+
+        Assert.Equal(
+            ["default", "external-api", "polling", "analysis", "exports", "notifications"],
+            options.Queues);
+    }
+
+    [Fact]
+    [Trait("Category", "Unit")]
     public void SecretStoreOptionsRejectsUnsupportedProvider()
     {
         var options = new SecretStoreOptions

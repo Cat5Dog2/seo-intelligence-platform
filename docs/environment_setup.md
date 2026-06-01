@@ -184,7 +184,7 @@ GitHub Actionsは `.github/workflows/ci.yaml` を使う。
 | Job | 実行内容 |
 | --- | --- |
 | `build-test-smoke` | restore、build、test、migration dry-run、Docker Compose依存サービス起動、API smoke test。 |
-| `container-scan` | PostgreSQL、Redis、MinIO、MinIO ClientのコンテナイメージをTrivyでscanする。初期雛形では検出結果を表示し、fail条件は後続の運用品質ゲートで調整する。 |
+| `container-scan` | PostgreSQL、Redis、MinIO、MinIO Clientのコンテナイメージをリトライ付きでpullし、Trivyでvuln-only scanする。初期雛形では検出結果を表示し、fail条件は後続の運用品質ゲートで調整する。 |
 
 通常CIでは外部API Realを使わず、Mock既定のまま実行する。
 

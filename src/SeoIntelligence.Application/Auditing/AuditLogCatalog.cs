@@ -13,6 +13,8 @@ public static class AuditLogActionNames
     public const string CsvDownloadUrlIssued = "csv_export.download_url_issued";
     public const string CsvDownloaded = "csv_export.downloaded";
     public const string JobQueued = "job.queued";
+    public const string JobStarted = "job.started";
+    public const string JobFailed = "job.failed";
     public const string JobCanceled = "job.canceled";
     public const string JobRetried = "job.retried";
 }
