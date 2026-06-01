@@ -22,9 +22,11 @@ public sealed class StatusTransitionTests
     {
         Assert.True(JobStatusTransitions.CanTransition(JobStatus.Queued, JobStatus.Running));
         Assert.True(JobStatusTransitions.CanTransition(JobStatus.Running, JobStatus.WaitingExternal));
+        Assert.True(JobStatusTransitions.CanCancel(JobStatus.Queued));
         Assert.True(JobStatusTransitions.CanCancel(JobStatus.WaitingExternal));
 
         Assert.False(JobStatusTransitions.CanCancel(JobStatus.Running));
+        Assert.False(JobStatusTransitions.CanCancel(JobStatus.FailedRetryable));
         Assert.False(JobStatusTransitions.CanTransition(JobStatus.Succeeded, JobStatus.Queued));
     }
 

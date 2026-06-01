@@ -91,6 +91,7 @@ app.MapGet(
     });
 
 app.MapAdministrationEndpoints();
+app.MapJobEndpoints();
 
 app.MapGet("/openapi/v1.json", OpenApiDocumentEndpoint.GetV1);
 
