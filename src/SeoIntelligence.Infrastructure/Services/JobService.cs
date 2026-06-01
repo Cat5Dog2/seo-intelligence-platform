@@ -112,6 +112,8 @@ internal sealed class JobService(
             Progress = 0,
             RetryCount = 0,
             NextRunAt = now,
+            ResultResourceType = request.InitialResource?.ResourceType,
+            ResultResourceId = request.InitialResource?.ResourceId,
             IdempotencyKey = idempotencyKey,
             RequestHash = requestHash,
             RequestedBy = context.Actor,
@@ -823,6 +825,7 @@ internal sealed class HangfireJobQueueClient(
 internal sealed class JobDispatcher(
     SeoIntelligenceDbContext dbContext,
     MasterDataSyncJob masterDataSyncJob,
+    KeywordDiscoveryJob keywordDiscoveryJob,
     ILogger<JobDispatcher> logger)
     : IJobDispatcher
 {
@@ -843,6 +846,12 @@ internal sealed class JobDispatcher(
         if (string.Equals(jobType, MasterDataSyncJob.JobType, StringComparison.Ordinal))
         {
             await masterDataSyncJob.ExecuteAsync(jobId);
+            return;
+        }
+
+        if (string.Equals(jobType, KeywordDiscoveryJob.JobType, StringComparison.Ordinal))
+        {
+            await keywordDiscoveryJob.ExecuteAsync(jobId);
             return;
         }
 

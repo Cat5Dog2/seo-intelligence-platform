@@ -70,7 +70,8 @@ public sealed record JobRegistrationRequest(
     string? RequestHash = null,
     string? IdempotencyKey = null,
     string? TargetKey = null,
-    string? Queue = null);
+    string? Queue = null,
+    JobResultResource? InitialResource = null);
 
 public sealed record JobSearchQuery(
     SearchQuery Search,
