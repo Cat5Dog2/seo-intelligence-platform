@@ -5,10 +5,12 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using SeoIntelligence.Application.Configuration;
 using SeoIntelligence.Application.Infrastructure;
+using SeoIntelligence.Application.RakkoKeyword;
 using SeoIntelligence.Application.Redis;
 using SeoIntelligence.Application.Secrets;
 using SeoIntelligence.Application.Storage;
 using SeoIntelligence.Infrastructure.Persistence;
+using SeoIntelligence.Infrastructure.RakkoKeyword;
 using SeoIntelligence.Infrastructure.Redis;
 using SeoIntelligence.Infrastructure.Secrets;
 using SeoIntelligence.Infrastructure.Services;
@@ -29,10 +31,11 @@ public static class InfrastructureServiceCollectionExtensions
         var storageOptions = BindOptions<StorageOptions>(configuration, StorageOptions.SectionName);
         var secretStoreOptions = BindOptions<SecretStoreOptions>(configuration, SecretStoreOptions.SectionName);
         var openTelemetryOptions = BindOptions<OpenTelemetryOptions>(configuration, OpenTelemetryOptions.SectionName);
+        var rakkoKeywordOptions = BindOptions<RakkoKeywordOptions>(configuration, RakkoKeywordOptions.SectionName);
 
         services.TryAddSingleton(configuration);
-        ConfigureOptions(services, databaseOptions, redisOptions, hangfireOptions, storageOptions, secretStoreOptions, openTelemetryOptions);
-        ValidateConfiguredOptions(storageOptions, secretStoreOptions, hangfireOptions, openTelemetryOptions);
+        ConfigureOptions(services, databaseOptions, redisOptions, hangfireOptions, storageOptions, secretStoreOptions, openTelemetryOptions, rakkoKeywordOptions);
+        ValidateConfiguredOptions(storageOptions, secretStoreOptions, hangfireOptions, openTelemetryOptions, rakkoKeywordOptions);
 
         if (!string.IsNullOrWhiteSpace(databaseOptions.ConnectionString))
         {
@@ -43,6 +46,7 @@ public static class InfrastructureServiceCollectionExtensions
         AddStorage(services, storageOptions);
         services.AddSeoIntelligenceAdministration();
         services.AddSingleton<ISecretStore, ConfigurationSecretStore>();
+        AddRakkoKeywordClient(services, rakkoKeywordOptions);
 
         if (!string.IsNullOrWhiteSpace(redisOptions.ConnectionString))
         {
@@ -76,7 +80,8 @@ public static class InfrastructureServiceCollectionExtensions
         HangfireOptions hangfireOptions,
         StorageOptions storageOptions,
         SecretStoreOptions secretStoreOptions,
-        OpenTelemetryOptions openTelemetryOptions)
+        OpenTelemetryOptions openTelemetryOptions,
+        RakkoKeywordOptions rakkoKeywordOptions)
     {
         services.AddOptions<DatabaseOptions>()
             .Configure(options => options.ConnectionString = databaseOptions.ConnectionString);
@@ -110,18 +115,34 @@ public static class InfrastructureServiceCollectionExtensions
                 options.ServiceName = openTelemetryOptions.ServiceName;
                 options.OtlpEndpoint = openTelemetryOptions.OtlpEndpoint;
             });
+        services.AddOptions<RakkoKeywordOptions>()
+            .Configure(options =>
+            {
+                options.Mode = rakkoKeywordOptions.Mode;
+                options.BaseUrl = rakkoKeywordOptions.BaseUrl;
+                options.ApiKeySecretRef = rakkoKeywordOptions.ApiKeySecretRef;
+                options.TimeoutSeconds = rakkoKeywordOptions.TimeoutSeconds;
+                options.LongTimeoutSeconds = rakkoKeywordOptions.LongTimeoutSeconds;
+                options.UserAgentProduct = rakkoKeywordOptions.UserAgentProduct;
+                options.UserAgentVersion = rakkoKeywordOptions.UserAgentVersion;
+                options.EnvironmentName = rakkoKeywordOptions.EnvironmentName;
+                options.RawDataRetentionMonths = rakkoKeywordOptions.RawDataRetentionMonths;
+                options.MockStatusCode = rakkoKeywordOptions.MockStatusCode;
+            });
     }
 
     private static void ValidateConfiguredOptions(
         StorageOptions storageOptions,
         SecretStoreOptions secretStoreOptions,
         HangfireOptions hangfireOptions,
-        OpenTelemetryOptions openTelemetryOptions)
+        OpenTelemetryOptions openTelemetryOptions,
+        RakkoKeywordOptions rakkoKeywordOptions)
     {
         ValidateOptionErrors(storageOptions.Validate());
         ValidateOptionErrors(secretStoreOptions.Validate());
         ValidateOptionErrors(hangfireOptions.Validate());
         ValidateOptionErrors(openTelemetryOptions.Validate());
+        ValidateOptionErrors(rakkoKeywordOptions.Validate());
     }
 
     private static void ValidateOptionErrors(IReadOnlyList<string> errors)
@@ -141,6 +162,36 @@ public static class InfrastructureServiceCollectionExtensions
         }
 
         services.AddSingleton<IObjectStorage, LocalObjectStorage>();
+    }
+
+    private static void AddRakkoKeywordClient(IServiceCollection services, RakkoKeywordOptions options)
+    {
+        services.AddScoped<IRakkoKeywordCallRecorder, RakkoKeywordCallRecorder>();
+        services.AddScoped<IRakkoKeywordExternalApiCallStore, OptionalEfExternalApiCallStore>();
+        services.AddScoped<IRakkoKeywordMetricCache, OptionalEfRakkoKeywordMetricCache>();
+
+        if (string.Equals(options.Mode, RakkoKeywordOptions.RealMode, StringComparison.OrdinalIgnoreCase))
+        {
+            services.AddScoped<IRakkoKeywordClient>(serviceProvider =>
+            {
+                var configuredOptions = serviceProvider.GetRequiredService<Microsoft.Extensions.Options.IOptions<RakkoKeywordOptions>>().Value;
+                var httpClient = new HttpClient
+                {
+                    BaseAddress = new Uri(configuredOptions.BaseUrl, UriKind.Absolute),
+                    Timeout = Timeout.InfiniteTimeSpan
+                };
+
+                return new RakkoKeywordRealClient(
+                    httpClient,
+                    serviceProvider.GetRequiredService<ISecretStore>(),
+                    serviceProvider.GetRequiredService<IRakkoKeywordCallRecorder>(),
+                    serviceProvider.GetRequiredService<Microsoft.Extensions.Options.IOptions<RakkoKeywordOptions>>(),
+                    serviceProvider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<RakkoKeywordRealClient>>());
+            });
+            return;
+        }
+
+        services.AddScoped<IRakkoKeywordClient, RakkoKeywordMockClient>();
     }
 
     private static void AddSeoIntelligenceHangfire(

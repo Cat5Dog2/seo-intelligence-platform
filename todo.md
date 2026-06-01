@@ -384,28 +384,28 @@ ISSUE-MVP-00X の続きから再開してください。
 
 範囲:
 
-- [ ] `docs/rakko-keyword-api-docs.json` から外部DTOを生成する仕組みを作る。
-- [ ] 生成DTOをInfrastructure層に閉じ込め、Application DTOへ変換する。
-- [ ] `IRakkoKeywordClient` を定義する。
-- [ ] Mock版 `IRakkoKeywordClient` を実装する。
-- [ ] Real版 `IRakkoKeywordClient` を実装する。
-- [ ] `X-API-Key` をSecret Storeから取得する。
-- [ ] timeout、User-Agent、correlation_idを設定する。
-- [ ] `meta.consumedCredit` を `external_api_calls.consumed_credit` に保存する。
-- [ ] request/response圧縮JSONをStorageに保存し、DBにはURIとハッシュを保存する。
-- [ ] 契約スコープ `api_contract_scopes.scope_key` によるキャッシュ再利用判定を実装する。
-- [ ] MVP対象エンドポイントを連携する: suggest, related, other, question, ranking, search-volume register/status/results, locations, languages。
+- [x] `docs/rakko-keyword-api-docs.json` から外部DTOを生成する仕組みを作る。
+- [x] 生成DTOをInfrastructure層に閉じ込め、Application DTOへ変換する。
+- [x] `IRakkoKeywordClient` を定義する。
+- [x] Mock版 `IRakkoKeywordClient` を実装する。
+- [x] Real版 `IRakkoKeywordClient` を実装する。
+- [x] `X-API-Key` をSecret Storeから取得する。
+- [x] timeout、User-Agent、correlation_idを設定する。
+- [x] `meta.consumedCredit` を `external_api_calls.consumed_credit` に保存する。
+- [x] request/response圧縮JSONをStorageに保存し、DBにはURIとハッシュを保存する。
+- [x] 契約スコープ `api_contract_scopes.scope_key` によるキャッシュ再利用判定を実装する。
+- [x] MVP対象エンドポイントを連携する: suggest, related, other, question, ranking, search-volume register/status/results, locations, languages。
 
 受入条件:
 
-- [ ] CI/通常開発はMockで動作する。
-- [ ] Realは明示切替時のみ使う。
-- [ ] 主要正常系と429/402/403/500/503の契約/Mockテストが通る。
+- [x] CI/通常開発はMockで動作する。
+- [x] Realは明示切替時のみ使う。
+- [x] 主要正常系と429/402/403/500/503の契約/Mockテストが通る。
 
 検証:
 
-- [ ] `dotnet test --filter Category=Contract`
-- [ ] `dotnet test --filter Category=Integration`
+- [x] `dotnet test --filter Category=Contract`
+- [x] `dotnet test --filter Category=Integration`
 
 ### ISSUE-MVP-008 ジョブ基盤を実装する
 

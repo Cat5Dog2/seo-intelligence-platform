@@ -98,6 +98,35 @@ public sealed class ConfigurationOptionsTests
 
     [Fact]
     [Trait("Category", "Unit")]
+    public void RakkoKeywordOptionsDefaultToMockMode()
+    {
+        var options = new RakkoKeywordOptions();
+
+        var errors = options.Validate();
+
+        Assert.Empty(errors);
+        Assert.Equal(RakkoKeywordOptions.MockMode, options.Mode);
+    }
+
+    [Fact]
+    [Trait("Category", "Unit")]
+    public void RakkoKeywordOptionsRequireSecretReferenceForRealMode()
+    {
+        var options = new RakkoKeywordOptions
+        {
+            Mode = RakkoKeywordOptions.RealMode,
+            ApiKeySecretRef = ""
+        };
+
+        var errors = options.Validate();
+
+        Assert.Contains(
+            "RakkoKeyword:ApiKeySecretRef is required when RakkoKeyword:Mode is Real.",
+            errors);
+    }
+
+    [Fact]
+    [Trait("Category", "Unit")]
     public void StorageObjectKeyRejectsPathTraversalSegments()
     {
         var exception = Assert.Throws<ArgumentException>(() => new StorageObjectKey("../raw/response.json"));
