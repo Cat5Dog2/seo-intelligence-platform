@@ -4,6 +4,8 @@ public interface ISecretStore
 {
     Task<SecretValue?> GetAsync(SecretReference reference, CancellationToken cancellationToken = default);
 
+    Task<SecretReference> PutAsync(SecretReference reference, SecretValue value, CancellationToken cancellationToken = default);
+
     Task<bool> ExistsAsync(SecretReference reference, CancellationToken cancellationToken = default);
 
     Task<SecretStoreConnectivityResult> CheckConnectivityAsync(CancellationToken cancellationToken = default);

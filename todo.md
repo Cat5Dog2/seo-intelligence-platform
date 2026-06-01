@@ -102,7 +102,7 @@ ISSUE-MVP-00X の続きから再開してください。
 - [x] ISSUE-MVP-003 Infrastructure共通基盤を実装する
 - [x] ISSUE-MVP-004 API共通仕様を実装する
 - [x] ISSUE-MVP-005 管理API、プロジェクトAPI、サイトAPIを実装する
-- [ ] ISSUE-MVP-006 Secret管理と監査ログを実装する
+- [x] ISSUE-MVP-006 Secret管理と監査ログを実装する
 - [ ] ISSUE-MVP-007 ラッコキーワードAPIクライアントとMockを実装する
 - [ ] ISSUE-MVP-008 ジョブ基盤を実装する
 - [ ] ISSUE-MVP-009 マスタ同期を実装する
@@ -357,22 +357,22 @@ ISSUE-MVP-00X の続きから再開してください。
 
 範囲:
 
-- [ ] `secretValue` と `keyRef` の同時指定を禁止する。
-- [ ] `secretValue` はSecret Storeへ保存し、DBには `key_ref` のみ保存する。
-- [ ] APIキー、Webhook URLの実値をレスポンス、ログ、監査ログへ出さない。
-- [ ] APIキー作成/更新/無効化/ローテーションを `audit_logs` に記録する。
-- [ ] 外部API実行、CSV出力、ジョブ操作を `audit_logs` に記録する。
-- [ ] 監査ログ検索APIで actor、resource、correlation_id、期間検索を行えるようにする。
+- [x] `secretValue` と `keyRef` の同時指定を禁止する。
+- [x] `secretValue` はSecret Storeへ保存し、DBには `key_ref` のみ保存する。
+- [x] APIキー、Webhook URLの実値をレスポンス、ログ、監査ログへ出さない。
+- [x] APIキー作成/更新/無効化/ローテーションを `audit_logs` に記録する。
+- [x] 外部API実行、CSV出力、ジョブ操作を `audit_logs` に記録する。
+- [x] 監査ログ検索APIで actor、resource、correlation_id、期間検索を行えるようにする。
 
 受入条件:
 
-- [ ] 秘密値がDB、ログ、レスポンス、監査ログに残らない。
-- [ ] APIキー操作、外部API実行、CSV出力、ジョブ操作の監査ログを検索できる。
+- [x] 秘密値がDB、ログ、レスポンス、監査ログに残らない。
+- [x] APIキー操作、外部API実行、CSV出力、ジョブ操作の監査ログを検索できる。
 
 検証:
 
-- [ ] `dotnet test --filter Category=Integration`
-- [ ] `dotnet test --filter Category=Security`
+- [x] `dotnet test --filter Category=Integration`
+- [x] `dotnet test --filter Category=Security`
 
 ### ISSUE-MVP-007 ラッコキーワードAPIクライアントとMockを実装する
 

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using SeoIntelligence.Application.Auditing;
 using SeoIntelligence.Application.Common;
 using SeoIntelligence.Domain.Common;
 using ProjectExecutionContext = SeoIntelligence.Application.ProjectContext.ProjectContext;
@@ -47,7 +48,7 @@ public interface IAdministrationService
 
     Task<Result<PagedResult<ExternalApiCallDetails>>> SearchExternalApiCallsAsync(ProjectExecutionContext context, SearchQuery query, CancellationToken cancellationToken = default);
 
-    Task<Result<PagedResult<AuditLogDetails>>> SearchAuditLogsAsync(ProjectExecutionContext context, SearchQuery query, CancellationToken cancellationToken = default);
+    Task<Result<PagedResult<AuditLogDetails>>> SearchAuditLogsAsync(ProjectExecutionContext context, AuditLogSearchQuery query, CancellationToken cancellationToken = default);
 
     Task<Result<AuditLogDetails>> GetAuditLogAsync(ProjectExecutionContext context, Guid auditLogId, CancellationToken cancellationToken = default);
 
