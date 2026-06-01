@@ -121,9 +121,11 @@ public interface IExternalApiUsageService
 
 public interface INotificationService
 {
-    Task<Result<NotificationResult>> SendTestAsync(ProjectExecutionContext context, Guid channelId, CancellationToken cancellationToken = default);
+    Task<Result<NotificationDeliveryDetails>> SendTestAsync(ProjectExecutionContext context, Guid channelId, CancellationToken cancellationToken = default);
 
     Task<Result<NotificationResult>> EnqueueAsync(ProjectExecutionContext context, NotificationRequest request, CancellationToken cancellationToken = default);
+
+    Task<Result<NotificationDeliveryDetails>> RetryAsync(ProjectExecutionContext context, Guid deliveryId, CancellationToken cancellationToken = default);
 }
 
 public interface IDashboardService
@@ -420,7 +422,13 @@ public sealed record ExternalApiUsageQuery(DateOnly? From, DateOnly? To, string?
 
 public sealed record ExternalApiUsageSummary(int CallCount, int ConsumedCredit, int RetryableFailureCount, int FatalFailureCount);
 
-public sealed record NotificationRequest(string EventType, string ResourceType, Guid? ResourceId, string Message);
+public sealed record NotificationRequest(
+    string EventType,
+    string? ResourceType,
+    Guid? ResourceId,
+    string Message,
+    Guid? JobId = null,
+    Guid? ChannelId = null);
 
 public sealed record NotificationResult(Guid? DeliveryId, NotificationDeliveryStatus Status);
 

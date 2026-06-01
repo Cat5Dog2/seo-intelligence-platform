@@ -1,5 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Net.Sockets;
+using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -7,9 +9,12 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using SeoIntelligence.Application.Auditing;
+using SeoIntelligence.Application.Configuration;
 using SeoIntelligence.Application.ProjectContext;
 using SeoIntelligence.Application.Secrets;
+using SeoIntelligence.Domain.Common;
 using SeoIntelligence.Infrastructure.Persistence;
+using SeoIntelligence.Infrastructure.Services;
 
 namespace IntegrationTests;
 
@@ -98,7 +103,11 @@ public sealed class ManagementApiIntegrationTests
     [Trait("Category", "Integration")]
     public async Task AdminEndpointsManageWorkspaceCredentialsNotificationsAndAuditLists()
     {
-        await using var factory = new ManagementApiFactory();
+        await using var discord = FakeDiscordWebhookServer.Start(HttpStatusCode.NoContent);
+        await using var factory = new ManagementApiFactory(new Dictionary<string, string?>
+        {
+            ["Secrets:discord-webhook-dev"] = discord.Url.ToString()
+        });
         using var client = CreateClient(factory);
 
         try
@@ -183,6 +192,8 @@ public sealed class ManagementApiIntegrationTests
                 var deliveryData = testDocument.RootElement.GetProperty("data");
                 deliveryId = deliveryData.GetProperty("deliveryId").GetGuid();
                 Assert.Equal("succeeded", deliveryData.GetProperty("status").GetString());
+                var requestBody = Assert.Single(discord.RequestBodies);
+                Assert.Contains("SEO Intelligence test notification", requestBody, StringComparison.Ordinal);
             }
 
             using (var deliveryResponse = await client.GetAsync($"/api/admin/notification-deliveries/{deliveryId}"))
@@ -216,6 +227,157 @@ public sealed class ManagementApiIntegrationTests
                 Assert.Contains(AuditLogActionNames.ApiCredentialDisabled, actions);
                 Assert.Contains(AuditLogActionNames.ApiCredentialEnabled, actions);
             }
+        }
+        finally
+        {
+            DeleteTempStoragePath(factory.StoragePath);
+        }
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    [Trait("Category", "Operational")]
+    public async Task NotificationTestRetryKeepsRetryingThenFailsAfterFiveRetryableWebhookFailures()
+    {
+        await using var discord = FakeDiscordWebhookServer.Start(
+            HttpStatusCode.TooManyRequests,
+            HttpStatusCode.TooManyRequests,
+            HttpStatusCode.TooManyRequests,
+            HttpStatusCode.TooManyRequests,
+            HttpStatusCode.TooManyRequests);
+        await using var factory = new ManagementApiFactory(new Dictionary<string, string?>
+        {
+            ["Secrets:discord-webhook-dev"] = discord.Url.ToString()
+        });
+        using var client = CreateClient(factory);
+
+        try
+        {
+            Guid channelId;
+            using (var channelResponse = await client.PostAsJsonAsync("/api/admin/notification-channels", new
+            {
+                projectId = (Guid?)null,
+                channelType = "discord",
+                name = "Retrying Alerts",
+                webhookSecretRef = "discord-webhook-dev",
+                eventTypes = new[] { "job_failed", "credit_low" }
+            }))
+            using (var channelDocument = await ReadJsonAsync(channelResponse))
+            {
+                Assert.Equal(HttpStatusCode.Created, channelResponse.StatusCode);
+                channelId = channelDocument.RootElement.GetProperty("data").GetProperty("channelId").GetGuid();
+            }
+
+            Guid deliveryId;
+            using (var testResponse = await client.PostAsync($"/api/admin/notification-channels/{channelId}/test", content: null))
+            using (var testDocument = await ReadJsonAsync(testResponse))
+            {
+                Assert.Equal(HttpStatusCode.OK, testResponse.StatusCode);
+                var deliveryData = testDocument.RootElement.GetProperty("data");
+                deliveryId = deliveryData.GetProperty("deliveryId").GetGuid();
+                Assert.Equal("retrying", deliveryData.GetProperty("status").GetString());
+                Assert.Equal(1, deliveryData.GetProperty("retryCount").GetInt32());
+                Assert.NotEqual(JsonValueKind.Null, deliveryData.GetProperty("nextRetryAt").ValueKind);
+            }
+
+            JsonElement retryData = default;
+            for (var attempt = 2; attempt <= 5; attempt++)
+            {
+                using var retryResponse = await client.PostAsync($"/api/admin/notification-deliveries/{deliveryId}/retry", content: null);
+                using var retryDocument = await ReadJsonAsync(retryResponse);
+
+                Assert.Equal(HttpStatusCode.OK, retryResponse.StatusCode);
+                retryData = retryDocument.RootElement.GetProperty("data").Clone();
+                Assert.Equal(attempt, retryData.GetProperty("retryCount").GetInt32());
+            }
+
+            Assert.Equal("failed", retryData.GetProperty("status").GetString());
+            Assert.Equal(JsonValueKind.Null, retryData.GetProperty("nextRetryAt").ValueKind);
+            Assert.Equal(5, discord.RequestBodies.Count);
+        }
+        finally
+        {
+            DeleteTempStoragePath(factory.StoragePath);
+        }
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    [Trait("Category", "Operational")]
+    public async Task SearchVolume402MockRecordsFatalJobCreditLowNotificationAndAudit()
+    {
+        await using var discord = FakeDiscordWebhookServer.Start(HttpStatusCode.NoContent);
+        await using var factory = new ManagementApiFactory(new Dictionary<string, string?>
+        {
+            ["Secrets:discord-webhook-dev"] = discord.Url.ToString(),
+            ["RakkoKeyword:Mode"] = "Mock",
+            ["RakkoKeyword:MockStatusCode"] = "402"
+        });
+        using var client = CreateClient(factory);
+
+        try
+        {
+            var projectId = await CreateProjectAsync(client, "Credit Alert Project");
+
+            using (var channelResponse = await client.PostAsJsonAsync("/api/admin/notification-channels", new
+            {
+                projectId,
+                channelType = "discord",
+                name = "Credit Alerts",
+                webhookSecretRef = "discord-webhook-dev",
+                eventTypes = new[] { "job_failed", "credit_low" }
+            }))
+            using (var channelDocument = await ReadJsonAsync(channelResponse))
+            {
+                Assert.Equal(HttpStatusCode.Created, channelResponse.StatusCode);
+                Assert.Equal(projectId, channelDocument.RootElement.GetProperty("data").GetProperty("projectId").GetGuid());
+            }
+
+            Guid jobId;
+            using (var response = await client.PostAsJsonAsync(
+                $"/api/projects/{projectId}/search-volume/jobs",
+                new
+                {
+                    keywords = new[] { "seo" },
+                    location = "JP",
+                    language = "ja",
+                    aggregationPeriodMonths = 12,
+                    seoDifficulty = true
+                }))
+            using (var document = await ReadJsonAsync(response))
+            {
+                Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+                jobId = document.RootElement.GetProperty("data").GetProperty("jobId").GetGuid();
+            }
+
+            await using (var scope = factory.Services.CreateAsyncScope())
+            {
+                var dispatcher = scope.ServiceProvider.GetRequiredService<IJobDispatcher>();
+                await dispatcher.DispatchAsync(jobId);
+            }
+
+            await using (var scope = factory.Services.CreateAsyncScope())
+            {
+                var dbContext = scope.ServiceProvider.GetRequiredService<SeoIntelligenceDbContext>();
+                var job = await dbContext.Jobs.AsNoTracking().SingleAsync(entity => entity.Id == jobId);
+                Assert.Equal(StatusValues.FailedFatal, job.Status);
+
+                var delivery = await dbContext.NotificationDeliveries.AsNoTracking().SingleAsync(entity => entity.JobId == jobId);
+                Assert.Equal("credit_low", delivery.EventType);
+                Assert.Equal(StatusValues.Succeeded, delivery.Status);
+                Assert.Equal(projectId, delivery.ProjectId);
+
+                var externalCall = await dbContext.ExternalApiCalls.AsNoTracking().SingleAsync(entity => entity.JobId == jobId);
+                Assert.Equal(402, externalCall.StatusCode);
+
+                var auditLog = await dbContext.AuditLogs.AsNoTracking().SingleAsync(entity =>
+                    entity.Action == AuditLogActionNames.JobFailed &&
+                    entity.ResourceId == jobId.ToString("D"));
+                Assert.Equal(AuditLogResourceTypes.Job, auditLog.ResourceType);
+            }
+
+            Assert.Single(discord.RequestBodies);
+            Assert.Contains("credit_low", discord.RequestBodies[0], StringComparison.Ordinal);
         }
         finally
         {
@@ -452,15 +614,21 @@ public sealed class ManagementApiIntegrationTests
     private sealed class ManagementApiFactory : WebApplicationFactory<Program>
     {
         private readonly string _databaseName = Guid.NewGuid().ToString("N");
+        private readonly IReadOnlyDictionary<string, string?> _additionalConfiguration;
 
         public string StoragePath { get; } = CreateTempStoragePath();
+
+        public ManagementApiFactory(IReadOnlyDictionary<string, string?>? additionalConfiguration = null)
+        {
+            _additionalConfiguration = additionalConfiguration ?? new Dictionary<string, string?>();
+        }
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.UseEnvironment("Testing");
             builder.ConfigureAppConfiguration((_, configuration) =>
             {
-                configuration.AddInMemoryCollection(new Dictionary<string, string?>
+                var settings = new Dictionary<string, string?>
                 {
                     ["ConnectionStrings:Default"] = "",
                     ["Redis:ConnectionString"] = "",
@@ -471,13 +639,25 @@ public sealed class ManagementApiIntegrationTests
                     ["SecretStore:ConfigurationPrefix"] = "Secrets",
                     ["Hangfire:Storage"] = "PostgreSQL",
                     ["OpenTelemetry:ServiceName"] = "IntegrationTests"
-                });
+                };
+
+                foreach (var pair in _additionalConfiguration)
+                {
+                    settings[pair.Key] = pair.Value;
+                }
+
+                configuration.AddInMemoryCollection(settings);
             });
 
             builder.ConfigureServices(services =>
             {
                 services.AddDbContext<SeoIntelligenceDbContext>(options =>
                     options.UseInMemoryDatabase(_databaseName));
+                if (_additionalConfiguration.TryGetValue("RakkoKeyword:MockStatusCode", out var mockStatusCode) &&
+                    int.TryParse(mockStatusCode, out var parsedMockStatusCode))
+                {
+                    services.Configure<RakkoKeywordOptions>(options => options.MockStatusCode = parsedMockStatusCode);
+                }
 
                 using var provider = services.BuildServiceProvider();
                 using var scope = provider.CreateScope();
@@ -485,6 +665,83 @@ public sealed class ManagementApiIntegrationTests
                 context.Database.EnsureDeleted();
                 context.Database.EnsureCreated();
             });
+        }
+    }
+
+    private sealed class FakeDiscordWebhookServer : IAsyncDisposable
+    {
+        private readonly TcpListener _listener;
+        private readonly CancellationTokenSource _cancellation = new();
+        private readonly Queue<HttpStatusCode> _responses;
+        private readonly Task _acceptLoop;
+
+        private FakeDiscordWebhookServer(TcpListener listener, Queue<HttpStatusCode> responses)
+        {
+            _listener = listener;
+            _responses = responses;
+            var endpoint = (IPEndPoint)listener.LocalEndpoint;
+            Url = new Uri($"http://127.0.0.1:{endpoint.Port}/discord");
+            _acceptLoop = Task.Run(AcceptLoopAsync);
+        }
+
+        public Uri Url { get; }
+
+        public List<string> RequestBodies { get; } = [];
+
+        public static FakeDiscordWebhookServer Start(params HttpStatusCode[] responses)
+        {
+            var listener = new TcpListener(IPAddress.Loopback, 0);
+            listener.Start();
+            return new FakeDiscordWebhookServer(
+                listener,
+                new Queue<HttpStatusCode>(responses.Length == 0 ? [HttpStatusCode.NoContent] : responses));
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            _cancellation.Cancel();
+            _listener.Stop();
+
+            try
+            {
+                await _acceptLoop;
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+
+            _cancellation.Dispose();
+        }
+
+        private async Task AcceptLoopAsync()
+        {
+            while (!_cancellation.IsCancellationRequested)
+            {
+                using var client = await _listener.AcceptTcpClientAsync(_cancellation.Token);
+                await HandleClientAsync(client, _cancellation.Token);
+            }
+        }
+
+        private async Task HandleClientAsync(TcpClient client, CancellationToken cancellationToken)
+        {
+            await using var stream = client.GetStream();
+            var buffer = new byte[8192];
+            var bytesRead = await stream.ReadAsync(buffer, cancellationToken);
+            var request = Encoding.UTF8.GetString(buffer, 0, bytesRead);
+            var bodyStart = request.IndexOf("\r\n\r\n", StringComparison.Ordinal);
+            if (bodyStart >= 0)
+            {
+                RequestBodies.Add(request[(bodyStart + 4)..]);
+            }
+
+            var status = _responses.Count > 0 ? _responses.Dequeue() : HttpStatusCode.NoContent;
+            var reason = status == HttpStatusCode.NoContent ? "No Content" : "Too Many Requests";
+            var response = Encoding.ASCII.GetBytes(
+                $"HTTP/1.1 {(int)status} {reason}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
+            await stream.WriteAsync(response, cancellationToken);
         }
     }
 }

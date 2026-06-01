@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Globalization;
@@ -36,6 +35,12 @@ public static class AdministrationServiceCollectionExtensions
         services.TryAddScoped<DataTransferService>();
         services.TryAddScoped<IDataTransferService>(serviceProvider => serviceProvider.GetRequiredService<DataTransferService>());
         services.TryAddScoped<IDashboardService, DashboardService>();
+        services.TryAddScoped<INotificationService, NotificationService>();
+        services.TryAddScoped<NotificationDeliveryJob>();
+        services.TryAddScoped<INotificationDeliveryScheduler, HangfireNotificationDeliveryScheduler>();
+        services.TryAddSingleton<IDiscordWebhookClient>(serviceProvider => new DiscordWebhookClient(
+            new HttpClient { Timeout = TimeSpan.FromSeconds(10) },
+            serviceProvider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<DiscordWebhookClient>>()));
         services.TryAddScoped<IJobService, JobService>();
         services.TryAddScoped<IJobQueueClient, HangfireJobQueueClient>();
         services.TryAddScoped<IJobDispatcher, JobDispatcher>();
@@ -55,7 +60,8 @@ internal sealed class AdministrationService(
     SeoIntelligenceDbContext dbContext,
     TimeProvider timeProvider,
     ISecretStore secretStore,
-    IAuditLogWriter auditLogWriter)
+    IAuditLogWriter auditLogWriter,
+    INotificationService notificationService)
     : IAdministrationService
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -403,40 +409,7 @@ internal sealed class AdministrationService(
         ProjectExecutionContext context,
         Guid channelId,
         CancellationToken cancellationToken = default)
-    {
-        var channel = await FindNotificationChannelAsync(context.WorkspaceId, channelId, cancellationToken);
-        if (channel is null)
-        {
-            return Failure<NotificationDeliveryDetails>(ErrorCode.NotFound, "Notification channel was not found.");
-        }
-
-        if (!string.Equals(channel.Status, StatusValues.Active, StringComparison.OrdinalIgnoreCase))
-        {
-            return Failure<NotificationDeliveryDetails>(ErrorCode.Conflict, "Notification channel is disabled.");
-        }
-
-        var now = NowUtc();
-        var delivery = new NotificationDeliveryEntity
-        {
-            Id = UuidV7.New(),
-            WorkspaceId = context.WorkspaceId,
-            ProjectId = channel.ProjectId,
-            ChannelId = channel.Id,
-            EventType = "test",
-            PayloadHash = HashText($"test|{channel.Id}|{context.CorrelationId}|{now:O}"),
-            Status = StatusValues.Succeeded,
-            RetryCount = 0,
-            SentAt = now,
-            DeliveredAt = now,
-            CorrelationId = context.CorrelationId,
-            CreatedAt = now
-        };
-
-        dbContext.NotificationDeliveries.Add(delivery);
-        await dbContext.SaveChangesAsync(cancellationToken);
-
-        return Result<NotificationDeliveryDetails>.Success(MapNotificationDelivery(delivery));
-    }
+        => await notificationService.SendTestAsync(context, channelId, cancellationToken);
 
     public async Task<Result<PagedResult<NotificationDeliveryDetails>>> SearchNotificationDeliveriesAsync(
         ProjectExecutionContext context,
@@ -479,28 +452,7 @@ internal sealed class AdministrationService(
         ProjectExecutionContext context,
         Guid deliveryId,
         CancellationToken cancellationToken = default)
-    {
-        var delivery = await FindNotificationDeliveryAsync(context.WorkspaceId, deliveryId, cancellationToken);
-        if (delivery is null)
-        {
-            return Failure<NotificationDeliveryDetails>(ErrorCode.NotFound, "Notification delivery was not found.");
-        }
-
-        if (!string.Equals(delivery.Status, StatusValues.Failed, StringComparison.OrdinalIgnoreCase)
-            && !string.Equals(delivery.Status, StatusValues.Retrying, StringComparison.OrdinalIgnoreCase))
-        {
-            return Failure<NotificationDeliveryDetails>(ErrorCode.Conflict, "Only failed or retrying notification deliveries can be retried.");
-        }
-
-        var now = NowUtc();
-        delivery.Status = StatusValues.Retrying;
-        delivery.RetryCount += 1;
-        delivery.NextRetryAt = now;
-        delivery.CorrelationId = context.CorrelationId ?? delivery.CorrelationId;
-        await dbContext.SaveChangesAsync(cancellationToken);
-
-        return Result<NotificationDeliveryDetails>.Success(MapNotificationDelivery(delivery));
-    }
+        => await notificationService.RetryAsync(context, deliveryId, cancellationToken);
 
     public async Task<Result<PagedResult<ExternalApiCallDetails>>> SearchExternalApiCallsAsync(
         ProjectExecutionContext context,
@@ -1485,9 +1437,6 @@ internal sealed class AdministrationService(
 
     private static IReadOnlyList<string> DeserializeStringArray(string json)
         => JsonSerializer.Deserialize<string[]>(json, JsonOptions) ?? [];
-
-    private static string HashText(string value)
-        => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
 
     private static string ToCamelCase(string value)
     {
