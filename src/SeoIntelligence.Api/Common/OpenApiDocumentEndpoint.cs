@@ -134,6 +134,9 @@ internal static class OpenApiDocumentEndpoint
         paths["/api/admin/notification-deliveries"] = PathItem(get: "List notification deliveries");
         paths["/api/admin/notification-deliveries/{deliveryId}"] = PathItem(get: "Get notification delivery");
         paths["/api/admin/notification-deliveries/{deliveryId}/retry"] = PathItem(post: "Retry notification delivery");
+        paths["/api/admin/master-data/sync"] = PathItem(post: "Register master data sync job", postSuccessCode: "202");
+        paths["/api/master-data/locations"] = PathItem(get: "List active master locations");
+        paths["/api/master-data/languages"] = PathItem(get: "List active master languages");
         paths["/api/admin/external-api-calls"] = PathItem(get: "List external API calls");
         paths["/api/admin/audit-logs"] = PathItem(get: "List audit logs");
         paths["/api/admin/audit-logs/{auditLogId}"] = PathItem(get: "Get audit log");

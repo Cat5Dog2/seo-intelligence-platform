@@ -43,9 +43,15 @@ internal static class AdministrationEndpoints
         admin.MapGet("/notification-deliveries/{deliveryId:guid}", GetNotificationDeliveryAsync);
         admin.MapPost("/notification-deliveries/{deliveryId:guid}/retry", RetryNotificationDeliveryAsync);
 
+        admin.MapPost("/master-data/sync", SyncMasterDataAsync);
+
         admin.MapGet("/external-api-calls", SearchExternalApiCallsAsync);
         admin.MapGet("/audit-logs", SearchAuditLogsAsync);
         admin.MapGet("/audit-logs/{auditLogId:guid}", GetAuditLogAsync);
+
+        var masterData = app.MapGroup("/api/master-data");
+        masterData.MapGet("/locations", ListLocationsAsync);
+        masterData.MapGet("/languages", ListLanguagesAsync);
 
         var projects = app.MapGroup("/api/projects");
         projects.MapGet("", SearchProjectsAsync);
@@ -286,6 +292,38 @@ internal static class AdministrationEndpoints
         => ApiResponseResults.FromResult(
             httpContext,
             await service.RetryNotificationDeliveryAsync(CreateContext(contextService, httpContext), deliveryId, cancellationToken));
+
+    private static async Task<IResult> SyncMasterDataAsync(
+        [FromServices] IMasterDataService service,
+        [FromServices] IProjectContextService contextService,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        var result = await service.SyncAsync(CreateContext(contextService, httpContext), cancellationToken);
+        if (!result.IsSuccess)
+        {
+            return ApiResponseResults.FromError(httpContext, result.Error!);
+        }
+
+        var job = result.Value!;
+        return ApiResponseResults.Accepted(httpContext, job, new ApiResponseMeta(JobId: job.JobId));
+    }
+
+    private static async Task<IResult> ListLocationsAsync(
+        [FromServices] IMasterDataService service,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+        => ApiResponseResults.FromResult(
+            httpContext,
+            await service.ListLocationsAsync(cancellationToken));
+
+    private static async Task<IResult> ListLanguagesAsync(
+        [FromServices] IMasterDataService service,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+        => ApiResponseResults.FromResult(
+            httpContext,
+            await service.ListLanguagesAsync(cancellationToken));
 
     private static async Task<IResult> SearchExternalApiCallsAsync(
         [FromServices] IAdministrationService service,

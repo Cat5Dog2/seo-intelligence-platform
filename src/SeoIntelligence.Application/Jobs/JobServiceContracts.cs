@@ -43,6 +43,12 @@ public interface IJobService
         JobFailure failure,
         CancellationToken cancellationToken = default);
 
+    Task<Result<JobDetails>> CompleteAsync(
+        ProjectExecutionContext context,
+        Guid jobId,
+        JobCompletion completion,
+        CancellationToken cancellationToken = default);
+
     Task<Result<bool>> CanIngestExternalResultAsync(
         ProjectExecutionContext context,
         Guid jobId,
@@ -92,6 +98,10 @@ public sealed record JobFailure(
     public static JobFailure DatabaseTransient(string? message = null)
         => new(JobFailureKind.DatabaseTransient, null, "database_transient", message ?? "A transient database failure occurred.");
 }
+
+public sealed record JobCompletion(
+    int Progress = 100,
+    JobResultResource? ResultResource = null);
 
 public enum JobFailureKind
 {

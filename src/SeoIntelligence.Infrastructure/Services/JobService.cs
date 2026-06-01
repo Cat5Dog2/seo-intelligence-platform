@@ -392,6 +392,40 @@ internal sealed class JobService(
         return Result<JobDetails>.Success(MapJob(job));
     }
 
+    public async Task<Result<JobDetails>> CompleteAsync(
+        ProjectExecutionContext context,
+        Guid jobId,
+        JobCompletion completion,
+        CancellationToken cancellationToken = default)
+    {
+        var job = await FindJobAsync(context, jobId, asTracking: true, cancellationToken);
+        if (job is null)
+        {
+            return Failure<JobDetails>(ErrorCode.NotFound, "Job was not found.");
+        }
+
+        var currentStatus = StatusExtensions.ToJobStatus(job.Status);
+        if (!JobStatusTransitions.CanTransition(currentStatus, JobStatus.Succeeded))
+        {
+            return Failure<JobDetails>(ErrorCode.Conflict, "Job status does not allow completing this job.");
+        }
+
+        var before = ToJobAuditSnapshot(job);
+        var now = NowUtc();
+        job.Status = StatusValues.Succeeded;
+        job.Progress = Math.Clamp(completion.Progress, 0, 100);
+        job.NextRunAt = null;
+        job.ErrorJson = null;
+        job.ResultResourceType = completion.ResultResource?.ResourceType;
+        job.ResultResourceId = completion.ResultResource?.ResourceId;
+        job.UpdatedAt = now;
+        job.CompletedAt = now;
+
+        AddJobAudit(context, AuditLogActionNames.JobSucceeded, job, before);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return Result<JobDetails>.Success(MapJob(job));
+    }
+
     public async Task<Result<bool>> CanIngestExternalResultAsync(
         ProjectExecutionContext context,
         Guid jobId,
@@ -787,12 +821,31 @@ internal sealed class HangfireJobQueueClient(
 }
 
 internal sealed class JobDispatcher(
+    SeoIntelligenceDbContext dbContext,
+    MasterDataSyncJob masterDataSyncJob,
     ILogger<JobDispatcher> logger)
     : IJobDispatcher
 {
-    public Task DispatchAsync(Guid jobId)
+    public async Task DispatchAsync(Guid jobId)
     {
-        logger.LogInformation("Job {job_id} was dequeued. Concrete job handlers are registered by feature-specific issues.", jobId);
-        return Task.CompletedTask;
+        var jobType = await dbContext.Jobs
+            .AsNoTracking()
+            .Where(entity => entity.Id == jobId)
+            .Select(entity => entity.JobType)
+            .FirstOrDefaultAsync();
+
+        if (jobType is null)
+        {
+            logger.LogWarning("Job {job_id} was dequeued but no job row was found.", jobId);
+            return;
+        }
+
+        if (string.Equals(jobType, MasterDataSyncJob.JobType, StringComparison.Ordinal))
+        {
+            await masterDataSyncJob.ExecuteAsync(jobId);
+            return;
+        }
+
+        logger.LogInformation("Job {job_id} of type {job_type} was dequeued but no concrete handler is registered.", jobId, jobType);
     }
 }

@@ -451,20 +451,20 @@ ISSUE-MVP-00X の続きから再開してください。
 
 範囲:
 
-- [ ] `MasterDataSyncJob` を実装する。
-- [ ] `POST /api/admin/master-data/sync` を実装する。
-- [ ] `GET /api/master-data/locations` を実装する。
-- [ ] `GET /api/master-data/languages` を実装する。
-- [ ] `locations`, `languages` のupsertとstatus管理を実装する。
+- [x] `MasterDataSyncJob` を実装する。
+- [x] `POST /api/admin/master-data/sync` を実装する。
+- [x] `GET /api/master-data/locations` を実装する。
+- [x] `GET /api/master-data/languages` を実装する。
+- [x] `locations`, `languages` のupsertとstatus管理を実装する。
 
 受入条件:
 
-- [ ] マスタ同期ジョブが成功する。
-- [ ] 地域/言語一覧がAPIで取得できる。
+- [x] マスタ同期ジョブが成功する。
+- [x] 地域/言語一覧がAPIで取得できる。
 
 検証:
 
-- [ ] `dotnet test --filter Category=Integration`
+- [x] `dotnet test --filter Category=Integration`
 
 ### ISSUE-MVP-010 キーワード探索を実装する
 

@@ -297,9 +297,9 @@ public sealed record SiteDetails(
     DateTime UpdatedAt,
     DateTime? ArchivedAt);
 
-public sealed record LocationSummary(string Provider, string Code, string Name, string? CountryCode, LifecycleStatus Status);
+public sealed record LocationSummary(string Provider, string Code, string Name, string? CountryCode, string Status);
 
-public sealed record LanguageSummary(string Provider, string Code, string Name, LifecycleStatus Status);
+public sealed record LanguageSummary(string Provider, string Code, string Name, string Status);
 
 public sealed record KeywordDiscoveryRequest(
     IReadOnlyList<string> Seeds,
@@ -348,4 +348,4 @@ public sealed record DashboardSnapshot(
     int FailedJobCount,
     int ConsumedCredit);
 
-public sealed record JobReference(Guid JobId, JobStatus Status);
+public sealed record JobReference(Guid JobId, string Status);
