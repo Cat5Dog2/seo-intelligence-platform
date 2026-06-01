@@ -107,9 +107,11 @@ public interface IScoringService
 
 public interface IDataTransferService
 {
-    Task<Result<DataExportReference>> CreateCsvExportAsync(ProjectExecutionContext context, DataExportRequest request, CancellationToken cancellationToken = default);
+    Task<Result<JobReference>> CreateCsvExportAsync(ProjectExecutionContext context, DataExportRequest request, CancellationToken cancellationToken = default);
 
-    Task<Result<DataExportReference>> GetExportAsync(ProjectExecutionContext context, Guid exportId, CancellationToken cancellationToken = default);
+    Task<Result<DataExportDetails>> GetExportAsync(ProjectExecutionContext context, Guid exportId, CancellationToken cancellationToken = default);
+
+    Task<Result<DataExportDownload>> CreateDownloadUrlAsync(ProjectExecutionContext context, Guid exportId, CancellationToken cancellationToken = default);
 }
 
 public interface IExternalApiUsageService
@@ -394,9 +396,25 @@ public sealed record OpportunityScoreResult(IReadOnlyList<OpportunityScoreRow> S
 
 public sealed record OpportunityScoreRow(Guid KeywordId, decimal Score, IReadOnlyDictionary<string, decimal> Components);
 
-public sealed record DataExportRequest(string ExportType, SearchQuery Query);
+public sealed record DataExportRequest(
+    string? ExportType,
+    JsonElement? Filter = null,
+    IReadOnlyList<string>? Columns = null);
 
-public sealed record DataExportReference(Guid ExportId, JobStatus Status, string? FileUri);
+public sealed record DataExportDetails(
+    Guid ExportId,
+    Guid? ProjectId,
+    string ExportType,
+    string Format,
+    string Status,
+    string? FileUri,
+    DateTime CreatedAt,
+    DateTime? CompletedAt);
+
+public sealed record DataExportDownload(
+    Guid ExportId,
+    string DownloadUrl,
+    DateTime ExpiresAt);
 
 public sealed record ExternalApiUsageQuery(DateOnly? From, DateOnly? To, string? Provider);
 
