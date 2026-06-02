@@ -38,6 +38,10 @@ internal sealed class JobService(
     ILogger<JobService> logger)
     : IJobService
 {
+    private const int DefaultRetryableFailureMaxRetryCount = 3;
+    private const int RateLimitMaxRetryCount = 5;
+    private const int ServiceUnavailableMaxRetryCount = 5;
+
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private static readonly string[] ActiveExternalRequestStatuses =
     [
@@ -369,7 +373,14 @@ internal sealed class JobService(
         }
 
         var currentStatus = StatusExtensions.ToJobStatus(job.Status);
-        var nextStatus = ClassifyFailure(failure);
+        var classifiedStatus = ClassifyFailure(failure);
+        var nextRetryCount = classifiedStatus == JobStatus.FailedRetryable
+            ? job.RetryCount + 1
+            : job.RetryCount;
+        var nextStatus = classifiedStatus == JobStatus.FailedRetryable &&
+            nextRetryCount > MaxRetryCount(failure)
+                ? JobStatus.FailedFatal
+                : classifiedStatus;
         if (!JobStatusTransitions.CanTransition(currentStatus, nextStatus))
         {
             return Failure<JobDetails>(ErrorCode.Conflict, "Job status does not allow recording this failure.");
@@ -381,9 +392,13 @@ internal sealed class JobService(
         job.ErrorJson = SerializeFailure(failure, nextStatus);
         job.UpdatedAt = now;
 
+        if (classifiedStatus == JobStatus.FailedRetryable)
+        {
+            job.RetryCount = nextRetryCount;
+        }
+
         if (nextStatus == JobStatus.FailedRetryable)
         {
-            job.RetryCount += 1;
             job.NextRunAt = now + CalculateBackoff(job.RetryCount, failure);
             job.CompletedAt = null;
         }
@@ -506,6 +521,16 @@ internal sealed class JobService(
             JobFailureKind.Timeout or JobFailureKind.DatabaseTransient
                 => JobStatus.FailedRetryable,
             _ => JobStatus.FailedFatal
+        };
+
+    private static int MaxRetryCount(JobFailure failure)
+        => failure.Kind switch
+        {
+            JobFailureKind.HttpStatusCode when failure.HttpStatusCode == 429 => RateLimitMaxRetryCount,
+            JobFailureKind.HttpStatusCode when failure.HttpStatusCode == 503 => ServiceUnavailableMaxRetryCount,
+            JobFailureKind.HttpStatusCode => DefaultRetryableFailureMaxRetryCount,
+            JobFailureKind.Timeout or JobFailureKind.DatabaseTransient => DefaultRetryableFailureMaxRetryCount,
+            _ => 0
         };
 
     private static TimeSpan CalculateBackoff(int retryCount, JobFailure failure)

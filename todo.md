@@ -113,7 +113,7 @@ ISSUE-MVP-00X の続きから再開してください。
 - [x] ISSUE-MVP-014 Discord通知を実装する
 - [x] ISSUE-MVP-015 Blazor共通UIと管理画面を実装する
 - [x] ISSUE-MVP-016 Blazorキーワード探索、検索ボリューム、ダッシュボードを実装する
-- [ ] ISSUE-MVP-017 MVP受入テストを整備する
+- [x] ISSUE-MVP-017 MVP受入テストを整備する
 - [ ] ISSUE-MVP-018 MVP運用、監視、ドキュメントを整備する
 - [ ] ISSUE-P2-001 Phase 2 DB/API/外部API基盤を追加する
 - [ ] ISSUE-P2-002 競合分析と獲得語/ページ分析を実装する
@@ -681,26 +681,26 @@ ISSUE-MVP-00X の続きから再開してください。
 
 範囲:
 
-- [ ] Unit: スコアリング、入力検証、DTOマッピング、状態遷移。
-- [ ] Integration: CRUD、ジョブ登録、DB保存、スコープ検証、監査ログ。
-- [ ] Contract: ラッコAPI DTO、必須項目、エラー形式、`requestId`、`consumedCredit`。
-- [ ] UI Component: 入力、バリデーション、空状態、ジョブ進捗表示。
-- [ ] E2E: 管理操作、キーワード探索、一括調査、CSV出力。
-- [ ] Security: APIキー/Webhook非表示、プロジェクト分離。
-- [ ] Operational: 429/402/403/500/503、APIキー無効、ジョブ再実行、通知。
-- [ ] T-MVP-001からT-MVP-020を実装する。
+- [x] Unit: スコアリング、入力検証、DTOマッピング、状態遷移。
+- [x] Integration: CRUD、ジョブ登録、DB保存、スコープ検証、監査ログ。
+- [x] Contract: ラッコAPI DTO、必須項目、エラー形式、`requestId`、`consumedCredit`。
+- [x] UI Component: 入力、バリデーション、空状態、ジョブ進捗表示。
+- [x] E2E: 管理操作、キーワード探索、一括調査、CSV出力。
+- [x] Security: APIキー/Webhook非表示、プロジェクト分離。
+- [x] Operational: 429/402/403/500/503、APIキー無効、ジョブ再実行、通知。
+- [x] T-MVP-001からT-MVP-020を実装する。
 
 受入条件:
 
-- [ ] MVP完了条件のACが通る。
-- [ ] 主要障害系がMockで確認済み。
+- [x] MVP完了条件のACが通る。
+- [x] 主要障害系がMockで確認済み。
 
 検証:
 
-- [ ] `dotnet test`
-- [ ] `dotnet test --filter Category=Unit`
-- [ ] `dotnet test --filter Category=Integration`
-- [ ] `dotnet test --filter Category=Contract`
+- [x] `dotnet test`
+- [x] `dotnet test --filter Category=Unit`
+- [x] `dotnet test --filter Category=Integration`
+- [x] `dotnet test --filter Category=Contract`
 
 ### ISSUE-MVP-018 MVP運用、監視、ドキュメントを整備する
 
