@@ -102,6 +102,18 @@ dotnet run --project src/SeoIntelligence.Worker
 - Git
 - PowerShell
 
+ローカル依存サービスは `compose.yaml` で起動します。Web/API/Worker本体は、MVP開発中はローカル `dotnet run` を標準にします。
+
+```powershell
+docker compose up -d postgres redis minio minio-init
+docker compose ps
+dotnet run --project src/SeoIntelligence.Api
+dotnet run --project src/SeoIntelligence.Web
+dotnet run --project src/SeoIntelligence.Worker
+```
+
+詳細な起動、停止、ログ確認、データ初期化手順は `docs/environment_setup.md` を参照してください。
+
 外部APIは通常開発とCIではMockを既定にします。Real APIを使う場合は、契約スコープ、APIキー状態、クレジット消費を確認してから明示的に切り替えます。
 
 ## 設計ドキュメント

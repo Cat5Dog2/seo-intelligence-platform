@@ -53,12 +53,57 @@ docker compose up -d postgres redis minio minio-init
 docker compose ps
 ```
 
+このComposeはローカル依存サービス専用であり、MVP開発中のWeb/API/Workerは原則としてローカルの `dotnet run` で起動する。IDEデバッグ、Hot Reload、テスト実行を優先するため、アプリ本体のDocker起動はMVP運用整備時に別途追加する。
+
 | サービス | ローカルURL/ポート | 用途 |
 | --- | --- | --- |
 | PostgreSQL | `localhost:5432` | 業務DB、Hangfire PostgreSQL storage。 |
 | Redis | `localhost:6379` | キャッシュ、分散ロック、レート制御、一時状態。 |
 | MinIO API | `http://localhost:9000` | Storage代替。bucketは`seo-intelligence`。 |
 | MinIO Console | `http://localhost:9001` | ローカルStorage確認。 |
+
+### 3.1 よく使うCompose操作
+
+| 目的 | コマンド | 備考 |
+| --- | --- | --- |
+| 依存サービスを起動 | `docker compose up -d postgres redis minio minio-init` | 初回はイメージpullとMinIO bucket作成に時間がかかる。 |
+| 状態確認 | `docker compose ps` | `postgres`、`redis`、`minio` が `running` であることを確認する。 |
+| ヘルスチェック確認 | `docker compose ps postgres redis` | PostgreSQL/Redisのhealthが `healthy` になるまで待つ。 |
+| ログ確認 | `docker compose logs -f postgres redis minio` | 接続不可時や起動失敗時の一次確認に使う。 |
+| 停止 | `docker compose stop postgres redis minio` | データvolumeは保持する。 |
+| 停止とコンテナ削除 | `docker compose down` | データvolumeは保持する。通常はこちらで十分。 |
+| データ初期化 | `docker compose down -v` | DB/Redis/MinIOのローカルデータを削除する。必要時だけ実行する。 |
+
+### 3.2 依存サービス起動後のアプリ起動
+
+依存サービスを起動してから、必要なアプリを別ターミナルで起動する。
+
+```powershell
+dotnet run --project src/SeoIntelligence.Api
+dotnet run --project src/SeoIntelligence.Web
+dotnet run --project src/SeoIntelligence.Worker
+```
+
+既定のローカル接続先は各 `appsettings.Development.json` と一致させる。
+
+| アプリ | 既定URL/接続先 |
+| --- | --- |
+| API | `http://localhost:5251` |
+| Web | `http://localhost:5295`、API接続先 `http://localhost:5251` |
+| Worker | PostgreSQL `localhost:5432`、Redis `localhost:6379` |
+
+Webだけを起動すると、API未起動時に画面へ `localhost:5251` 接続エラーが表示される。Web画面を確認する場合は、先にAPIを起動する。
+
+### 3.3 接続確認コマンド
+
+```powershell
+docker compose ps
+dotnet run --project src/SeoIntelligence.Api
+Invoke-WebRequest -UseBasicParsing http://localhost:5251/healthz
+Invoke-WebRequest -UseBasicParsing http://localhost:5251/readyz
+```
+
+`/healthz` はAPIホストの起動確認、`/readyz` はDB、Redis、Storage、Secret Storeを含む依存サービス確認に使う。`/readyz` がunhealthyの場合は、`docker compose ps` と `docker compose logs` で対象サービスを確認する。
 
 ## 4. 想定ディレクトリ
 
