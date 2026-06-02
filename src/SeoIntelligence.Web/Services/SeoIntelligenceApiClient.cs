@@ -188,11 +188,73 @@ public sealed class SeoIntelligenceApiClient : ISeoIntelligenceApiClient
     public Task<ApiClientResult<JobDetails>> RetryJobAsync(Guid jobId, CancellationToken cancellationToken = default)
         => SendAsync<JobDetails>(HttpMethod.Post, $"/api/jobs/{jobId:D}/retry", cancellationToken: cancellationToken);
 
+    public Task<ApiClientResult<JobDetails>> GetJobAsync(Guid jobId, CancellationToken cancellationToken = default)
+        => SendAsync<JobDetails>(HttpMethod.Get, $"/api/jobs/{jobId:D}", cancellationToken: cancellationToken);
+
     public Task<ApiClientResult<IReadOnlyList<LocationSummary>>> ListLocationsAsync(CancellationToken cancellationToken = default)
         => SendAsync<IReadOnlyList<LocationSummary>>(HttpMethod.Get, "/api/master-data/locations", cancellationToken: cancellationToken);
 
     public Task<ApiClientResult<IReadOnlyList<LanguageSummary>>> ListLanguagesAsync(CancellationToken cancellationToken = default)
         => SendAsync<IReadOnlyList<LanguageSummary>>(HttpMethod.Get, "/api/master-data/languages", cancellationToken: cancellationToken);
+
+    public Task<ApiClientResult<DashboardSnapshot>> GetDashboardAsync(Guid projectId, CancellationToken cancellationToken = default)
+        => SendAsync<DashboardSnapshot>(HttpMethod.Get, $"/api/projects/{projectId:D}/dashboard", cancellationToken: cancellationToken);
+
+    public Task<ApiClientResult<KeywordDiscoveryResult>> DiscoverKeywordsAsync(
+        Guid projectId,
+        KeywordDiscoveryRequest request,
+        CancellationToken cancellationToken = default)
+        => SendAsync<KeywordDiscoveryResult>(HttpMethod.Post, $"/api/projects/{projectId:D}/keyword-discovery/suggest", request, cancellationToken);
+
+    public Task<ApiClientResult<JobReference>> RegisterSearchVolumeJobAsync(
+        Guid projectId,
+        SearchVolumeJobRequest request,
+        CancellationToken cancellationToken = default)
+        => SendAsync<JobReference>(HttpMethod.Post, $"/api/projects/{projectId:D}/search-volume/jobs", request, cancellationToken);
+
+    public Task<ApiClientResult<JobReference>> GetSearchVolumeJobAsync(
+        Guid projectId,
+        Guid jobId,
+        CancellationToken cancellationToken = default)
+        => SendAsync<JobReference>(HttpMethod.Get, $"/api/projects/{projectId:D}/search-volume/jobs/{jobId:D}", cancellationToken: cancellationToken);
+
+    public Task<ApiClientResult<IReadOnlyList<SearchVolumeResultRow>>> GetSearchVolumeResultsAsync(
+        Guid projectId,
+        Guid jobId,
+        string? q = null,
+        string sortBy = "keyword",
+        string orderBy = "asc",
+        int page = 1,
+        int pageSize = 100,
+        CancellationToken cancellationToken = default)
+        => SendAsync<IReadOnlyList<SearchVolumeResultRow>>(
+            HttpMethod.Get,
+            WithQuery(
+                $"/api/projects/{projectId:D}/search-volume/jobs/{jobId:D}/results",
+                ("q", q),
+                ("sortBy", sortBy),
+                ("orderBy", orderBy),
+                ("page", page),
+                ("pageSize", pageSize)),
+            cancellationToken: cancellationToken);
+
+    public Task<ApiClientResult<JobReference>> CreateCsvExportAsync(
+        Guid projectId,
+        DataExportRequest request,
+        CancellationToken cancellationToken = default)
+        => SendAsync<JobReference>(HttpMethod.Post, $"/api/projects/{projectId:D}/exports/csv", request, cancellationToken);
+
+    public Task<ApiClientResult<DataExportDetails>> GetExportAsync(
+        Guid projectId,
+        Guid exportId,
+        CancellationToken cancellationToken = default)
+        => SendAsync<DataExportDetails>(HttpMethod.Get, $"/api/projects/{projectId:D}/exports/{exportId:D}", cancellationToken: cancellationToken);
+
+    public Task<ApiClientResult<DataExportDownload>> CreateExportDownloadAsync(
+        Guid projectId,
+        Guid exportId,
+        CancellationToken cancellationToken = default)
+        => SendAsync<DataExportDownload>(HttpMethod.Get, $"/api/projects/{projectId:D}/exports/{exportId:D}/download", cancellationToken: cancellationToken);
 
     private async Task<ApiClientResult<T>> SendAsync<T>(
         HttpMethod method,
