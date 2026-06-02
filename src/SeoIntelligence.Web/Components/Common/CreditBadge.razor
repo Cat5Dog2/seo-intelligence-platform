@@ -1,0 +1,41 @@
+@inject ISeoIntelligenceApiClient ApiClient
+
+<div class="credit-badge @CreditState" title="API消費クレジット">
+    <span>Credit</span>
+    <strong>日 @TodayCredit.ToString("0.##")</strong>
+    <strong>月 @MonthCredit.ToString("0.##")</strong>
+</div>
+
+@code {
+    private decimal TodayCredit { get; set; }
+
+    private decimal MonthCredit { get; set; }
+
+    private string CreditState { get; set; } = "normal";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var result = await ApiClient.SearchExternalApiCallsAsync(pageSize: 200);
+        if (!result.IsSuccess || result.Data is null)
+        {
+            CreditState = "warning";
+            return;
+        }
+
+        var now = DateTime.Now;
+        TodayCredit = result.Data
+            .Where(call => call.CreatedAt.ToLocalTime().Date == now.Date)
+            .Sum(call => call.ConsumedCredit);
+        MonthCredit = result.Data
+            .Where(call =>
+                call.CreatedAt.ToLocalTime().Year == now.Year
+                && call.CreatedAt.ToLocalTime().Month == now.Month)
+            .Sum(call => call.ConsumedCredit);
+
+        CreditState = result.Data.Any(call => call.StatusCode == 402)
+            ? "exhausted"
+            : result.Data.Any(call => call.StatusCode is >= 400)
+                ? "warning"
+                : "normal";
+    }
+}

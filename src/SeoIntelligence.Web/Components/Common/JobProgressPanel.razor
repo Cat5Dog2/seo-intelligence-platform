@@ -1,0 +1,114 @@
+@implements IDisposable
+@inject ISeoIntelligenceApiClient ApiClient
+@inject ProjectSelectionState ProjectState
+
+<section class="job-panel">
+    <div class="section-heading">
+        <h2>@Title</h2>
+        <button type="button" class="icon-button text-button" title="ジョブを再読み込み" @onclick="LoadAsync">更新</button>
+    </div>
+    <ErrorSummary Errors="@Errors" />
+    <DataTable Items="@Jobs" Columns="@JobColumns" IsLoading="@IsLoading" EmptyText="ジョブはありません。">
+        <RowActions Context="job">
+            <div class="row-actions">
+                @if (CanRetry(job))
+                {
+                    <button type="button" class="table-action" @onclick="() => RetryAsync(job.JobId)">再実行</button>
+                }
+                @if (CanCancel(job))
+                {
+                    <button type="button" class="table-action" @onclick="() => CancelAsync(job.JobId)">キャンセル</button>
+                }
+                <AuditLink ResourceType="job" ResourceId="@job.JobId.ToString("D")" />
+            </div>
+        </RowActions>
+    </DataTable>
+</section>
+
+@code {
+    private static readonly IReadOnlyList<DataTableColumn<JobDetails>> JobColumns =
+    [
+        new("種別", job => job.JobType),
+        new("状態", job => job.Status),
+        new("進捗", job => $"{job.Progress}%"),
+        new("再試行", job => job.RetryCount.ToString()),
+        new("更新", job => FormatDateTime(job.UpdatedAt))
+    ];
+
+    [Parameter]
+    public string Title { get; set; } = "ジョブ";
+
+    [Parameter]
+    public string Status { get; set; } = "all";
+
+    [Parameter]
+    public bool ProjectScoped { get; set; } = true;
+
+    private IReadOnlyList<JobDetails> Jobs { get; set; } = [];
+
+    private IReadOnlyList<ApiError> Errors { get; set; } = [];
+
+    private bool IsLoading { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        ProjectState.Changed += OnProjectStateChanged;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        IsLoading = true;
+        Errors = [];
+        var projectId = ProjectScoped ? ProjectState.SelectedProject?.ProjectId : null;
+        var result = await ApiClient.SearchJobsAsync(status: Status, projectId: projectId, pageSize: 25);
+        if (result.IsSuccess)
+        {
+            Jobs = result.Data ?? [];
+        }
+        else
+        {
+            Jobs = [];
+            Errors = result.Errors;
+        }
+
+        IsLoading = false;
+    }
+
+    private async Task RetryAsync(Guid jobId)
+    {
+        var result = await ApiClient.RetryJobAsync(jobId);
+        Errors = result.IsSuccess ? [] : result.Errors;
+        await LoadAsync();
+    }
+
+    private async Task CancelAsync(Guid jobId)
+    {
+        var result = await ApiClient.CancelJobAsync(jobId);
+        Errors = result.IsSuccess ? [] : result.Errors;
+        await LoadAsync();
+    }
+
+    private async void OnProjectStateChanged()
+    {
+        await InvokeAsync(async () =>
+        {
+            await LoadAsync();
+            StateHasChanged();
+        });
+    }
+
+    private static bool CanRetry(JobDetails job)
+        => string.Equals(job.Status, "failed_retryable", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(job.Status, "succeeded", StringComparison.OrdinalIgnoreCase);
+
+    private static bool CanCancel(JobDetails job)
+        => string.Equals(job.Status, "queued", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(job.Status, "waiting_external", StringComparison.OrdinalIgnoreCase);
+
+    private static string FormatDateTime(DateTime value)
+        => value.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
+
+    public void Dispose()
+        => ProjectState.Changed -= OnProjectStateChanged;
+}

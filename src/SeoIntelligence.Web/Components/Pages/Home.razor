@@ -1,5 +1,491 @@
-﻿@page "/"
+@page "/"
+@using System.Text.Json
+@implements IDisposable
+@inject ISeoIntelligenceApiClient ApiClient
+@inject ProjectSelectionState ProjectState
 
 <PageTitle>Seo Intelligence</PageTitle>
 
-<h1>Seo Intelligence</h1>
+<div class="page-stack">
+    <header class="page-header">
+        <div>
+            <h1>プロジェクト</h1>
+            <p>選択中プロジェクト: @(ProjectState.SelectedProject?.Name ?? "未選択")</p>
+        </div>
+        <button type="button" class="secondary-button" @onclick="RefreshAsync">更新</button>
+    </header>
+
+    <ErrorSummary Errors="@Errors" Message="@Message" />
+
+    <section class="split-grid">
+        <div class="panel">
+            <div class="section-heading">
+                <h2>@(EditingProjectId.HasValue ? "プロジェクト編集" : "プロジェクト作成")</h2>
+                @if (EditingProjectId.HasValue)
+                {
+                    <button type="button" class="text-button" @onclick="ClearProjectForm">新規</button>
+                }
+            </div>
+            <div class="form-grid">
+                <label class="field">
+                    <span>名称</span>
+                    <input @bind="ProjectForm.Name" />
+                </label>
+                <label class="field">
+                    <span>Location</span>
+                    <input @bind="ProjectForm.DefaultLocation" />
+                </label>
+                <label class="field">
+                    <span>Language</span>
+                    <input @bind="ProjectForm.DefaultLanguage" />
+                </label>
+                <label class="field">
+                    <span>メモ</span>
+                    <input @bind="ProjectForm.Memo" />
+                </label>
+                <label class="field">
+                    <span>KPI JSON</span>
+                    <textarea @bind="ProjectForm.KpiJson"></textarea>
+                </label>
+                <button type="button" class="primary-button" @onclick="SaveProjectAsync">保存</button>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="section-heading">
+                <h2>プロジェクト一覧</h2>
+                <div class="toolbar">
+                    <StatusFilter Value="@ProjectStatus" ValueChanged="OnProjectStatusChanged" Statuses="@ProjectStatuses" />
+                    <label class="field-inline">
+                        <span>検索</span>
+                        <input @bind="ProjectQuery" @bind:event="oninput" />
+                    </label>
+                    <button type="button" class="secondary-button" @onclick="LoadProjectsAsync">検索</button>
+                </div>
+            </div>
+            <DataTable Items="@Projects" Columns="@ProjectColumns" IsLoading="@IsProjectLoading" EmptyText="プロジェクトはありません。">
+                <RowActions Context="project">
+                    <div class="row-actions">
+                        <button type="button" class="table-action" @onclick="() => SelectProjectAsync(project.ProjectId)">選択</button>
+                        <button type="button" class="table-action" @onclick="() => EditProject(project)">編集</button>
+                        @if (project.Status == "archived")
+                        {
+                            <button type="button" class="table-action" @onclick="() => RestoreProjectAsync(project.ProjectId)">復元</button>
+                        }
+                        else
+                        {
+                            <button type="button" class="table-action danger-button" @onclick="() => ArchiveProjectAsync(project.ProjectId)">アーカイブ</button>
+                        }
+                        <AuditLink ResourceType="project" ResourceId="@project.ProjectId.ToString("D")" />
+                    </div>
+                </RowActions>
+            </DataTable>
+        </div>
+    </section>
+
+    <section class="panel">
+        <div class="section-heading">
+            <h2>サイト</h2>
+            <div class="toolbar">
+                <StatusFilter Value="@SiteStatus" ValueChanged="OnSiteStatusChanged" Statuses="@ProjectStatuses" />
+                <label class="field-inline">
+                    <span>検索</span>
+                    <input @bind="SiteQuery" @bind:event="oninput" disabled="@(ProjectState.SelectedProject is null)" />
+                </label>
+                <button type="button" class="secondary-button" @onclick="LoadSitesAsync" disabled="@(ProjectState.SelectedProject is null)">検索</button>
+            </div>
+        </div>
+
+        <div class="form-grid">
+            <label class="field">
+                <span>Domain</span>
+                <input @bind="SiteForm.Domain" disabled="@(ProjectState.SelectedProject is null)" />
+            </label>
+            <label class="field">
+                <span>Canonical URL</span>
+                <input @bind="SiteForm.CanonicalUrl" disabled="@(ProjectState.SelectedProject is null)" />
+            </label>
+            <label class="field">
+                <span>Type</span>
+                <select @bind="SiteForm.Type" disabled="@(ProjectState.SelectedProject is null)">
+                    <option value="own">own</option>
+                    <option value="competitor">competitor</option>
+                </select>
+            </label>
+            <label class="field">
+                <span>メモ</span>
+                <input @bind="SiteForm.Memo" disabled="@(ProjectState.SelectedProject is null)" />
+            </label>
+            <button type="button" class="primary-button" @onclick="SaveSiteAsync" disabled="@(ProjectState.SelectedProject is null)">保存</button>
+            @if (EditingSiteId.HasValue)
+            {
+                <button type="button" class="text-button" @onclick="ClearSiteForm">新規</button>
+            }
+        </div>
+
+        <DataTable Items="@Sites" Columns="@SiteColumns" IsLoading="@IsSiteLoading" EmptyText="サイトはありません。">
+            <RowActions Context="site">
+                <div class="row-actions">
+                    <button type="button" class="table-action" @onclick="() => EditSite(site)">編集</button>
+                    @if (site.Status == "archived")
+                    {
+                        <button type="button" class="table-action" @onclick="() => RestoreSiteAsync(site.SiteId)">復元</button>
+                    }
+                    else
+                    {
+                        <button type="button" class="table-action danger-button" @onclick="() => ArchiveSiteAsync(site.SiteId)">アーカイブ</button>
+                    }
+                    <AuditLink ResourceType="site" ResourceId="@site.SiteId.ToString("D")" />
+                </div>
+            </RowActions>
+        </DataTable>
+    </section>
+</div>
+
+@code {
+    private static readonly IReadOnlyList<StatusFilterOption> ProjectStatuses =
+    [
+        new("active", "active"),
+        new("archived", "archived"),
+        new("all", "all")
+    ];
+
+    private static readonly IReadOnlyList<DataTableColumn<ProjectDetails>> ProjectColumns =
+    [
+        new("名称", project => project.Name),
+        new("Location", project => project.DefaultLocation),
+        new("Language", project => project.DefaultLanguage),
+        new("状態", project => project.Status),
+        new("更新", project => FormatDateTime(project.UpdatedAt))
+    ];
+
+    private static readonly IReadOnlyList<DataTableColumn<SiteDetails>> SiteColumns =
+    [
+        new("Domain", site => site.Domain),
+        new("Canonical URL", site => site.CanonicalUrl),
+        new("Type", site => site.Type),
+        new("状態", site => site.Status),
+        new("更新", site => FormatDateTime(site.UpdatedAt))
+    ];
+
+    private IReadOnlyList<ProjectDetails> Projects { get; set; } = [];
+
+    private IReadOnlyList<SiteDetails> Sites { get; set; } = [];
+
+    private IReadOnlyList<ApiError> Errors { get; set; } = [];
+
+    private string? Message { get; set; }
+
+    private bool IsProjectLoading { get; set; }
+
+    private bool IsSiteLoading { get; set; }
+
+    private string ProjectStatus { get; set; } = "active";
+
+    private string SiteStatus { get; set; } = "active";
+
+    private string? ProjectQuery { get; set; }
+
+    private string? SiteQuery { get; set; }
+
+    private Guid? EditingProjectId { get; set; }
+
+    private Guid? EditingSiteId { get; set; }
+
+    private ProjectFormModel ProjectForm { get; set; } = new();
+
+    private SiteFormModel SiteForm { get; set; } = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        ProjectState.Changed += OnProjectStateChanged;
+        await LoadProjectsAsync();
+        await ProjectState.LoadAsync();
+        await LoadSitesAsync();
+    }
+
+    private async Task RefreshAsync()
+    {
+        await ProjectState.RefreshAsync();
+        await LoadProjectsAsync();
+        await LoadSitesAsync();
+    }
+
+    private async Task LoadProjectsAsync()
+    {
+        IsProjectLoading = true;
+        ClearErrors();
+        var result = await ApiClient.SearchProjectsAsync(ProjectStatus, ProjectQuery, pageSize: 100);
+        if (result.IsSuccess)
+        {
+            Projects = result.Data ?? [];
+        }
+        else
+        {
+            Errors = result.Errors;
+            Projects = [];
+        }
+
+        IsProjectLoading = false;
+    }
+
+    private async Task LoadSitesAsync()
+    {
+        if (ProjectState.SelectedProject is not { } project)
+        {
+            Sites = [];
+            return;
+        }
+
+        IsSiteLoading = true;
+        ClearErrors();
+        var result = await ApiClient.SearchSitesAsync(project.ProjectId, SiteStatus, SiteQuery, pageSize: 100);
+        if (result.IsSuccess)
+        {
+            Sites = result.Data ?? [];
+        }
+        else
+        {
+            Errors = result.Errors;
+            Sites = [];
+        }
+
+        IsSiteLoading = false;
+    }
+
+    private async Task SaveProjectAsync()
+    {
+        ClearErrors();
+        var kpi = ParseJson(ProjectForm.KpiJson, "KPI JSON");
+        if (Errors.Count > 0)
+        {
+            return;
+        }
+
+        ApiClientResult<ProjectDetails> result = EditingProjectId.HasValue
+            ? await ApiClient.UpdateProjectAsync(
+                EditingProjectId.Value,
+                new ProjectUpdateRequest(ProjectForm.Name, ProjectForm.DefaultLocation, ProjectForm.DefaultLanguage, kpi, ProjectForm.Memo))
+            : await ApiClient.CreateProjectAsync(
+                new ProjectCreateRequest(ProjectForm.Name, ProjectForm.DefaultLocation, ProjectForm.DefaultLanguage, kpi, ProjectForm.Memo));
+
+        if (result.IsSuccess)
+        {
+            ClearProjectForm();
+            await ProjectState.RefreshAsync();
+            await LoadProjectsAsync();
+        }
+        else
+        {
+            Errors = result.Errors;
+        }
+    }
+
+    private void EditProject(ProjectDetails project)
+    {
+        EditingProjectId = project.ProjectId;
+        ProjectForm = new ProjectFormModel
+        {
+            Name = project.Name,
+            DefaultLocation = project.DefaultLocation,
+            DefaultLanguage = project.DefaultLanguage,
+            Memo = project.Memo,
+            KpiJson = project.Kpi.ValueKind == JsonValueKind.Undefined ? "{}" : project.Kpi.GetRawText()
+        };
+    }
+
+    private async Task SelectProjectAsync(Guid projectId)
+    {
+        await ProjectState.SelectAsync(projectId);
+        await LoadSitesAsync();
+    }
+
+    private async Task ArchiveProjectAsync(Guid projectId)
+    {
+        var result = await ApiClient.ArchiveProjectAsync(projectId);
+        await CompleteProjectActionAsync(result);
+    }
+
+    private async Task RestoreProjectAsync(Guid projectId)
+    {
+        var result = await ApiClient.RestoreProjectAsync(projectId);
+        await CompleteProjectActionAsync(result);
+    }
+
+    private async Task CompleteProjectActionAsync(ApiClientResult<ProjectDetails> result)
+    {
+        if (result.IsSuccess)
+        {
+            await ProjectState.RefreshAsync();
+            await LoadProjectsAsync();
+            await LoadSitesAsync();
+        }
+        else
+        {
+            Errors = result.Errors;
+        }
+    }
+
+    private async Task SaveSiteAsync()
+    {
+        ClearErrors();
+        if (ProjectState.SelectedProject is not { } project)
+        {
+            Message = "プロジェクトを選択してください。";
+            return;
+        }
+
+        ApiClientResult<SiteDetails> result = EditingSiteId.HasValue
+            ? await ApiClient.UpdateSiteAsync(
+                project.ProjectId,
+                EditingSiteId.Value,
+                new SiteUpdateRequest(SiteForm.Domain, SiteForm.CanonicalUrl, SiteForm.Type, SiteForm.Memo))
+            : await ApiClient.CreateSiteAsync(
+                project.ProjectId,
+                new SiteCreateRequest(SiteForm.Domain, SiteForm.CanonicalUrl, SiteForm.Type, SiteForm.Memo));
+
+        if (result.IsSuccess)
+        {
+            ClearSiteForm();
+            await LoadSitesAsync();
+        }
+        else
+        {
+            Errors = result.Errors;
+        }
+    }
+
+    private void EditSite(SiteDetails site)
+    {
+        EditingSiteId = site.SiteId;
+        SiteForm = new SiteFormModel
+        {
+            Domain = site.Domain,
+            CanonicalUrl = site.CanonicalUrl,
+            Type = site.Type,
+            Memo = site.Memo
+        };
+    }
+
+    private async Task ArchiveSiteAsync(Guid siteId)
+    {
+        if (ProjectState.SelectedProject is not { } project)
+        {
+            return;
+        }
+
+        var result = await ApiClient.ArchiveSiteAsync(project.ProjectId, siteId);
+        await CompleteSiteActionAsync(result);
+    }
+
+    private async Task RestoreSiteAsync(Guid siteId)
+    {
+        if (ProjectState.SelectedProject is not { } project)
+        {
+            return;
+        }
+
+        var result = await ApiClient.RestoreSiteAsync(project.ProjectId, siteId);
+        await CompleteSiteActionAsync(result);
+    }
+
+    private async Task CompleteSiteActionAsync(ApiClientResult<SiteDetails> result)
+    {
+        if (result.IsSuccess)
+        {
+            await LoadSitesAsync();
+        }
+        else
+        {
+            Errors = result.Errors;
+        }
+    }
+
+    private async Task OnProjectStatusChanged(string status)
+    {
+        ProjectStatus = status;
+        await LoadProjectsAsync();
+    }
+
+    private async Task OnSiteStatusChanged(string status)
+    {
+        SiteStatus = status;
+        await LoadSitesAsync();
+    }
+
+    private async void OnProjectStateChanged()
+    {
+        await InvokeAsync(async () =>
+        {
+            await LoadSitesAsync();
+            StateHasChanged();
+        });
+    }
+
+    private void ClearProjectForm()
+    {
+        EditingProjectId = null;
+        ProjectForm = new ProjectFormModel();
+    }
+
+    private void ClearSiteForm()
+    {
+        EditingSiteId = null;
+        SiteForm = new SiteFormModel();
+    }
+
+    private void ClearErrors()
+    {
+        Errors = [];
+        Message = null;
+    }
+
+    private JsonElement? ParseJson(string? json, string target)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            return document.RootElement.Clone();
+        }
+        catch (JsonException exception)
+        {
+            Errors = [new ApiError("Validation.Json.Invalid", exception.Message, target)];
+            return null;
+        }
+    }
+
+    private static string FormatDateTime(DateTime value)
+        => value.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
+
+    public void Dispose()
+        => ProjectState.Changed -= OnProjectStateChanged;
+
+    private sealed class ProjectFormModel
+    {
+        public string? Name { get; set; }
+
+        public string? DefaultLocation { get; set; } = "JP";
+
+        public string? DefaultLanguage { get; set; } = "ja";
+
+        public string? KpiJson { get; set; } = "{}";
+
+        public string? Memo { get; set; }
+    }
+
+    private sealed class SiteFormModel
+    {
+        public string? Domain { get; set; }
+
+        public string? CanonicalUrl { get; set; }
+
+        public string? Type { get; set; } = "own";
+
+        public string? Memo { get; set; }
+    }
+}

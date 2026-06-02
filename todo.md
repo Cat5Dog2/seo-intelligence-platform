@@ -111,7 +111,7 @@ ISSUE-MVP-00X の続きから再開してください。
 - [ ] ISSUE-MVP-012 機会スコアとMVPダッシュボード集計を実装する
 - [ ] ISSUE-MVP-013 CSV出力を実装する
 - [x] ISSUE-MVP-014 Discord通知を実装する
-- [ ] ISSUE-MVP-015 Blazor共通UIと管理画面を実装する
+- [x] ISSUE-MVP-015 Blazor共通UIと管理画面を実装する
 - [ ] ISSUE-MVP-016 Blazorキーワード探索、検索ボリューム、ダッシュボードを実装する
 - [ ] ISSUE-MVP-017 MVP受入テストを整備する
 - [ ] ISSUE-MVP-018 MVP運用、監視、ドキュメントを整備する
@@ -620,24 +620,24 @@ ISSUE-MVP-00X の続きから再開してください。
 
 範囲:
 
-- [ ] Header、Project Switcher、Location/Language、Credit Status、Side Navigation、Main Contentを実装する。
-- [ ] 共通コンポーネントを実装する: `ProjectSwitcher`, `LocationLanguageSelector`, `CreditBadge`, `JobProgressPanel`, `DataTable`, `StatusFilter`, `AuditLink`, `ErrorSummary`。
-- [ ] S-001 起動/プロジェクト選択を実装する。
-- [ ] S-900 管理のMVP範囲を実装する。
-- [ ] ワークスペース設定、APIキー、クレジット消費、Discord通知設定、通知履歴、ジョブ一覧、監査ログを表示する。
-- [ ] APIキー登録/無効化/ローテーション、通知テスト、ジョブ再実行、監査検索を実装する。
-- [ ] APIキーやWebhook URLの実値を画面へ再表示しない。
+- [x] Header、Project Switcher、Location/Language、Credit Status、Side Navigation、Main Contentを実装する。
+- [x] 共通コンポーネントを実装する: `ProjectSwitcher`, `LocationLanguageSelector`, `CreditBadge`, `JobProgressPanel`, `DataTable`, `StatusFilter`, `AuditLink`, `ErrorSummary`。
+- [x] S-001 起動/プロジェクト選択を実装する。
+- [x] S-900 管理のMVP範囲を実装する。
+- [x] ワークスペース設定、APIキー、クレジット消費、Discord通知設定、通知履歴、ジョブ一覧、監査ログを表示する。
+- [x] APIキー登録/無効化/ローテーション、通知テスト、ジョブ再実行、監査検索を実装する。
+- [x] APIキーやWebhook URLの実値を画面へ再表示しない。
 
 受入条件:
 
-- [ ] 管理系CRUDを画面から操作できる。
-- [ ] 監査ログへ辿れる。
-- [ ] 秘密値が画面に出ない。
+- [x] 管理系CRUDを画面から操作できる。
+- [x] 監査ログへ辿れる。
+- [x] 秘密値が画面に出ない。
 
 検証:
 
-- [ ] `dotnet test --filter Category=UI`
-- [ ] `dotnet test --filter Category=E2E`
+- [x] `dotnet test --filter Category=UI`
+- [x] `dotnet test --filter Category=E2E`
 
 ### ISSUE-MVP-016 Blazorキーワード探索、検索ボリューム、ダッシュボードを実装する
 

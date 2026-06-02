@@ -1,0 +1,109 @@
+@implements IDisposable
+@inject ISeoIntelligenceApiClient ApiClient
+@inject ProjectSelectionState ProjectState
+
+<div class="location-language-selector">
+    <label>
+        <span>Location</span>
+        <select value="@SelectedLocation" @onchange="OnLocationChanged" disabled="@(!CanEdit)">
+            <option value="@SelectedLocation">@SelectedLocation</option>
+            @foreach (var location in Locations.Where(location => !string.Equals(location.Code, SelectedLocation, StringComparison.OrdinalIgnoreCase)))
+            {
+                <option value="@location.Code">@location.Name</option>
+            }
+        </select>
+    </label>
+    <label>
+        <span>Language</span>
+        <select value="@SelectedLanguage" @onchange="OnLanguageChanged" disabled="@(!CanEdit)">
+            <option value="@SelectedLanguage">@SelectedLanguage</option>
+            @foreach (var language in Languages.Where(language => !string.Equals(language.Code, SelectedLanguage, StringComparison.OrdinalIgnoreCase)))
+            {
+                <option value="@language.Code">@language.Name</option>
+            }
+        </select>
+    </label>
+    <button type="button" class="icon-button text-button" title="地域と言語を更新" disabled="@(!CanSave)" @onclick="SaveAsync">保存</button>
+</div>
+
+@code {
+    private IReadOnlyList<LocationSummary> Locations { get; set; } = [];
+
+    private IReadOnlyList<LanguageSummary> Languages { get; set; } = [];
+
+    private string SelectedLocation { get; set; } = "JP";
+
+    private string SelectedLanguage { get; set; } = "ja";
+
+    private bool IsSaving { get; set; }
+
+    private bool CanEdit => ProjectState.SelectedProject is not null && !IsSaving;
+
+    private bool CanSave => CanEdit
+        && ProjectState.SelectedProject is { } project
+        && (!string.Equals(project.DefaultLocation, SelectedLocation, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(project.DefaultLanguage, SelectedLanguage, StringComparison.OrdinalIgnoreCase));
+
+    protected override async Task OnInitializedAsync()
+    {
+        ProjectState.Changed += OnProjectStateChanged;
+        SyncFromProject();
+
+        var locations = await ApiClient.ListLocationsAsync();
+        if (locations.IsSuccess)
+        {
+            Locations = locations.Data ?? [];
+        }
+
+        var languages = await ApiClient.ListLanguagesAsync();
+        if (languages.IsSuccess)
+        {
+            Languages = languages.Data ?? [];
+        }
+    }
+
+    private void OnLocationChanged(ChangeEventArgs args)
+        => SelectedLocation = args.Value?.ToString() ?? SelectedLocation;
+
+    private void OnLanguageChanged(ChangeEventArgs args)
+        => SelectedLanguage = args.Value?.ToString() ?? SelectedLanguage;
+
+    private async Task SaveAsync()
+    {
+        if (ProjectState.SelectedProject is not { } project)
+        {
+            return;
+        }
+
+        IsSaving = true;
+        var result = await ApiClient.UpdateProjectAsync(
+            project.ProjectId,
+            new ProjectUpdateRequest(project.Name, SelectedLocation, SelectedLanguage, project.Kpi, project.Memo));
+        if (result.IsSuccess)
+        {
+            await ProjectState.RefreshAsync();
+        }
+
+        IsSaving = false;
+    }
+
+    private void OnProjectStateChanged()
+    {
+        SyncFromProject();
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void SyncFromProject()
+    {
+        if (ProjectState.SelectedProject is not { } project)
+        {
+            return;
+        }
+
+        SelectedLocation = project.DefaultLocation;
+        SelectedLanguage = project.DefaultLanguage;
+    }
+
+    public void Dispose()
+        => ProjectState.Changed -= OnProjectStateChanged;
+}

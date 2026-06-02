@@ -10,6 +10,10 @@ using SeoIntelligence.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Logging.ClearProviders();
+builder.Logging.AddConsole();
+builder.Logging.AddDebug();
+builder.Logging.AddEventSourceLogger();
 builder.Logging.Configure(options =>
 {
     options.ActivityTrackingOptions =

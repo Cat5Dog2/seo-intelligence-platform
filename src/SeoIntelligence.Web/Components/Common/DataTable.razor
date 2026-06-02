@@ -1,0 +1,68 @@
+@typeparam TItem
+
+<div class="data-table-wrap">
+    @if (IsLoading)
+    {
+        <div class="state-row">読み込み中</div>
+    }
+    else if (!string.IsNullOrWhiteSpace(ErrorMessage))
+    {
+        <div class="state-row state-row-error">@ErrorMessage</div>
+    }
+    else if (Items.Count == 0)
+    {
+        <div class="state-row">@EmptyText</div>
+    }
+    else
+    {
+        <table class="data-table">
+            <thead>
+                <tr>
+                    @foreach (var column in Columns)
+                    {
+                        <th class="@column.CssClass">@column.Header</th>
+                    }
+                    @if (RowActions is not null)
+                    {
+                        <th class="actions-column">操作</th>
+                    }
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var item in Items)
+                {
+                    <tr>
+                        @foreach (var column in Columns)
+                        {
+                            <td class="@column.CssClass">@column.Cell(item)</td>
+                        }
+                        @if (RowActions is not null)
+                        {
+                            <td class="actions-column">@RowActions(item)</td>
+                        }
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public IReadOnlyList<TItem> Items { get; set; } = [];
+
+    [Parameter]
+    public IReadOnlyList<DataTableColumn<TItem>> Columns { get; set; } = [];
+
+    [Parameter]
+    public RenderFragment<TItem>? RowActions { get; set; }
+
+    [Parameter]
+    public bool IsLoading { get; set; }
+
+    [Parameter]
+    public string? ErrorMessage { get; set; }
+
+    [Parameter]
+    public string EmptyText { get; set; } = "表示できるデータはありません。";
+}

@@ -1,0 +1,922 @@
+@page "/admin"
+@page "/admin/audit"
+@using System.Text.Json
+@inject ISeoIntelligenceApiClient ApiClient
+
+<PageTitle>管理 - SEO Intelligence</PageTitle>
+
+<div class="page-stack">
+    <header class="page-header">
+        <div>
+            <h1>管理</h1>
+            <p>Workspace、API認証情報、通知、ジョブ、監査ログ</p>
+        </div>
+        <button type="button" class="secondary-button" @onclick="LoadAllAsync">更新</button>
+    </header>
+
+    <ErrorSummary Errors="@Errors" Message="@Message" />
+
+    <nav class="tab-bar" aria-label="管理メニュー">
+        <button type="button" class="@TabClass(WorkspaceTab)" @onclick="@(() => SetTab(WorkspaceTab))">Workspace</button>
+        <button type="button" class="@TabClass(CredentialTab)" @onclick="@(() => SetTab(CredentialTab))">APIキー</button>
+        <button type="button" class="@TabClass(CreditTab)" @onclick="@(() => SetTab(CreditTab))">クレジット</button>
+        <button type="button" class="@TabClass(NotificationTab)" @onclick="@(() => SetTab(NotificationTab))">Discord通知</button>
+        <button type="button" class="@TabClass(JobTab)" @onclick="@(() => SetTab(JobTab))">ジョブ</button>
+        <button type="button" class="@TabClass(AuditTab)" @onclick="@(() => SetTab(AuditTab))">監査ログ</button>
+    </nav>
+
+    @if (ActiveTab == WorkspaceTab)
+    {
+        <section class="panel">
+            <div class="section-heading">
+                <h2>ワークスペース設定</h2>
+                <span class="muted">@WorkspaceStatus</span>
+            </div>
+            <div class="form-grid">
+                <label class="field">
+                    <span>名称</span>
+                    <input @bind="WorkspaceForm.Name" />
+                </label>
+                <label class="field">
+                    <span>Default Location</span>
+                    <input @bind="WorkspaceForm.DefaultLocation" />
+                </label>
+                <label class="field">
+                    <span>Default Language</span>
+                    <input @bind="WorkspaceForm.DefaultLanguage" />
+                </label>
+                <label class="field">
+                    <span>Retention JSON</span>
+                    <textarea @bind="WorkspaceForm.RetentionSettingsJson"></textarea>
+                </label>
+                <label class="field">
+                    <span>Notification Defaults JSON</span>
+                    <textarea @bind="WorkspaceForm.NotificationDefaultsJson"></textarea>
+                </label>
+                <button type="button" class="primary-button" @onclick="SaveWorkspaceAsync">保存</button>
+            </div>
+        </section>
+    }
+    else if (ActiveTab == CredentialTab)
+    {
+        <section class="panel">
+            <div class="section-heading">
+                <h2>API認証情報</h2>
+                <div class="toolbar">
+                    <StatusFilter Value="@CredentialStatus" ValueChanged="OnCredentialStatusChanged" Statuses="@EnabledStatuses" />
+                    <button type="button" class="secondary-button" @onclick="LoadCredentialsAsync">再読み込み</button>
+                </div>
+            </div>
+
+            <div class="form-grid">
+                <label class="field">
+                    <span>Provider</span>
+                    <input @bind="CredentialForm.Provider" />
+                </label>
+                <label class="field">
+                    <span>Key Ref</span>
+                    <input @bind="CredentialForm.KeyRef" />
+                </label>
+                <label class="field">
+                    <span>Secret Value</span>
+                    <input type="password" @bind="CredentialForm.SecretValue" autocomplete="off" />
+                </label>
+                <button type="button" class="primary-button" @onclick="SaveCredentialAsync">保存</button>
+                @if (EditingCredentialId.HasValue)
+                {
+                    <button type="button" class="text-button" @onclick="ClearCredentialForm">新規</button>
+                }
+            </div>
+
+            @if (RotatingCredentialId.HasValue)
+            {
+                <div class="form-grid">
+                    <label class="field">
+                        <span>New Key Ref</span>
+                        <input @bind="RotateForm.NewKeyRef" />
+                    </label>
+                    <label class="field">
+                        <span>New Secret Value</span>
+                        <input type="password" @bind="RotateForm.NewSecretValue" autocomplete="off" />
+                    </label>
+                    <button type="button" class="secondary-button" @onclick="RotateCredentialAsync">ローテーション</button>
+                    <button type="button" class="text-button" @onclick="ClearRotateForm">閉じる</button>
+                </div>
+            }
+
+            <DataTable Items="@Credentials" Columns="@CredentialColumns" IsLoading="@IsCredentialLoading" EmptyText="API認証情報はありません。">
+                <RowActions Context="credential">
+                    <div class="row-actions">
+                        <button type="button" class="table-action" @onclick="() => EditCredential(credential)">編集</button>
+                        <button type="button" class="table-action" @onclick="() => StartRotateCredential(credential.CredentialId)">ローテーション</button>
+                        @if (credential.Status == "disabled")
+                        {
+                            <button type="button" class="table-action" @onclick="() => EnableCredentialAsync(credential.CredentialId)">有効化</button>
+                        }
+                        else
+                        {
+                            <button type="button" class="table-action danger-button" @onclick="() => DisableCredentialAsync(credential.CredentialId)">無効化</button>
+                        }
+                        <AuditLink ResourceType="api_credential" ResourceId="@credential.CredentialId.ToString("D")" />
+                    </div>
+                </RowActions>
+            </DataTable>
+        </section>
+    }
+    else if (ActiveTab == CreditTab)
+    {
+        <section class="page-stack">
+            <div class="metric-strip">
+                <div class="metric">
+                    <span>表示中コール</span>
+                    <strong>@ExternalCalls.Count</strong>
+                </div>
+                <div class="metric">
+                    <span>消費クレジット</span>
+                    <strong>@ExternalCalls.Sum(call => call.ConsumedCredit).ToString("0.##")</strong>
+                </div>
+                <div class="metric">
+                    <span>402</span>
+                    <strong>@ExternalCalls.Count(call => call.StatusCode == 402)</strong>
+                </div>
+                <div class="metric">
+                    <span>失敗</span>
+                    <strong>@ExternalCalls.Count(call => call.StatusCode >= 400)</strong>
+                </div>
+            </div>
+            <section class="panel">
+                <div class="section-heading">
+                    <h2>外部API呼び出し・クレジット</h2>
+                    <button type="button" class="secondary-button" @onclick="LoadExternalCallsAsync">再読み込み</button>
+                </div>
+                <DataTable Items="@ExternalCalls" Columns="@ExternalCallColumns" IsLoading="@IsExternalCallLoading" EmptyText="外部API呼び出しはありません。">
+                    <RowActions Context="call">
+                        <AuditLink ResourceType="external_api_call" ResourceId="@call.CallId.ToString("D")" />
+                    </RowActions>
+                </DataTable>
+            </section>
+        </section>
+    }
+    else if (ActiveTab == NotificationTab)
+    {
+        <section class="page-stack">
+            <section class="panel">
+                <div class="section-heading">
+                    <h2>Discord通知設定</h2>
+                    <div class="toolbar">
+                        <StatusFilter Value="@ChannelStatus" ValueChanged="OnChannelStatusChanged" Statuses="@EnabledStatuses" />
+                        <button type="button" class="secondary-button" @onclick="LoadNotificationsAsync">再読み込み</button>
+                    </div>
+                </div>
+                <div class="form-grid">
+                    <label class="field">
+                        <span>名称</span>
+                        <input @bind="ChannelForm.Name" />
+                    </label>
+                    <label class="field">
+                        <span>Channel Type</span>
+                        <input @bind="ChannelForm.ChannelType" />
+                    </label>
+                    <label class="field">
+                        <span>Webhook Secret Ref</span>
+                        <input @bind="ChannelForm.WebhookSecretRef" />
+                    </label>
+                    <label class="field">
+                        <span>Project Id</span>
+                        <input @bind="ChannelForm.ProjectId" />
+                    </label>
+                    <label class="field">
+                        <span>Event Types</span>
+                        <input @bind="ChannelForm.EventTypes" />
+                    </label>
+                    <button type="button" class="primary-button" @onclick="SaveChannelAsync">保存</button>
+                    @if (EditingChannelId.HasValue)
+                    {
+                        <button type="button" class="text-button" @onclick="ClearChannelForm">新規</button>
+                    }
+                </div>
+
+                <DataTable Items="@Channels" Columns="@ChannelColumns" IsLoading="@IsChannelLoading" EmptyText="通知設定はありません。">
+                    <RowActions Context="channel">
+                        <div class="row-actions">
+                            <button type="button" class="table-action" @onclick="() => EditChannel(channel)">編集</button>
+                            <button type="button" class="table-action" @onclick="() => TestChannelAsync(channel.ChannelId)">テスト</button>
+                            @if (channel.Status == "disabled")
+                            {
+                                <button type="button" class="table-action" @onclick="() => EnableChannelAsync(channel.ChannelId)">有効化</button>
+                            }
+                            else
+                            {
+                                <button type="button" class="table-action danger-button" @onclick="() => DisableChannelAsync(channel.ChannelId)">無効化</button>
+                            }
+                            <AuditLink ResourceType="notification_channel" ResourceId="@channel.ChannelId.ToString("D")" />
+                        </div>
+                    </RowActions>
+                </DataTable>
+            </section>
+
+            <section class="panel">
+                <div class="section-heading">
+                    <h2>通知履歴</h2>
+                    <StatusFilter Value="@DeliveryStatus" ValueChanged="OnDeliveryStatusChanged" Statuses="@DeliveryStatuses" />
+                </div>
+                <DataTable Items="@Deliveries" Columns="@DeliveryColumns" IsLoading="@IsDeliveryLoading" EmptyText="通知履歴はありません。">
+                    <RowActions Context="delivery">
+                        <div class="row-actions">
+                            @if (delivery.Status is "failed" or "retrying")
+                            {
+                                <button type="button" class="table-action" @onclick="() => RetryDeliveryAsync(delivery.DeliveryId)">再送</button>
+                            }
+                            <AuditLink ResourceType="notification_delivery" ResourceId="@delivery.DeliveryId.ToString("D")" />
+                        </div>
+                    </RowActions>
+                </DataTable>
+            </section>
+        </section>
+    }
+    else if (ActiveTab == JobTab)
+    {
+        <section class="panel">
+            <JobProgressPanel Title="ジョブ一覧" ProjectScoped="false" />
+        </section>
+    }
+    else if (ActiveTab == AuditTab)
+    {
+        <section class="panel">
+            <div class="section-heading">
+                <h2>監査ログ検索</h2>
+                <button type="button" class="secondary-button" @onclick="LoadAuditLogsAsync">検索</button>
+            </div>
+            <div class="form-grid">
+                <label class="field">
+                    <span>q</span>
+                    <input @bind="AuditForm.Q" />
+                </label>
+                <label class="field">
+                    <span>Actor</span>
+                    <input @bind="AuditForm.Actor" />
+                </label>
+                <label class="field">
+                    <span>Resource Type</span>
+                    <input @bind="AuditForm.ResourceType" />
+                </label>
+                <label class="field">
+                    <span>Resource Id</span>
+                    <input @bind="AuditForm.ResourceId" />
+                </label>
+                <label class="field">
+                    <span>Correlation Id</span>
+                    <input @bind="AuditForm.CorrelationId" />
+                </label>
+                <label class="field">
+                    <span>From</span>
+                    <input @bind="AuditForm.From" />
+                </label>
+                <label class="field">
+                    <span>To</span>
+                    <input @bind="AuditForm.To" />
+                </label>
+            </div>
+            <DataTable Items="@AuditLogs" Columns="@AuditColumns" IsLoading="@IsAuditLoading" EmptyText="監査ログはありません。" />
+        </section>
+    }
+</div>
+
+@code {
+    private const string WorkspaceTab = "workspace";
+    private const string CredentialTab = "credential";
+    private const string CreditTab = "credit";
+    private const string NotificationTab = "notification";
+    private const string JobTab = "job";
+    private const string AuditTab = "audit";
+
+    private static readonly IReadOnlyList<StatusFilterOption> EnabledStatuses =
+    [
+        new("active", "active"),
+        new("disabled", "disabled"),
+        new("all", "all")
+    ];
+
+    private static readonly IReadOnlyList<StatusFilterOption> DeliveryStatuses =
+    [
+        new("all", "all"),
+        new("pending", "pending"),
+        new("retrying", "retrying"),
+        new("succeeded", "succeeded"),
+        new("failed", "failed")
+    ];
+
+    private static readonly IReadOnlyList<DataTableColumn<ApiCredentialDetails>> CredentialColumns =
+    [
+        new("Provider", credential => credential.Provider),
+        new("Key Ref", credential => credential.KeyRef),
+        new("状態", credential => credential.Status),
+        new("更新", credential => FormatDateTime(credential.UpdatedAt))
+    ];
+
+    private static readonly IReadOnlyList<DataTableColumn<ExternalApiCallDetails>> ExternalCallColumns =
+    [
+        new("Provider", call => call.Provider),
+        new("Endpoint", call => call.Endpoint),
+        new("Status", call => call.StatusCode.ToString()),
+        new("Credit", call => call.ConsumedCredit.ToString("0.##")),
+        new("Cache", call => call.CacheHit ? "hit" : "miss"),
+        new("Created", call => FormatDateTime(call.CreatedAt))
+    ];
+
+    private static readonly IReadOnlyList<DataTableColumn<NotificationChannelDetails>> ChannelColumns =
+    [
+        new("名称", channel => channel.Name),
+        new("Type", channel => channel.ChannelType),
+        new("Webhook Ref", channel => channel.WebhookSecretRef),
+        new("Events", channel => string.Join(", ", channel.EventTypes)),
+        new("状態", channel => channel.Status)
+    ];
+
+    private static readonly IReadOnlyList<DataTableColumn<NotificationDeliveryDetails>> DeliveryColumns =
+    [
+        new("Event", delivery => delivery.EventType),
+        new("状態", delivery => delivery.Status),
+        new("Retry", delivery => delivery.RetryCount.ToString()),
+        new("Error", delivery => delivery.ErrorMessage),
+        new("Created", delivery => FormatDateTime(delivery.CreatedAt))
+    ];
+
+    private static readonly IReadOnlyList<DataTableColumn<AuditLogDetails>> AuditColumns =
+    [
+        new("Action", audit => audit.Action),
+        new("Resource", audit => $"{audit.ResourceType}:{audit.ResourceId}"),
+        new("Actor", audit => audit.Actor),
+        new("Correlation", audit => audit.CorrelationId),
+        new("Created", audit => FormatDateTime(audit.CreatedAt))
+    ];
+
+    private string ActiveTab { get; set; } = WorkspaceTab;
+
+    private WorkspaceFormModel WorkspaceForm { get; set; } = new();
+
+    private string WorkspaceStatus { get; set; } = "未読込";
+
+    private IReadOnlyList<ApiCredentialDetails> Credentials { get; set; } = [];
+
+    private IReadOnlyList<ExternalApiCallDetails> ExternalCalls { get; set; } = [];
+
+    private IReadOnlyList<NotificationChannelDetails> Channels { get; set; } = [];
+
+    private IReadOnlyList<NotificationDeliveryDetails> Deliveries { get; set; } = [];
+
+    private IReadOnlyList<AuditLogDetails> AuditLogs { get; set; } = [];
+
+    private IReadOnlyList<ApiError> Errors { get; set; } = [];
+
+    private string? Message { get; set; }
+
+    private bool IsCredentialLoading { get; set; }
+
+    private bool IsExternalCallLoading { get; set; }
+
+    private bool IsChannelLoading { get; set; }
+
+    private bool IsDeliveryLoading { get; set; }
+
+    private bool IsAuditLoading { get; set; }
+
+    private string CredentialStatus { get; set; } = "active";
+
+    private string ChannelStatus { get; set; } = "active";
+
+    private string DeliveryStatus { get; set; } = "all";
+
+    private Guid? EditingCredentialId { get; set; }
+
+    private Guid? RotatingCredentialId { get; set; }
+
+    private Guid? EditingChannelId { get; set; }
+
+    private CredentialFormModel CredentialForm { get; set; } = new();
+
+    private RotateCredentialFormModel RotateForm { get; set; } = new();
+
+    private ChannelFormModel ChannelForm { get; set; } = new();
+
+    private AuditSearchFormModel AuditForm { get; set; } = new();
+
+    [SupplyParameterFromQuery(Name = "resourceType")]
+    public string? QueryResourceType { get; set; }
+
+    [SupplyParameterFromQuery(Name = "resourceId")]
+    public string? QueryResourceId { get; set; }
+
+    protected override async Task OnInitializedAsync()
+        => await LoadAllAsync();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!string.IsNullOrWhiteSpace(QueryResourceType) || !string.IsNullOrWhiteSpace(QueryResourceId))
+        {
+            ActiveTab = AuditTab;
+            AuditForm.ResourceType = QueryResourceType;
+            AuditForm.ResourceId = QueryResourceId;
+            await LoadAuditLogsAsync();
+        }
+    }
+
+    private async Task LoadAllAsync()
+    {
+        ClearErrors();
+        await LoadWorkspaceAsync();
+        await LoadCredentialsAsync();
+        await LoadExternalCallsAsync();
+        await LoadNotificationsAsync();
+        await LoadAuditLogsAsync();
+    }
+
+    private async Task LoadWorkspaceAsync()
+    {
+        var result = await ApiClient.GetWorkspaceAsync();
+        if (result.IsSuccess && result.Data is { } workspace)
+        {
+            WorkspaceStatus = workspace.Status;
+            WorkspaceForm = new WorkspaceFormModel
+            {
+                Name = workspace.Name,
+                DefaultLocation = workspace.DefaultLocation,
+                DefaultLanguage = workspace.DefaultLanguage,
+                RetentionSettingsJson = workspace.RetentionSettings.ValueKind == JsonValueKind.Undefined ? "{}" : workspace.RetentionSettings.GetRawText(),
+                NotificationDefaultsJson = workspace.NotificationDefaults.ValueKind == JsonValueKind.Undefined ? "{}" : workspace.NotificationDefaults.GetRawText()
+            };
+        }
+        else
+        {
+            Errors = result.Errors;
+        }
+    }
+
+    private async Task SaveWorkspaceAsync()
+    {
+        ClearErrors();
+        var retention = ParseJson(WorkspaceForm.RetentionSettingsJson, "Retention JSON");
+        var notificationDefaults = ParseJson(WorkspaceForm.NotificationDefaultsJson, "Notification Defaults JSON");
+        if (Errors.Count > 0)
+        {
+            return;
+        }
+
+        var result = await ApiClient.UpdateWorkspaceAsync(
+            new WorkspaceUpdateRequest(
+                WorkspaceForm.Name,
+                WorkspaceForm.DefaultLocation,
+                WorkspaceForm.DefaultLanguage,
+                retention,
+                notificationDefaults));
+        if (result.IsSuccess)
+        {
+            Message = "保存しました。";
+            await LoadWorkspaceAsync();
+        }
+        else
+        {
+            Errors = result.Errors;
+        }
+    }
+
+    private async Task LoadCredentialsAsync()
+    {
+        IsCredentialLoading = true;
+        var result = await ApiClient.SearchApiCredentialsAsync(CredentialStatus, pageSize: 100);
+        if (result.IsSuccess)
+        {
+            Credentials = result.Data ?? [];
+        }
+        else
+        {
+            Errors = result.Errors;
+            Credentials = [];
+        }
+
+        IsCredentialLoading = false;
+    }
+
+    private async Task SaveCredentialAsync()
+    {
+        ClearErrors();
+        ApiClientResult<ApiCredentialDetails> result = EditingCredentialId.HasValue
+            ? await ApiClient.UpdateApiCredentialAsync(EditingCredentialId.Value, new ApiCredentialUpdateRequest(CredentialForm.Provider))
+            : await ApiClient.CreateApiCredentialAsync(new ApiCredentialCreateRequest(CredentialForm.Provider, CredentialForm.KeyRef, CredentialForm.SecretValue));
+        if (result.IsSuccess)
+        {
+            ClearCredentialForm();
+            await LoadCredentialsAsync();
+        }
+        else
+        {
+            Errors = result.Errors;
+        }
+    }
+
+    private void EditCredential(ApiCredentialDetails credential)
+    {
+        EditingCredentialId = credential.CredentialId;
+        CredentialForm = new CredentialFormModel
+        {
+            Provider = credential.Provider,
+            KeyRef = credential.KeyRef
+        };
+    }
+
+    private void StartRotateCredential(Guid credentialId)
+    {
+        RotatingCredentialId = credentialId;
+        RotateForm = new RotateCredentialFormModel();
+    }
+
+    private async Task RotateCredentialAsync()
+    {
+        if (!RotatingCredentialId.HasValue)
+        {
+            return;
+        }
+
+        var result = await ApiClient.RotateApiCredentialAsync(
+            RotatingCredentialId.Value,
+            new ApiCredentialRotateRequest(RotateForm.NewKeyRef, RotateForm.NewSecretValue));
+        if (result.IsSuccess)
+        {
+            ClearRotateForm();
+            await LoadCredentialsAsync();
+        }
+        else
+        {
+            Errors = result.Errors;
+        }
+    }
+
+    private async Task DisableCredentialAsync(Guid credentialId)
+    {
+        var result = await ApiClient.DisableApiCredentialAsync(credentialId);
+        await CompleteCredentialActionAsync(result);
+    }
+
+    private async Task EnableCredentialAsync(Guid credentialId)
+    {
+        var result = await ApiClient.EnableApiCredentialAsync(credentialId);
+        await CompleteCredentialActionAsync(result);
+    }
+
+    private async Task CompleteCredentialActionAsync(ApiClientResult<ApiCredentialDetails> result)
+    {
+        if (result.IsSuccess)
+        {
+            await LoadCredentialsAsync();
+        }
+        else
+        {
+            Errors = result.Errors;
+        }
+    }
+
+    private async Task LoadExternalCallsAsync()
+    {
+        IsExternalCallLoading = true;
+        var result = await ApiClient.SearchExternalApiCallsAsync(pageSize: 200);
+        if (result.IsSuccess)
+        {
+            ExternalCalls = result.Data ?? [];
+        }
+        else
+        {
+            Errors = result.Errors;
+            ExternalCalls = [];
+        }
+
+        IsExternalCallLoading = false;
+    }
+
+    private async Task LoadNotificationsAsync()
+    {
+        await LoadChannelsAsync();
+        await LoadDeliveriesAsync();
+    }
+
+    private async Task LoadChannelsAsync()
+    {
+        IsChannelLoading = true;
+        var result = await ApiClient.SearchNotificationChannelsAsync(ChannelStatus, pageSize: 100);
+        if (result.IsSuccess)
+        {
+            Channels = result.Data ?? [];
+        }
+        else
+        {
+            Errors = result.Errors;
+            Channels = [];
+        }
+
+        IsChannelLoading = false;
+    }
+
+    private async Task LoadDeliveriesAsync()
+    {
+        IsDeliveryLoading = true;
+        var result = await ApiClient.SearchNotificationDeliveriesAsync(DeliveryStatus, pageSize: 100);
+        if (result.IsSuccess)
+        {
+            Deliveries = result.Data ?? [];
+        }
+        else
+        {
+            Errors = result.Errors;
+            Deliveries = [];
+        }
+
+        IsDeliveryLoading = false;
+    }
+
+    private async Task SaveChannelAsync()
+    {
+        ClearErrors();
+        var projectId = ParseNullableGuid(ChannelForm.ProjectId, "Project Id");
+        if (Errors.Count > 0)
+        {
+            return;
+        }
+
+        var eventTypes = ParseEventTypes(ChannelForm.EventTypes);
+        ApiClientResult<NotificationChannelDetails> result = EditingChannelId.HasValue
+            ? await ApiClient.UpdateNotificationChannelAsync(
+                EditingChannelId.Value,
+                new NotificationChannelUpdateRequest(projectId, ChannelForm.ChannelType, ChannelForm.Name, ChannelForm.WebhookSecretRef, eventTypes))
+            : await ApiClient.CreateNotificationChannelAsync(
+                new NotificationChannelCreateRequest(projectId, ChannelForm.ChannelType, ChannelForm.Name, ChannelForm.WebhookSecretRef, eventTypes));
+        if (result.IsSuccess)
+        {
+            ClearChannelForm();
+            await LoadChannelsAsync();
+        }
+        else
+        {
+            Errors = result.Errors;
+        }
+    }
+
+    private void EditChannel(NotificationChannelDetails channel)
+    {
+        EditingChannelId = channel.ChannelId;
+        ChannelForm = new ChannelFormModel
+        {
+            Name = channel.Name,
+            ChannelType = channel.ChannelType,
+            ProjectId = channel.ProjectId?.ToString("D"),
+            WebhookSecretRef = channel.WebhookSecretRef,
+            EventTypes = string.Join(", ", channel.EventTypes)
+        };
+    }
+
+    private async Task TestChannelAsync(Guid channelId)
+    {
+        var result = await ApiClient.TestNotificationChannelAsync(channelId);
+        if (result.IsSuccess)
+        {
+            await LoadDeliveriesAsync();
+        }
+        else
+        {
+            Errors = result.Errors;
+        }
+    }
+
+    private async Task DisableChannelAsync(Guid channelId)
+    {
+        var result = await ApiClient.DisableNotificationChannelAsync(channelId);
+        await CompleteChannelActionAsync(result);
+    }
+
+    private async Task EnableChannelAsync(Guid channelId)
+    {
+        var result = await ApiClient.EnableNotificationChannelAsync(channelId);
+        await CompleteChannelActionAsync(result);
+    }
+
+    private async Task CompleteChannelActionAsync(ApiClientResult<NotificationChannelDetails> result)
+    {
+        if (result.IsSuccess)
+        {
+            await LoadChannelsAsync();
+        }
+        else
+        {
+            Errors = result.Errors;
+        }
+    }
+
+    private async Task RetryDeliveryAsync(Guid deliveryId)
+    {
+        var result = await ApiClient.RetryNotificationDeliveryAsync(deliveryId);
+        if (result.IsSuccess)
+        {
+            await LoadDeliveriesAsync();
+        }
+        else
+        {
+            Errors = result.Errors;
+        }
+    }
+
+    private async Task LoadAuditLogsAsync()
+    {
+        IsAuditLoading = true;
+        ClearErrors();
+        var result = await ApiClient.SearchAuditLogsAsync(new AuditLogSearchParameters(
+            AuditForm.Q,
+            AuditForm.Actor,
+            AuditForm.ResourceType,
+            AuditForm.ResourceId,
+            AuditForm.CorrelationId,
+            ParseDateTimeOffset(AuditForm.From, "From"),
+            ParseDateTimeOffset(AuditForm.To, "To"),
+            PageSize: 100));
+        if (Errors.Count > 0)
+        {
+            IsAuditLoading = false;
+            return;
+        }
+
+        if (result.IsSuccess)
+        {
+            AuditLogs = result.Data ?? [];
+        }
+        else
+        {
+            Errors = result.Errors;
+            AuditLogs = [];
+        }
+
+        IsAuditLoading = false;
+    }
+
+    private async Task OnCredentialStatusChanged(string status)
+    {
+        CredentialStatus = status;
+        await LoadCredentialsAsync();
+    }
+
+    private async Task OnChannelStatusChanged(string status)
+    {
+        ChannelStatus = status;
+        await LoadChannelsAsync();
+    }
+
+    private async Task OnDeliveryStatusChanged(string status)
+    {
+        DeliveryStatus = status;
+        await LoadDeliveriesAsync();
+    }
+
+    private void SetTab(string tab)
+        => ActiveTab = tab;
+
+    private string TabClass(string tab)
+        => ActiveTab == tab ? "tab-button active" : "tab-button";
+
+    private void ClearCredentialForm()
+    {
+        EditingCredentialId = null;
+        CredentialForm = new CredentialFormModel();
+    }
+
+    private void ClearRotateForm()
+    {
+        RotatingCredentialId = null;
+        RotateForm = new RotateCredentialFormModel();
+    }
+
+    private void ClearChannelForm()
+    {
+        EditingChannelId = null;
+        ChannelForm = new ChannelFormModel();
+    }
+
+    private void ClearErrors()
+    {
+        Errors = [];
+        Message = null;
+    }
+
+    private JsonElement? ParseJson(string? json, string target)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            return document.RootElement.Clone();
+        }
+        catch (JsonException exception)
+        {
+            Errors = [new ApiError("Validation.Json.Invalid", exception.Message, target)];
+            return null;
+        }
+    }
+
+    private Guid? ParseNullableGuid(string? value, string target)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        if (Guid.TryParse(value, out var parsed))
+        {
+            return parsed;
+        }
+
+        Errors = [new ApiError("Validation.Guid.Invalid", $"{target} must be a GUID.", target)];
+        return null;
+    }
+
+    private DateTimeOffset? ParseDateTimeOffset(string? value, string target)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        if (DateTimeOffset.TryParse(value, out var parsed))
+        {
+            return parsed;
+        }
+
+        Errors = [new ApiError("Validation.Date.Invalid", $"{target} must be ISO 8601 date time.", target)];
+        return null;
+    }
+
+    private static IReadOnlyList<string> ParseEventTypes(string? value)
+        => string.IsNullOrWhiteSpace(value)
+            ? []
+            : value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    private static string FormatDateTime(DateTime value)
+        => value.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
+
+    private sealed class WorkspaceFormModel
+    {
+        public string? Name { get; set; }
+
+        public string? DefaultLocation { get; set; }
+
+        public string? DefaultLanguage { get; set; }
+
+        public string? RetentionSettingsJson { get; set; } = "{}";
+
+        public string? NotificationDefaultsJson { get; set; } = "{}";
+    }
+
+    private sealed class CredentialFormModel
+    {
+        public string? Provider { get; set; } = "rakko_keyword";
+
+        public string? KeyRef { get; set; }
+
+        public string? SecretValue { get; set; }
+    }
+
+    private sealed class RotateCredentialFormModel
+    {
+        public string? NewKeyRef { get; set; }
+
+        public string? NewSecretValue { get; set; }
+    }
+
+    private sealed class ChannelFormModel
+    {
+        public string? Name { get; set; }
+
+        public string? ChannelType { get; set; } = "discord";
+
+        public string? ProjectId { get; set; }
+
+        public string? WebhookSecretRef { get; set; }
+
+        public string? EventTypes { get; set; } = "job_failed, credit_low";
+    }
+
+    private sealed class AuditSearchFormModel
+    {
+        public string? Q { get; set; }
+
+        public string? Actor { get; set; } = "developer";
+
+        public string? ResourceType { get; set; }
+
+        public string? ResourceId { get; set; }
+
+        public string? CorrelationId { get; set; }
+
+        public string? From { get; set; }
+
+        public string? To { get; set; }
+    }
+}

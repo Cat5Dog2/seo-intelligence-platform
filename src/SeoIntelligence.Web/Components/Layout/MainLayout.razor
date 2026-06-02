@@ -1,6 +1,29 @@
 ﻿@inherits LayoutComponentBase
 
-@Body
+<div class="app-shell">
+    <header class="app-header">
+        <a class="brand" href="/">SEO Intelligence</a>
+        <div class="header-controls">
+            <ProjectSwitcher />
+            <LocationLanguageSelector />
+            <CreditBadge />
+        </div>
+    </header>
+
+    <div class="app-frame">
+        <aside class="side-nav" aria-label="Primary">
+            <NavLink href="/" Match="NavLinkMatch.All">プロジェクト</NavLink>
+            <NavLink href="/dashboard">ダッシュボード</NavLink>
+            <NavLink href="/keywords">キーワード</NavLink>
+            <NavLink href="/search-volume">検索ボリューム</NavLink>
+            <NavLink href="/admin">管理</NavLink>
+        </aside>
+
+        <main class="main-content">
+            @Body
+        </main>
+    </div>
+</div>
 
 <div id="blazor-error-ui" data-nosnippet>
     An unhandled error has occurred.
