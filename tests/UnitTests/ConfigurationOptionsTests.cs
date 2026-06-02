@@ -1,3 +1,4 @@
+using System.Diagnostics.Metrics;
 using SeoIntelligence.Application.Configuration;
 using SeoIntelligence.Application.Diagnostics;
 using SeoIntelligence.Application.Storage;
@@ -166,5 +167,41 @@ public sealed class ConfigurationOptionsTests
         Assert.Equal(jobId, scope["job_id"]);
         Assert.Equal("rk-request-1", scope["external_request_id"]);
         Assert.Equal("correlation-1", scope["correlation_id"]);
+    }
+
+    [Fact]
+    [Trait("Category", "Unit")]
+    public void DiagnosticsPublishesOperationalMetricNames()
+    {
+        var publishedNames = new HashSet<string>(StringComparer.Ordinal);
+        using var listener = new MeterListener();
+        listener.InstrumentPublished = (instrument, currentListener) =>
+        {
+            if (instrument.Meter.Name == SeoIntelligenceDiagnostics.MeterName)
+            {
+                publishedNames.Add(instrument.Name);
+                currentListener.EnableMeasurementEvents(instrument);
+            }
+        };
+
+        listener.Start();
+        var now = DateTime.UtcNow;
+        SeoIntelligenceDiagnostics.RecordJobDuration("DataExportJob", "succeeded", now.AddSeconds(-2), now);
+        SeoIntelligenceDiagnostics.RecordJobRetry("DataExportJob", "manual");
+        SeoIntelligenceDiagnostics.RecordExternalApiCall("rakko_keyword", "/v1/search-volume", 429, 1, cacheHit: false);
+        SeoIntelligenceDiagnostics.RecordExternalApiCall("rakko_keyword", "/v1/search-volume", 402, 0, cacheHit: false);
+        SeoIntelligenceDiagnostics.RecordNotificationFailure("job_failed", "failed");
+        _ = SeoIntelligenceDiagnostics.CreateJobSuccessRateGauge(() => [new Measurement<double>(100)]);
+        _ = SeoIntelligenceDiagnostics.CreateJobQueueDepthGauge(() => [new Measurement<long>(0)]);
+        listener.RecordObservableInstruments();
+
+        Assert.Contains("job_success_rate", publishedNames);
+        Assert.Contains("job_queue_depth", publishedNames);
+        Assert.Contains("job_duration_p95", publishedNames);
+        Assert.Contains("external_api_429_count", publishedNames);
+        Assert.Contains("external_api_402_count", publishedNames);
+        Assert.Contains("external_api_credit_consumed", publishedNames);
+        Assert.Contains("notification_failure_count", publishedNames);
+        Assert.Contains("retry_count_by_job_type", publishedNames);
     }
 }

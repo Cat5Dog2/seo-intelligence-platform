@@ -9,6 +9,7 @@ using Hangfire.States;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using SeoIntelligence.Application.Diagnostics;
 using SeoIntelligence.Application.Common;
 using SeoIntelligence.Application.ProjectContext;
 using SeoIntelligence.Application.Secrets;
@@ -483,6 +484,7 @@ internal sealed class NotificationDeliveryJob(
             delivery.Status = StatusValues.Retrying;
             delivery.NextRetryAt = now + delay;
             await dbContext.SaveChangesAsync(cancellationToken);
+            SeoIntelligenceDiagnostics.RecordNotificationFailure(delivery.EventType, delivery.Status);
             await notificationDeliveryScheduler.ScheduleRetryAsync(delivery.Id, delay, cancellationToken);
             return;
         }
@@ -490,6 +492,7 @@ internal sealed class NotificationDeliveryJob(
         delivery.Status = StatusValues.Failed;
         delivery.NextRetryAt = null;
         await dbContext.SaveChangesAsync(cancellationToken);
+        SeoIntelligenceDiagnostics.RecordNotificationFailure(delivery.EventType, delivery.Status);
     }
 
     private static TimeSpan CalculateBackoff(int retryCount)

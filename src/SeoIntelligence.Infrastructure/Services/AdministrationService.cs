@@ -45,6 +45,8 @@ public static class AdministrationServiceCollectionExtensions
         services.TryAddScoped<IJobQueueClient, HangfireJobQueueClient>();
         services.TryAddScoped<IJobDispatcher, JobDispatcher>();
         services.TryAddScoped<ISearchVolumeJobScheduler, SearchVolumeHangfireJobScheduler>();
+        services.TryAddSingleton<OperationalMetricsObserver>();
+        services.AddHostedService(serviceProvider => serviceProvider.GetRequiredService<OperationalMetricsObserver>());
         services.TryAddScoped<MasterDataSyncJob>();
         services.TryAddScoped<KeywordDiscoveryJob>();
         services.TryAddScoped<RegisterSearchVolumeJob>();

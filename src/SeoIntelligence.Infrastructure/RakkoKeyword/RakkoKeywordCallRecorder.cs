@@ -5,6 +5,7 @@ using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using SeoIntelligence.Application.Configuration;
+using SeoIntelligence.Application.Diagnostics;
 using SeoIntelligence.Application.RakkoKeyword;
 using SeoIntelligence.Application.Storage;
 using SeoIntelligence.Infrastructure.Persistence;
@@ -82,6 +83,13 @@ internal sealed class RakkoKeywordCallRecorder(
                 request.ErrorCode,
                 DateTime.UtcNow.AddMonths(options.Value.RawDataRetentionMonths)),
             cancellationToken);
+
+        SeoIntelligenceDiagnostics.RecordExternalApiCall(
+            RakkoKeywordOptions.ProviderName,
+            request.Endpoint,
+            request.StatusCode,
+            request.ConsumedCredit,
+            request.CacheHit);
 
         return new RakkoKeywordExternalCallRecord(
             callId,

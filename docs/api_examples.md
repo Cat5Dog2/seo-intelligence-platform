@@ -594,3 +594,49 @@ URL上の`projectId`と対象リソースの`project_id`が一致しない場合
 ```
 
 402は同一ジョブで再試行しない。Discord通知と監査ログを残す。
+
+## 17. RunbookスモークAPI
+
+`scripts/smoke-test.ps1` / `scripts/smoke-test.sh` は以下のMVP運用APIを確認する。
+
+```text
+GET /healthz
+GET /readyz
+GET /api/projects?page=1&pageSize=5
+GET /api/admin/audit-logs?page=1&pageSize=5
+POST /api/admin/master-data/sync
+POST /api/projects/{projectId}/exports/csv
+```
+
+プロジェクトID未指定時は、スモーク用プロジェクトを作成してCSV出力ジョブ登録に使う。
+
+`POST /api/projects`
+
+```json
+{
+  "name": "Runbook smoke 20260602000000",
+  "defaultLocation": "JP",
+  "defaultLanguage": "ja",
+  "kpi": {},
+  "memo": "Created by scripts/smoke-test.ps1"
+}
+```
+
+`POST /api/admin/master-data/sync`
+
+```json
+{
+  "requestId": "corr-smoke-master-data",
+  "result": true,
+  "data": {
+    "jobId": "018fd8a8-a000-7000-9000-000000000001",
+    "status": "queued"
+  },
+  "errors": [],
+  "meta": {
+    "jobId": "018fd8a8-a000-7000-9000-000000000001"
+  }
+}
+```
+
+Discordテスト通知はSecret参照が設定済みのチャンネルIDを `SMOKE_DISCORD_CHANNEL_ID` に指定した場合だけ実行する。

@@ -114,7 +114,7 @@ ISSUE-MVP-00X の続きから再開してください。
 - [x] ISSUE-MVP-015 Blazor共通UIと管理画面を実装する
 - [x] ISSUE-MVP-016 Blazorキーワード探索、検索ボリューム、ダッシュボードを実装する
 - [x] ISSUE-MVP-017 MVP受入テストを整備する
-- [ ] ISSUE-MVP-018 MVP運用、監視、ドキュメントを整備する
+- [x] ISSUE-MVP-018 MVP運用、監視、ドキュメントを整備する
 - [ ] ISSUE-P2-001 Phase 2 DB/API/外部API基盤を追加する
 - [ ] ISSUE-P2-002 競合分析と獲得語/ページ分析を実装する
 - [ ] ISSUE-P2-003 コンテンツ分析と記事ブリーフを実装する
@@ -712,22 +712,25 @@ ISSUE-MVP-00X の続きから再開してください。
 
 範囲:
 
-- [ ] ジョブ失敗、キュー滞留、402/403、429急増、クレジット消費量を確認できる導線を作る。
-- [ ] `job_success_rate`, `job_queue_depth`, `job_duration_p95`, `external_api_429_count`, `external_api_402_count`, `external_api_credit_consumed`, `notification_failure_count`, `retry_count_by_job_type` をメトリクス化する。
-- [ ] Runbookのスモークテストを実行できるようにする。
-- [ ] `docs/operations_runbook.md` に実装後の具体的な確認導線とコマンドを追記する。
-- [ ] `docs/test_plan.md` に正式なテストコマンドとテストDB起動手順を追記する。
-- [ ] `docs/api_examples.md` を実装済みレスポンスに合わせて更新する。
-- [ ] 仕様変更があれば正本文書とADR/implementation notesを更新する。
+- [x] ダッシュボード、管理画面、管理APIでジョブ失敗、実行中/滞留ジョブ、402/403、クレジット消費量、通知失敗を確認できる導線を作る。
+- [x] 429急増を管理画面またはメトリクスで明示的に確認できる導線を作る。
+- [x] `job_success_rate`, `job_queue_depth`, `job_duration_p95`, `external_api_429_count`, `external_api_402_count`, `external_api_credit_consumed`, `notification_failure_count`, `retry_count_by_job_type` をメトリクス化する。
+- [x] `/healthz`, `/readyz` の最小スモークテストを `scripts/smoke-test.sh` / `scripts/smoke-test.ps1` で実行できるようにする。
+- [x] Runbookのスモークテストをプロジェクト一覧、監査ログ検索、マスタ同期、Discordテスト通知、CSV出力まで拡張する。
+- [x] `docs/operations_runbook.md` に実装後の具体的な確認導線とコマンドを追記する。
+- [x] `docs/test_plan.md` に正式なテストコマンドとテストDB起動手順を追記する。
+- [x] `docs/api_examples.md` を実装済みレスポンスに合わせて更新する。
+- [x] 仕様変更があれば正本文書とADR/implementation notesを更新する。
 
 受入条件:
 
-- [ ] `/healthz`, `/readyz`, プロジェクト一覧、監査ログ検索、マスタ同期、Discordテスト通知、CSV出力のスモーク確認ができる。
-- [ ] MVP運用手順がRunbookに反映されている。
+- [x] `/healthz`, `/readyz` のスモーク確認ができる。
+- [x] プロジェクト一覧、監査ログ検索、マスタ同期、Discordテスト通知、CSV出力のスモーク確認ができる。
+- [x] MVP運用手順の具体的な確認コマンドがRunbookに反映されている。
 
 検証:
 
-- [ ] Runbookスモークテスト
+- [x] 包括Runbookスモークテスト
 
 ## Phase 2: SEO実務拡張
 
