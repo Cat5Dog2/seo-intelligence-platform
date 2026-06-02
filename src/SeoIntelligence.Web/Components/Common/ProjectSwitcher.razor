@@ -1,0 +1,51 @@
+@implements IDisposable
+@inject ProjectSelectionState ProjectState
+
+<label class="project-switcher">
+    <span>Project</span>
+    @if (ProjectState.IsLoading)
+    {
+        <select disabled>
+            <option>読み込み中</option>
+        </select>
+    }
+    else if (ProjectState.Projects.Count == 0)
+    {
+        <select disabled>
+            <option>プロジェクトなし</option>
+        </select>
+    }
+    else
+    {
+        <select value="@SelectedProjectId" @onchange="SelectProjectAsync">
+            @foreach (var project in ProjectState.Projects)
+            {
+                <option value="@project.ProjectId">@project.Name</option>
+            }
+        </select>
+    }
+</label>
+
+@code {
+    private string SelectedProjectId => ProjectState.SelectedProject?.ProjectId.ToString("D") ?? string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        ProjectState.Changed += OnProjectStateChanged;
+        await ProjectState.LoadAsync();
+    }
+
+    private async Task SelectProjectAsync(ChangeEventArgs args)
+    {
+        if (Guid.TryParse(args.Value?.ToString(), out var projectId))
+        {
+            await ProjectState.SelectAsync(projectId);
+        }
+    }
+
+    private void OnProjectStateChanged()
+        => _ = InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+        => ProjectState.Changed -= OnProjectStateChanged;
+}

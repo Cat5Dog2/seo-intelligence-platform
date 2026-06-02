@@ -1,0 +1,19 @@
+@if (!string.IsNullOrWhiteSpace(ResourceType) && !string.IsNullOrWhiteSpace(ResourceId))
+{
+    <a class="audit-link" href="@Href">監査</a>
+}
+else
+{
+    <span class="muted">監査なし</span>
+}
+
+@code {
+    [Parameter]
+    public string? ResourceType { get; set; }
+
+    [Parameter]
+    public string? ResourceId { get; set; }
+
+    private string Href
+        => $"/admin/audit?resourceType={Uri.EscapeDataString(ResourceType ?? string.Empty)}&resourceId={Uri.EscapeDataString(ResourceId ?? string.Empty)}";
+}

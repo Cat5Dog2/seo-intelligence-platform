@@ -1,0 +1,35 @@
+@if (HasErrors)
+{
+    <div class="error-summary" role="alert">
+        <strong>@Title</strong>
+        <ul>
+            @if (!string.IsNullOrWhiteSpace(Message))
+            {
+                <li>@Message</li>
+            }
+            @foreach (var error in Errors)
+            {
+                <li>
+                    @error.Message
+                    @if (!string.IsNullOrWhiteSpace(error.Target))
+                    {
+                        <span class="muted">(@error.Target)</span>
+                    }
+                </li>
+            }
+        </ul>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public string Title { get; set; } = "エラー";
+
+    [Parameter]
+    public string? Message { get; set; }
+
+    [Parameter]
+    public IReadOnlyList<ApiError> Errors { get; set; } = [];
+
+    private bool HasErrors => !string.IsNullOrWhiteSpace(Message) || Errors.Count > 0;
+}

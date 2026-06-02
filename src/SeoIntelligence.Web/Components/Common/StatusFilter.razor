@@ -1,0 +1,35 @@
+<label class="field-inline">
+    <span>@Label</span>
+    <select value="@Value" @onchange="OnChanged">
+        @foreach (var status in Statuses)
+        {
+            <option value="@status.Value">@status.Label</option>
+        }
+    </select>
+</label>
+
+@code {
+    [Parameter]
+    public string Label { get; set; } = "状態";
+
+    [Parameter]
+    public string Value { get; set; } = "active";
+
+    [Parameter]
+    public EventCallback<string> ValueChanged { get; set; }
+
+    [Parameter]
+    public IReadOnlyList<StatusFilterOption> Statuses { get; set; } =
+    [
+        new("active", "active"),
+        new("archived", "archived"),
+        new("disabled", "disabled"),
+        new("all", "all")
+    ];
+
+    private async Task OnChanged(ChangeEventArgs args)
+    {
+        Value = args.Value?.ToString() ?? "active";
+        await ValueChanged.InvokeAsync(Value);
+    }
+}
