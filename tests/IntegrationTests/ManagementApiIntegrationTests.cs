@@ -319,36 +319,9 @@ public sealed class ManagementApiIntegrationTests
         {
             var projectId = await CreateProjectAsync(client, "Credit Alert Project");
 
-            using (var channelResponse = await client.PostAsJsonAsync("/api/admin/notification-channels", new
-            {
-                projectId,
-                channelType = "discord",
-                name = "Credit Alerts",
-                webhookSecretRef = "discord-webhook-dev",
-                eventTypes = new[] { "job_failed", "credit_low" }
-            }))
-            using (var channelDocument = await ReadJsonAsync(channelResponse))
-            {
-                Assert.Equal(HttpStatusCode.Created, channelResponse.StatusCode);
-                Assert.Equal(projectId, channelDocument.RootElement.GetProperty("data").GetProperty("projectId").GetGuid());
-            }
+            await CreateNotificationChannelAsync(client, projectId, "Credit Alerts", "job_failed", "credit_low");
 
-            Guid jobId;
-            using (var response = await client.PostAsJsonAsync(
-                $"/api/projects/{projectId}/search-volume/jobs",
-                new
-                {
-                    keywords = new[] { "seo" },
-                    location = "JP",
-                    language = "ja",
-                    aggregationPeriodMonths = 12,
-                    seoDifficulty = true
-                }))
-            using (var document = await ReadJsonAsync(response))
-            {
-                Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
-                jobId = document.RootElement.GetProperty("data").GetProperty("jobId").GetGuid();
-            }
+            var jobId = await RegisterSearchVolumeJobAsync(client, projectId);
 
             await using (var scope = factory.Services.CreateAsyncScope())
             {
@@ -378,6 +351,193 @@ public sealed class ManagementApiIntegrationTests
 
             Assert.Single(discord.RequestBodies);
             Assert.Contains("credit_low", discord.RequestBodies[0], StringComparison.Ordinal);
+        }
+        finally
+        {
+            DeleteTempStoragePath(factory.StoragePath);
+        }
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    [Trait("Category", "Operational")]
+    public async Task SearchVolume403MockRecordsFatalJobFailureNotificationAndAudit()
+    {
+        await using var discord = FakeDiscordWebhookServer.Start(HttpStatusCode.NoContent);
+        await using var factory = new ManagementApiFactory(new Dictionary<string, string?>
+        {
+            ["Secrets:discord-webhook-dev"] = discord.Url.ToString(),
+            ["RakkoKeyword:Mode"] = "Mock",
+            ["RakkoKeyword:MockStatusCode"] = "403"
+        });
+        using var client = CreateClient(factory);
+
+        try
+        {
+            var projectId = await CreateProjectAsync(client, "Forbidden API Project");
+            await CreateNotificationChannelAsync(client, projectId, "Job Failure Alerts", "job_failed", "credit_low");
+            var jobId = await RegisterSearchVolumeJobAsync(client, projectId);
+
+            await using (var scope = factory.Services.CreateAsyncScope())
+            {
+                var dispatcher = scope.ServiceProvider.GetRequiredService<IJobDispatcher>();
+                await dispatcher.DispatchAsync(jobId);
+            }
+
+            await using (var scope = factory.Services.CreateAsyncScope())
+            {
+                var dbContext = scope.ServiceProvider.GetRequiredService<SeoIntelligenceDbContext>();
+                var job = await dbContext.Jobs.AsNoTracking().SingleAsync(entity => entity.Id == jobId);
+                Assert.Equal(StatusValues.FailedFatal, job.Status);
+                Assert.Equal(0, job.RetryCount);
+                Assert.Null(job.NextRunAt);
+
+                var delivery = await dbContext.NotificationDeliveries.AsNoTracking().SingleAsync(entity => entity.JobId == jobId);
+                Assert.Equal("job_failed", delivery.EventType);
+                Assert.Equal(StatusValues.Succeeded, delivery.Status);
+                Assert.Equal(projectId, delivery.ProjectId);
+
+                var externalCall = await dbContext.ExternalApiCalls.AsNoTracking().SingleAsync(entity => entity.JobId == jobId);
+                Assert.Equal(403, externalCall.StatusCode);
+                Assert.Equal("forbidden", externalCall.ErrorCode);
+
+                var auditLog = await dbContext.AuditLogs.AsNoTracking().SingleAsync(entity =>
+                    entity.Action == AuditLogActionNames.JobFailed &&
+                    entity.ResourceId == jobId.ToString("D"));
+                Assert.Equal(AuditLogResourceTypes.Job, auditLog.ResourceType);
+            }
+
+            Assert.Single(discord.RequestBodies);
+            Assert.Contains("job_failed", discord.RequestBodies[0], StringComparison.Ordinal);
+        }
+        finally
+        {
+            DeleteTempStoragePath(factory.StoragePath);
+        }
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    [Trait("Category", "Operational")]
+    public async Task SearchVolume429MockRecordsRetryableJobWithBackoffAndAudit()
+    {
+        await using var factory = new ManagementApiFactory(new Dictionary<string, string?>
+        {
+            ["RakkoKeyword:Mode"] = "Mock",
+            ["RakkoKeyword:MockStatusCode"] = "429"
+        });
+        using var client = CreateClient(factory);
+
+        try
+        {
+            var projectId = await CreateProjectAsync(client, "Rate Limited Project");
+            var jobId = await RegisterSearchVolumeJobAsync(client, projectId);
+
+            await using (var scope = factory.Services.CreateAsyncScope())
+            {
+                var dispatcher = scope.ServiceProvider.GetRequiredService<IJobDispatcher>();
+                await dispatcher.DispatchAsync(jobId);
+            }
+
+            await using (var scope = factory.Services.CreateAsyncScope())
+            {
+                var dbContext = scope.ServiceProvider.GetRequiredService<SeoIntelligenceDbContext>();
+                var job = await dbContext.Jobs.AsNoTracking().SingleAsync(entity => entity.Id == jobId);
+                Assert.Equal(StatusValues.FailedRetryable, job.Status);
+                Assert.Equal(1, job.RetryCount);
+                Assert.NotNull(job.NextRunAt);
+                Assert.Null(job.CompletedAt);
+                Assert.Contains("\"httpStatusCode\":429", job.ErrorJson, StringComparison.Ordinal);
+                Assert.Contains("\"retryable\":true", job.ErrorJson, StringComparison.Ordinal);
+
+                var externalCall = await dbContext.ExternalApiCalls.AsNoTracking().SingleAsync(entity => entity.JobId == jobId);
+                Assert.Equal(429, externalCall.StatusCode);
+                Assert.Equal("rate_limited", externalCall.ErrorCode);
+
+                Assert.True(await dbContext.AuditLogs.AsNoTracking().AnyAsync(entity =>
+                    entity.Action == AuditLogActionNames.JobFailed &&
+                    entity.ResourceId == jobId.ToString("D")));
+            }
+        }
+        finally
+        {
+            DeleteTempStoragePath(factory.StoragePath);
+        }
+    }
+
+    [Theory]
+    [Trait("Category", "Integration")]
+    [Trait("Category", "Operational")]
+    [InlineData(500, 3)]
+    [InlineData(503, 5)]
+    public async Task SearchVolumeRetryableExternalMockBecomesFatalAfterRetryLimit(int statusCode, int maxRetryCount)
+    {
+        await using var discord = FakeDiscordWebhookServer.Start(HttpStatusCode.NoContent);
+        await using var factory = new ManagementApiFactory(new Dictionary<string, string?>
+        {
+            ["Secrets:discord-webhook-dev"] = discord.Url.ToString(),
+            ["RakkoKeyword:Mode"] = "Mock",
+            ["RakkoKeyword:MockStatusCode"] = statusCode.ToString()
+        });
+        using var client = CreateClient(factory);
+
+        try
+        {
+            var projectId = await CreateProjectAsync(client, $"Retry Limit {statusCode}");
+            var jobId = await RegisterSearchVolumeJobAsync(client, projectId);
+
+            await SetQueuedRetryStateAsync(factory, jobId, maxRetryCount - 1);
+            await using (var scope = factory.Services.CreateAsyncScope())
+            {
+                var dispatcher = scope.ServiceProvider.GetRequiredService<IJobDispatcher>();
+                await dispatcher.DispatchAsync(jobId);
+            }
+
+            await using (var scope = factory.Services.CreateAsyncScope())
+            {
+                var dbContext = scope.ServiceProvider.GetRequiredService<SeoIntelligenceDbContext>();
+                var retryableJob = await dbContext.Jobs.AsNoTracking().SingleAsync(entity => entity.Id == jobId);
+                Assert.Equal(StatusValues.FailedRetryable, retryableJob.Status);
+                Assert.Equal(maxRetryCount, retryableJob.RetryCount);
+                Assert.NotNull(retryableJob.NextRunAt);
+                Assert.Null(retryableJob.CompletedAt);
+            }
+
+            await CreateNotificationChannelAsync(client, projectId, "Final Failure Alerts", "job_failed");
+            await SetQueuedRetryStateAsync(factory, jobId, maxRetryCount);
+
+            await using (var scope = factory.Services.CreateAsyncScope())
+            {
+                var dispatcher = scope.ServiceProvider.GetRequiredService<IJobDispatcher>();
+                await dispatcher.DispatchAsync(jobId);
+            }
+
+            await using (var scope = factory.Services.CreateAsyncScope())
+            {
+                var dbContext = scope.ServiceProvider.GetRequiredService<SeoIntelligenceDbContext>();
+                var fatalJob = await dbContext.Jobs.AsNoTracking().SingleAsync(entity => entity.Id == jobId);
+                Assert.Equal(StatusValues.FailedFatal, fatalJob.Status);
+                Assert.Equal(maxRetryCount + 1, fatalJob.RetryCount);
+                Assert.Null(fatalJob.NextRunAt);
+                Assert.NotNull(fatalJob.CompletedAt);
+                Assert.Contains($"\"httpStatusCode\":{statusCode}", fatalJob.ErrorJson, StringComparison.Ordinal);
+                Assert.Contains("\"retryable\":false", fatalJob.ErrorJson, StringComparison.Ordinal);
+
+                var externalCalls = await dbContext.ExternalApiCalls
+                    .AsNoTracking()
+                    .Where(entity => entity.JobId == jobId)
+                    .OrderBy(entity => entity.CreatedAt)
+                    .ToArrayAsync();
+                Assert.Equal(2, externalCalls.Length);
+                Assert.All(externalCalls, call => Assert.Equal(statusCode, call.StatusCode));
+
+                var delivery = await dbContext.NotificationDeliveries.AsNoTracking().SingleAsync(entity => entity.JobId == jobId);
+                Assert.Equal("job_failed", delivery.EventType);
+                Assert.Equal(StatusValues.Succeeded, delivery.Status);
+            }
+
+            Assert.Single(discord.RequestBodies);
+            Assert.Contains("job_failed", discord.RequestBodies[0], StringComparison.Ordinal);
         }
         finally
         {
@@ -567,6 +727,59 @@ public sealed class ManagementApiIntegrationTests
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         Assert.Equal("active", document.RootElement.GetProperty("data").GetProperty("status").GetString());
         return document.RootElement.GetProperty("data").GetProperty("projectId").GetGuid();
+    }
+
+    private static async Task CreateNotificationChannelAsync(
+        HttpClient client,
+        Guid projectId,
+        string name,
+        params string[] eventTypes)
+    {
+        using var channelResponse = await client.PostAsJsonAsync("/api/admin/notification-channels", new
+        {
+            projectId,
+            channelType = "discord",
+            name,
+            webhookSecretRef = "discord-webhook-dev",
+            eventTypes
+        });
+        using var channelDocument = await ReadJsonAsync(channelResponse);
+
+        Assert.Equal(HttpStatusCode.Created, channelResponse.StatusCode);
+        Assert.Equal(projectId, channelDocument.RootElement.GetProperty("data").GetProperty("projectId").GetGuid());
+    }
+
+    private static async Task<Guid> RegisterSearchVolumeJobAsync(HttpClient client, Guid projectId)
+    {
+        using var response = await client.PostAsJsonAsync(
+            $"/api/projects/{projectId}/search-volume/jobs",
+            new
+            {
+                keywords = new[] { "seo" },
+                location = "JP",
+                language = "ja",
+                aggregationPeriodMonths = 12,
+                seoDifficulty = true
+            });
+        using var document = await ReadJsonAsync(response);
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        return document.RootElement.GetProperty("data").GetProperty("jobId").GetGuid();
+    }
+
+    private static async Task SetQueuedRetryStateAsync(ManagementApiFactory factory, Guid jobId, int retryCount)
+    {
+        await using var scope = factory.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<SeoIntelligenceDbContext>();
+        var job = await dbContext.Jobs.SingleAsync(entity => entity.Id == jobId);
+        var now = DateTime.UtcNow;
+        job.Status = StatusValues.Queued;
+        job.RetryCount = retryCount;
+        job.NextRunAt = now;
+        job.ErrorJson = null;
+        job.CompletedAt = null;
+        job.UpdatedAt = now;
+        await dbContext.SaveChangesAsync();
     }
 
     private static async Task<Guid> CreateSiteAsync(HttpClient client, Guid projectId)
