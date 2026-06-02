@@ -107,9 +107,53 @@ public interface ISeoIntelligenceApiClient
 
     Task<ApiClientResult<JobDetails>> RetryJobAsync(Guid jobId, CancellationToken cancellationToken = default);
 
+    Task<ApiClientResult<JobDetails>> GetJobAsync(Guid jobId, CancellationToken cancellationToken = default);
+
     Task<ApiClientResult<IReadOnlyList<LocationSummary>>> ListLocationsAsync(CancellationToken cancellationToken = default);
 
     Task<ApiClientResult<IReadOnlyList<LanguageSummary>>> ListLanguagesAsync(CancellationToken cancellationToken = default);
+
+    Task<ApiClientResult<DashboardSnapshot>> GetDashboardAsync(Guid projectId, CancellationToken cancellationToken = default);
+
+    Task<ApiClientResult<KeywordDiscoveryResult>> DiscoverKeywordsAsync(
+        Guid projectId,
+        KeywordDiscoveryRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<ApiClientResult<JobReference>> RegisterSearchVolumeJobAsync(
+        Guid projectId,
+        SearchVolumeJobRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<ApiClientResult<JobReference>> GetSearchVolumeJobAsync(
+        Guid projectId,
+        Guid jobId,
+        CancellationToken cancellationToken = default);
+
+    Task<ApiClientResult<IReadOnlyList<SearchVolumeResultRow>>> GetSearchVolumeResultsAsync(
+        Guid projectId,
+        Guid jobId,
+        string? q = null,
+        string sortBy = "keyword",
+        string orderBy = "asc",
+        int page = 1,
+        int pageSize = 100,
+        CancellationToken cancellationToken = default);
+
+    Task<ApiClientResult<JobReference>> CreateCsvExportAsync(
+        Guid projectId,
+        DataExportRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<ApiClientResult<DataExportDetails>> GetExportAsync(
+        Guid projectId,
+        Guid exportId,
+        CancellationToken cancellationToken = default);
+
+    Task<ApiClientResult<DataExportDownload>> CreateExportDownloadAsync(
+        Guid projectId,
+        Guid exportId,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed record AuditLogSearchParameters(

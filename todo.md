@@ -108,11 +108,11 @@ ISSUE-MVP-00X の続きから再開してください。
 - [x] ISSUE-MVP-009 マスタ同期を実装する
 - [x] ISSUE-MVP-010 キーワード探索を実装する
 - [x] ISSUE-MVP-011 一括検索ボリューム調査を実装する
-- [ ] ISSUE-MVP-012 機会スコアとMVPダッシュボード集計を実装する
-- [ ] ISSUE-MVP-013 CSV出力を実装する
+- [x] ISSUE-MVP-012 機会スコアとMVPダッシュボード集計を実装する
+- [x] ISSUE-MVP-013 CSV出力を実装する
 - [x] ISSUE-MVP-014 Discord通知を実装する
 - [x] ISSUE-MVP-015 Blazor共通UIと管理画面を実装する
-- [ ] ISSUE-MVP-016 Blazorキーワード探索、検索ボリューム、ダッシュボードを実装する
+- [x] ISSUE-MVP-016 Blazorキーワード探索、検索ボリューム、ダッシュボードを実装する
 - [ ] ISSUE-MVP-017 MVP受入テストを整備する
 - [ ] ISSUE-MVP-018 MVP運用、監視、ドキュメントを整備する
 - [ ] ISSUE-P2-001 Phase 2 DB/API/外部API基盤を追加する
@@ -649,27 +649,27 @@ ISSUE-MVP-00X の続きから再開してください。
 
 範囲:
 
-- [ ] S-020 キーワード探索を実装する。
-- [ ] シード、検索ソース、limit、フィルタ、sortBy/orderBy、同期希望を入力できるようにする。
-- [ ] keyword、source、suggest_class、volume、difficulty、cpc、competition、first_seen_range、opportunity_scoreを表示する。
-- [ ] 検索ボリューム調査へ送る、CSV出力を実装する。
-- [ ] S-030 一括検索ボリュームを実装する。
-- [ ] 貼付テキストとCSVファイル選択をブラウザ内でパースし、APIへは `keywords` JSON配列だけを送る。
-- [ ] 1から50,000件、重複除外、空行除外、地域/言語必須を検証する。
-- [ ] ジョブ登録、キャンセル、再実行、結果フィルタ、CSV出力を実装する。
-- [ ] S-010 ホームダッシュボードを実装する。
-- [ ] loading、empty、validation error、job running、job failed、retryable状態を共通表示する。
+- [x] S-020 キーワード探索を実装する。
+- [x] シード、検索ソース、limit、フィルタ、sortBy/orderBy、同期希望を入力できるようにする。
+- [x] keyword、source、suggest_class、volume、difficulty、cpc、competition、first_seen_range、opportunity_scoreを表示する。
+- [x] 検索ボリューム調査へ送る、CSV出力を実装する。
+- [x] S-030 一括検索ボリュームを実装する。
+- [x] 貼付テキストとCSVファイル選択をブラウザ内でパースし、APIへは `keywords` JSON配列だけを送る。
+- [x] 1から50,000件、重複除外、空行除外、地域/言語必須を検証する。
+- [x] ジョブ登録、キャンセル、再実行、結果フィルタ、CSV出力を実装する。
+- [x] S-010 ホームダッシュボードを実装する。
+- [x] loading、empty、validation error、job running、job failed、retryable状態を共通表示する。
 
 受入条件:
 
-- [ ] キーワード探索の取得、保存、フィルタが画面からできる。
-- [ ] CSV入力はブラウザ内でパースされ、APIへCSVファイル本体を送らない。
-- [ ] 一括検索ボリュームの進捗と結果を確認できる。
+- [x] キーワード探索の取得、保存、フィルタが画面からできる。
+- [x] CSV入力はブラウザ内でパースされ、APIへCSVファイル本体を送らない。
+- [x] 一括検索ボリュームの進捗と結果を確認できる。
 
 検証:
 
-- [ ] `dotnet test --filter Category=UI`
-- [ ] `dotnet test --filter Category=E2E`
+- [x] `dotnet test --filter Category=UI`
+- [x] `dotnet test --filter Category=E2E`
 
 ### ISSUE-MVP-017 MVP受入テストを整備する
 

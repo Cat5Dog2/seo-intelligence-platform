@@ -1,0 +1,523 @@
+@page "/keywords"
+@using System.Text.Json
+@implements IDisposable
+@inject ISeoIntelligenceApiClient ApiClient
+@inject ProjectSelectionState ProjectState
+@inject NavigationManager Navigation
+
+<PageTitle>キーワード探索 - SEO Intelligence</PageTitle>
+
+<div class="page-stack">
+    <header class="page-header">
+        <div>
+            <h1>キーワード探索</h1>
+            <p>選択中プロジェクト: @(ProjectState.SelectedProject?.Name ?? "未選択")</p>
+        </div>
+        <div class="toolbar">
+            <button type="button" class="secondary-button" @onclick="DiscoverAsync" disabled="@(!CanRunDiscovery)">調査開始</button>
+            <button type="button" class="secondary-button" @onclick="RegisterCandidateSearchVolumeAsync" disabled="@(!CanSendCandidates)">検索ボリューム調査へ送る</button>
+            <button type="button" class="secondary-button" @onclick="CreateCandidateExportAsync" disabled="@(!CanExportCandidates)">CSV出力</button>
+        </div>
+    </header>
+
+    <ErrorSummary Errors="@Errors" />
+    @if (!string.IsNullOrWhiteSpace(Message))
+    {
+        <div class="state-row">@Message</div>
+    }
+
+    <section class="panel">
+        <div class="section-heading">
+            <h2>探索条件</h2>
+            <span class="muted">@LocationLanguageLabel</span>
+        </div>
+        <div class="form-grid dense-form">
+            <label class="field wide-field">
+                <span>シードキーワード</span>
+                <input @bind="DiscoveryForm.SeedKeyword" @bind:event="oninput" disabled="@(ProjectState.SelectedProject is null)" />
+            </label>
+            <label class="field">
+                <span>limit</span>
+                <input type="number" min="1" max="25000" @bind="DiscoveryForm.Limit" disabled="@(ProjectState.SelectedProject is null)" />
+            </label>
+            <label class="field">
+                <span>sortBy</span>
+                <select @bind="DiscoveryForm.SortBy" disabled="@(ProjectState.SelectedProject is null)">
+                    <option value="searchVolume">searchVolume</option>
+                    <option value="seoDifficulty">seoDifficulty</option>
+                    <option value="cpc">cpc</option>
+                    <option value="competition">competition</option>
+                    <option value="firstSeenRange">firstSeenRange</option>
+                    <option value="keyword">keyword</option>
+                    <option value="suggestClass">suggestClass</option>
+                </select>
+            </label>
+            <label class="field">
+                <span>orderBy</span>
+                <select @bind="DiscoveryForm.OrderBy" disabled="@(ProjectState.SelectedProject is null)">
+                    <option value="desc">desc</option>
+                    <option value="asc">asc</option>
+                </select>
+            </label>
+            <label class="check-option compact-check">
+                <input type="checkbox" @bind="DiscoveryForm.SyncPreferred" disabled="@(ProjectState.SelectedProject is null)" />
+                <span>同期希望</span>
+            </label>
+        </div>
+
+        <div class="option-grid">
+            <fieldset>
+                <legend>取得ソース</legend>
+                <div class="check-list">
+                    @foreach (var source in SourceOptions)
+                    {
+                        <label class="check-option">
+                            <input type="checkbox" checked="@DiscoveryForm.Sources.Contains(source.Value)" @onchange="args => ToggleOption(DiscoveryForm.Sources, source.Value, args)" disabled="@(ProjectState.SelectedProject is null)" />
+                            <span>@source.Label</span>
+                        </label>
+                    }
+                </div>
+            </fieldset>
+            <fieldset>
+                <legend>検索エンジン</legend>
+                <div class="check-list">
+                    @foreach (var engine in EngineOptions)
+                    {
+                        <label class="check-option">
+                            <input type="checkbox" checked="@DiscoveryForm.Engines.Contains(engine.Value)" @onchange="args => ToggleOption(DiscoveryForm.Engines, engine.Value, args)" disabled="@(ProjectState.SelectedProject is null)" />
+                            <span>@engine.Label</span>
+                        </label>
+                    }
+                </div>
+            </fieldset>
+        </div>
+
+        <div class="form-grid dense-form">
+            <label class="field">
+                <span>Volume min</span>
+                <input type="number" step="1" @bind="DiscoveryForm.MinSearchVolume" disabled="@(ProjectState.SelectedProject is null)" />
+            </label>
+            <label class="field">
+                <span>Volume max</span>
+                <input type="number" step="1" @bind="DiscoveryForm.MaxSearchVolume" disabled="@(ProjectState.SelectedProject is null)" />
+            </label>
+            <label class="field">
+                <span>Difficulty min</span>
+                <input type="number" step="0.1" @bind="DiscoveryForm.MinSeoDifficulty" disabled="@(ProjectState.SelectedProject is null)" />
+            </label>
+            <label class="field">
+                <span>Difficulty max</span>
+                <input type="number" step="0.1" @bind="DiscoveryForm.MaxSeoDifficulty" disabled="@(ProjectState.SelectedProject is null)" />
+            </label>
+            <label class="field">
+                <span>CPC min</span>
+                <input type="number" step="0.01" @bind="DiscoveryForm.MinCpc" disabled="@(ProjectState.SelectedProject is null)" />
+            </label>
+            <label class="field">
+                <span>Competition max</span>
+                <input type="number" step="0.1" @bind="DiscoveryForm.MaxCompetition" disabled="@(ProjectState.SelectedProject is null)" />
+            </label>
+            <label class="field">
+                <span>出現時期</span>
+                <input @bind="DiscoveryForm.FirstSeenRange" disabled="@(ProjectState.SelectedProject is null)" />
+            </label>
+            <label class="field">
+                <span>Suggest class</span>
+                <input @bind="DiscoveryForm.SuggestClass" disabled="@(ProjectState.SelectedProject is null)" />
+            </label>
+            <label class="field">
+                <span>含む語句</span>
+                <input @bind="DiscoveryForm.IncludeTerms" disabled="@(ProjectState.SelectedProject is null)" />
+            </label>
+            <label class="field">
+                <span>除外語句</span>
+                <input @bind="DiscoveryForm.ExcludeTerms" disabled="@(ProjectState.SelectedProject is null)" />
+            </label>
+        </div>
+    </section>
+
+    @if (DiscoveryJob is not null)
+    {
+        <section class="panel">
+            <div class="section-heading">
+                <h2>探索ジョブ</h2>
+                <button type="button" class="secondary-button" @onclick="RefreshDiscoveryJobAsync">状態更新</button>
+            </div>
+            <div class="job-status-card">
+                <span>@DiscoveryJob.JobType</span>
+                <strong>@DiscoveryJob.Status</strong>
+                <progress max="100" value="@DiscoveryJob.Progress"></progress>
+                <span>@DiscoveryJob.Progress%</span>
+            </div>
+        </section>
+    }
+
+    @if (SourceStatuses.Count > 0)
+    {
+        <section class="panel">
+            <div class="section-heading">
+                <h2>ソース別状態</h2>
+            </div>
+            <DataTable Items="@SourceStatuses" Columns="@SourceStatusColumns" EmptyText="ソース状態はありません。" />
+        </section>
+    }
+
+    <section class="panel">
+        <div class="section-heading">
+            <h2>候補語</h2>
+            <span class="muted">@CandidateCountLabel</span>
+        </div>
+        <DataTable Items="@Candidates" Columns="@CandidateColumns" IsLoading="@IsLoading" EmptyText="候補語はありません。" />
+    </section>
+</div>
+
+@code {
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
+    private static readonly IReadOnlyList<OptionItem> SourceOptions =
+    [
+        new("suggest", "suggest"),
+        new("related", "related"),
+        new("other", "LSI/PAA"),
+        new("question", "FAQ"),
+        new("ranking", "同時ランクイン")
+    ];
+
+    private static readonly IReadOnlyList<OptionItem> EngineOptions =
+    [
+        new("google", "Google"),
+        new("bing", "Bing"),
+        new("youtube", "YouTube"),
+        new("amazon", "Amazon"),
+        new("rakuten", "楽天"),
+        new("googleShopping", "Shopping"),
+        new("googleImage", "Image")
+    ];
+
+    private static readonly IReadOnlyList<DataTableColumn<KeywordCandidate>> CandidateColumns =
+    [
+        new("keyword", candidate => candidate.Keyword),
+        new("source", candidate => candidate.Source),
+        new("class", candidate => candidate.SuggestClass),
+        new("volume", candidate => FormatNullable(candidate.SearchVolume), "table-number"),
+        new("difficulty", candidate => FormatNullable(candidate.SeoDifficulty), "table-number"),
+        new("cpc", candidate => FormatNullable(candidate.Cpc), "table-number"),
+        new("competition", candidate => FormatNullable(candidate.Competition), "table-number"),
+        new("first seen", candidate => candidate.FirstSeenRange),
+        new("score", candidate => FormatNullable(candidate.OpportunityScore), "table-number")
+    ];
+
+    private static readonly IReadOnlyList<DataTableColumn<KeywordDiscoverySourceStatus>> SourceStatusColumns =
+    [
+        new("source", status => status.Source),
+        new("status", status => status.Status),
+        new("count", status => status.CandidateCount.ToString(), "table-number"),
+        new("credit", status => status.ConsumedCredit.ToString("0.##"), "table-number"),
+        new("message", status => status.Message)
+    ];
+
+    private DiscoveryFormModel DiscoveryForm { get; set; } = new();
+
+    private KeywordDiscoveryResult? DiscoveryResult { get; set; }
+
+    private JobDetails? DiscoveryJob { get; set; }
+
+    private IReadOnlyList<ApiError> Errors { get; set; } = [];
+
+    private string? Message { get; set; }
+
+    private bool IsLoading { get; set; }
+
+    private bool IsExporting { get; set; }
+
+    private bool IsSendingToSearchVolume { get; set; }
+
+    private IReadOnlyList<KeywordCandidate> Candidates
+        => DiscoveryResult?.Candidates ?? [];
+
+    private IReadOnlyList<KeywordDiscoverySourceStatus> SourceStatuses
+        => DiscoveryResult?.SourceStatuses ?? [];
+
+    private bool CanRunDiscovery
+        => ProjectState.SelectedProject is not null && !IsLoading;
+
+    private bool CanSendCandidates
+        => ProjectState.SelectedProject is not null && Candidates.Count > 0 && !IsSendingToSearchVolume;
+
+    private bool CanExportCandidates
+        => ProjectState.SelectedProject is not null && !IsExporting;
+
+    private string LocationLanguageLabel
+        => ProjectState.SelectedProject is { } project
+            ? $"{project.DefaultLocation} / {project.DefaultLanguage}"
+            : "プロジェクト未選択";
+
+    private string CandidateCountLabel
+        => Candidates.Count == 0 ? "0件" : $"{Candidates.Count:N0}件";
+
+    protected override async Task OnInitializedAsync()
+    {
+        ProjectState.Changed += OnProjectStateChanged;
+        await ProjectState.LoadAsync();
+    }
+
+    private async Task DiscoverAsync()
+    {
+        if (ProjectState.SelectedProject is not { } project || !ValidateDiscoveryForm())
+        {
+            return;
+        }
+
+        IsLoading = true;
+        Errors = [];
+        Message = null;
+        DiscoveryJob = null;
+        DiscoveryResult = null;
+
+        var request = new KeywordDiscoveryRequest(
+            SeedKeyword: DiscoveryForm.SeedKeyword?.Trim(),
+            Sources: DiscoveryForm.Sources.ToArray(),
+            Engines: DiscoveryForm.Engines.ToArray(),
+            Location: project.DefaultLocation,
+            Language: project.DefaultLanguage,
+            Limit: DiscoveryForm.Limit,
+            Filter: BuildFilter(),
+            SortBy: DiscoveryForm.SortBy,
+            OrderBy: DiscoveryForm.OrderBy,
+            SyncPreferred: DiscoveryForm.SyncPreferred);
+        var result = await ApiClient.DiscoverKeywordsAsync(project.ProjectId, request);
+        if (result.IsSuccess && result.Data is { } discovery)
+        {
+            DiscoveryResult = discovery;
+            if (discovery.IsAccepted && discovery.JobId.HasValue)
+            {
+                Message = $"探索ジョブを登録しました: {discovery.JobId.Value:D}";
+                await LoadDiscoveryJobAsync(discovery.JobId.Value);
+            }
+            else
+            {
+                Message = $"{discovery.Candidates.Count:N0}件の候補語を保存しました。";
+            }
+        }
+        else
+        {
+            Errors = result.Errors;
+        }
+
+        IsLoading = false;
+    }
+
+    private async Task RefreshDiscoveryJobAsync()
+    {
+        if (DiscoveryJob is not null)
+        {
+            await LoadDiscoveryJobAsync(DiscoveryJob.JobId);
+        }
+    }
+
+    private async Task LoadDiscoveryJobAsync(Guid jobId)
+    {
+        var result = await ApiClient.GetJobAsync(jobId);
+        if (result.IsSuccess)
+        {
+            DiscoveryJob = result.Data;
+        }
+        else
+        {
+            Errors = result.Errors;
+        }
+    }
+
+    private async Task RegisterCandidateSearchVolumeAsync()
+    {
+        if (ProjectState.SelectedProject is not { } project)
+        {
+            return;
+        }
+
+        var keywords = Candidates.Select(candidate => candidate.Keyword).Distinct(StringComparer.Ordinal).ToArray();
+        if (keywords.Length == 0 || keywords.Length > KeywordInputParser.MaxKeywordCount)
+        {
+            Errors = [new ApiError("Validation.Keywords.Count", "候補語は1から50,000件で指定してください。", "keywords")];
+            return;
+        }
+
+        IsSendingToSearchVolume = true;
+        Errors = [];
+        Message = null;
+        var result = await ApiClient.RegisterSearchVolumeJobAsync(
+            project.ProjectId,
+            new SearchVolumeJobRequest(keywords, project.DefaultLocation, project.DefaultLanguage));
+        if (result.IsSuccess && result.Data is { } job)
+        {
+            Message = $"検索ボリュームジョブを登録しました: {job.JobId:D}";
+        }
+        else
+        {
+            Errors = result.Errors;
+        }
+
+        IsSendingToSearchVolume = false;
+    }
+
+    private async Task CreateCandidateExportAsync()
+    {
+        if (ProjectState.SelectedProject is not { } project)
+        {
+            return;
+        }
+
+        IsExporting = true;
+        Errors = [];
+        Message = null;
+        var filter = JsonSerializer.SerializeToElement(
+            new
+            {
+                q = DiscoveryForm.SeedKeyword,
+                source = DiscoveryForm.Sources.Count == 1 ? DiscoveryForm.Sources.Single() : null
+            },
+            JsonOptions);
+        var result = await ApiClient.CreateCsvExportAsync(
+            project.ProjectId,
+            new DataExportRequest("keyword_candidates", filter));
+        if (result.IsSuccess && result.Data is { } exportJob)
+        {
+            Message = $"CSV出力ジョブを登録しました: {exportJob.JobId:D}";
+        }
+        else
+        {
+            Errors = result.Errors;
+        }
+
+        IsExporting = false;
+    }
+
+    private KeywordDiscoveryFilter BuildFilter()
+        => new(
+            DiscoveryForm.MinSearchVolume,
+            DiscoveryForm.MaxSearchVolume,
+            DiscoveryForm.MinSeoDifficulty,
+            DiscoveryForm.MaxSeoDifficulty,
+            DiscoveryForm.MinCpc,
+            DiscoveryForm.MaxCpc,
+            DiscoveryForm.MinCompetition,
+            DiscoveryForm.MaxCompetition,
+            Optional(DiscoveryForm.FirstSeenRange),
+            Optional(DiscoveryForm.SuggestClass),
+            ParseTerms(DiscoveryForm.IncludeTerms),
+            ParseTerms(DiscoveryForm.ExcludeTerms));
+
+    private bool ValidateDiscoveryForm()
+    {
+        var errors = new List<ApiError>();
+        if (ProjectState.SelectedProject is null)
+        {
+            errors.Add(new ApiError("Validation.Project.Required", "プロジェクトを選択してください。", "projectId"));
+        }
+
+        if (string.IsNullOrWhiteSpace(DiscoveryForm.SeedKeyword))
+        {
+            errors.Add(new ApiError("Validation.Keyword.Required", "シードキーワードを入力してください。", "seedKeyword"));
+        }
+
+        if (DiscoveryForm.Sources.Count == 0)
+        {
+            errors.Add(new ApiError("Validation.Sources.Required", "取得ソースを1つ以上選択してください。", "sources"));
+        }
+
+        if (DiscoveryForm.Engines.Count == 0)
+        {
+            errors.Add(new ApiError("Validation.Engines.Required", "検索エンジンを1つ以上選択してください。", "engines"));
+        }
+
+        if (DiscoveryForm.Limit is < 1 or > 25_000)
+        {
+            errors.Add(new ApiError("Validation.Limit.Range", "limitは1から25,000で指定してください。", "limit"));
+        }
+
+        Errors = errors;
+        return errors.Count == 0;
+    }
+
+    private static void ToggleOption(HashSet<string> values, string value, ChangeEventArgs args)
+    {
+        var isChecked = args.Value is bool checkedValue
+            ? checkedValue
+            : bool.TryParse(args.Value?.ToString(), out var parsed) && parsed;
+        if (isChecked)
+        {
+            values.Add(value);
+        }
+        else
+        {
+            values.Remove(value);
+        }
+    }
+
+    private async void OnProjectStateChanged()
+    {
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private static IReadOnlyList<string>? ParseTerms(string? value)
+    {
+        var terms = string.IsNullOrWhiteSpace(value)
+            ? []
+            : value.Split([',', '\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Where(term => !string.IsNullOrWhiteSpace(term))
+                .ToArray();
+        return terms.Length == 0 ? null : terms;
+    }
+
+    private static string? Optional(string? value)
+        => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static string FormatNullable(decimal? value)
+        => value.HasValue ? value.Value.ToString("0.####") : "-";
+
+    public void Dispose()
+        => ProjectState.Changed -= OnProjectStateChanged;
+
+    private sealed record OptionItem(string Value, string Label);
+
+    private sealed class DiscoveryFormModel
+    {
+        public string? SeedKeyword { get; set; }
+
+        public HashSet<string> Sources { get; } = new(["suggest", "related", "other", "question", "ranking"], StringComparer.Ordinal);
+
+        public HashSet<string> Engines { get; } = new(["google"], StringComparer.Ordinal);
+
+        public int? Limit { get; set; } = 100;
+
+        public string SortBy { get; set; } = "searchVolume";
+
+        public string OrderBy { get; set; } = "desc";
+
+        public bool SyncPreferred { get; set; } = true;
+
+        public decimal? MinSearchVolume { get; set; }
+
+        public decimal? MaxSearchVolume { get; set; }
+
+        public decimal? MinSeoDifficulty { get; set; }
+
+        public decimal? MaxSeoDifficulty { get; set; }
+
+        public decimal? MinCpc { get; set; }
+
+        public decimal? MaxCpc { get; set; }
+
+        public decimal? MinCompetition { get; set; }
+
+        public decimal? MaxCompetition { get; set; }
+
+        public string? FirstSeenRange { get; set; }
+
+        public string? SuggestClass { get; set; }
+
+        public string? IncludeTerms { get; set; }
+
+        public string? ExcludeTerms { get; set; }
+    }
+}

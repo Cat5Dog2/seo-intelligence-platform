@@ -1,0 +1,472 @@
+@page "/search-volume"
+@using System.Text.Json
+@implements IDisposable
+@inject ISeoIntelligenceApiClient ApiClient
+@inject ProjectSelectionState ProjectState
+@inject IJSRuntime JS
+
+<PageTitle>検索ボリューム - SEO Intelligence</PageTitle>
+
+<div class="page-stack">
+    <header class="page-header">
+        <div>
+            <h1>検索ボリューム</h1>
+            <p>選択中プロジェクト: @(ProjectState.SelectedProject?.Name ?? "未選択")</p>
+        </div>
+        <div class="toolbar">
+            <button type="button" class="secondary-button" @onclick="RegisterJobAsync" disabled="@(!CanRegister)">ジョブ登録</button>
+            <button type="button" class="secondary-button" @onclick="RefreshJobAsync" disabled="@(!HasCurrentJob)">状態更新</button>
+            <button type="button" class="secondary-button" @onclick="LoadResultsAsync" disabled="@(!HasCurrentJob)">結果表示</button>
+            <button type="button" class="secondary-button" @onclick="CreateResultsExportAsync" disabled="@(!HasCurrentJob || IsExporting)">CSV出力</button>
+        </div>
+    </header>
+
+    <ErrorSummary Errors="@Errors" />
+    @if (!string.IsNullOrWhiteSpace(Message))
+    {
+        <div class="state-row">@Message</div>
+    }
+
+    <section class="split-grid">
+        <div class="panel">
+            <div class="section-heading">
+                <h2>入力</h2>
+                <span class="muted">@InputSummary</span>
+            </div>
+            <div class="form-grid dense-form">
+                <label class="field wide-field">
+                    <span>キーワード貼付</span>
+                    <textarea @bind="KeywordsText" @bind:event="oninput" disabled="@(ProjectState.SelectedProject is null)"></textarea>
+                </label>
+                <label class="field">
+                    <span>CSVファイル</span>
+                    <input id="@CsvInputId" type="file" accept=".csv,text/csv,text/plain" @onchange="ReadCsvFileAsync" disabled="@(ProjectState.SelectedProject is null)" />
+                </label>
+                <label class="field">
+                    <span>Location</span>
+                    <input @bind="SearchVolumeForm.Location" disabled="@(ProjectState.SelectedProject is null)" />
+                </label>
+                <label class="field">
+                    <span>Language</span>
+                    <input @bind="SearchVolumeForm.Language" disabled="@(ProjectState.SelectedProject is null)" />
+                </label>
+                <label class="field">
+                    <span>集計月数</span>
+                    <input type="number" min="1" max="24" @bind="SearchVolumeForm.AggregationPeriodMonths" disabled="@(ProjectState.SelectedProject is null)" />
+                </label>
+                <label class="check-option compact-check">
+                    <input type="checkbox" @bind="SearchVolumeForm.SeoDifficulty" disabled="@(ProjectState.SelectedProject is null)" />
+                    <span>SEO難易度を取得</span>
+                </label>
+            </div>
+            <div class="button-row">
+                <button type="button" class="primary-button" @onclick="RegisterJobAsync" disabled="@(!CanRegister)">登録</button>
+                <button type="button" class="text-button" @onclick="ClearInput">入力クリア</button>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="section-heading">
+                <h2>ジョブ</h2>
+                <div class="toolbar">
+                    <button type="button" class="secondary-button" @onclick="CancelJobAsync" disabled="@(!CanCancel)">キャンセル</button>
+                    <button type="button" class="secondary-button" @onclick="RetryJobAsync" disabled="@(!CanRetry)">再実行</button>
+                </div>
+            </div>
+            <div class="form-grid dense-form">
+                <label class="field wide-field">
+                    <span>Job Id</span>
+                    <input @bind="JobIdText" />
+                </label>
+                <button type="button" class="secondary-button" @onclick="RefreshJobAsync" disabled="@(!HasCurrentJob)">読み込み</button>
+            </div>
+
+            @if (CurrentJob is null)
+            {
+                <div class="state-row">ジョブは未選択です。</div>
+            }
+            else
+            {
+                <div class="job-status-card">
+                    <span>@CurrentJob.JobType</span>
+                    <strong>@CurrentJob.Status</strong>
+                    <progress max="100" value="@CurrentJob.Progress"></progress>
+                    <span>@CurrentJob.Progress%</span>
+                    <span class="muted">@FormatDateTime(CurrentJob.UpdatedAt)</span>
+                </div>
+            }
+        </div>
+    </section>
+
+    <section class="panel">
+        <div class="section-heading">
+            <h2>結果</h2>
+            <div class="toolbar">
+                <label class="field-inline">
+                    <span>検索</span>
+                    <input @bind="ResultQuery" @bind:event="oninput" disabled="@(!HasCurrentJob)" />
+                </label>
+                <label class="field-inline">
+                    <span>sortBy</span>
+                    <select @bind="ResultSortBy" disabled="@(!HasCurrentJob)">
+                        <option value="keyword">keyword</option>
+                        <option value="searchVolume">searchVolume</option>
+                        <option value="seoDifficulty">seoDifficulty</option>
+                        <option value="cpc">cpc</option>
+                        <option value="competition">competition</option>
+                    </select>
+                </label>
+                <label class="field-inline">
+                    <span>orderBy</span>
+                    <select @bind="ResultOrderBy" disabled="@(!HasCurrentJob)">
+                        <option value="asc">asc</option>
+                        <option value="desc">desc</option>
+                    </select>
+                </label>
+                <button type="button" class="secondary-button" @onclick="LoadResultsAsync" disabled="@(!HasCurrentJob)">検索</button>
+            </div>
+        </div>
+        <DataTable Items="@Results" Columns="@ResultColumns" IsLoading="@IsResultLoading" EmptyText="検索ボリューム結果はありません。" />
+    </section>
+</div>
+
+@code {
+    private const string CsvInputId = "search-volume-csv-file";
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
+    private static readonly IReadOnlyList<DataTableColumn<SearchVolumeResultRow>> ResultColumns =
+    [
+        new("keyword", row => row.Keyword),
+        new("volume", row => row.SearchVolume?.ToString() ?? "-", "table-number"),
+        new("difficulty", row => FormatNullable(row.SeoDifficulty), "table-number"),
+        new("cpc", row => FormatNullable(row.Cpc), "table-number"),
+        new("competition", row => FormatNullable(row.Competition), "table-number"),
+        new("source", row => row.DataSource),
+        new("cache", row => row.CacheHit ? "hit" : "miss"),
+        new("月別推移", row => FormatMonthly(row.MonthlySearchVolume))
+    ];
+
+    private SearchVolumeFormModel SearchVolumeForm { get; set; } = new();
+
+    private string? KeywordsText { get; set; }
+
+    private string? JobIdText { get; set; }
+
+    private JobDetails? CurrentJob { get; set; }
+
+    private IReadOnlyList<SearchVolumeResultRow> Results { get; set; } = [];
+
+    private IReadOnlyList<ApiError> Errors { get; set; } = [];
+
+    private string? Message { get; set; }
+
+    private bool IsRegistering { get; set; }
+
+    private bool IsJobLoading { get; set; }
+
+    private bool IsResultLoading { get; set; }
+
+    private bool IsExporting { get; set; }
+
+    private string? ResultQuery { get; set; }
+
+    private string ResultSortBy { get; set; } = "keyword";
+
+    private string ResultOrderBy { get; set; } = "asc";
+
+    private KeywordInputParseResult ParsedInput => KeywordInputParser.Parse(KeywordsText);
+
+    private string InputSummary
+        => $"{ParsedInput.Keywords.Count:N0}件 / 空欄 {ParsedInput.BlankCount:N0} / 重複 {ParsedInput.DuplicateCount:N0}";
+
+    private bool CanRegister
+        => ProjectState.SelectedProject is not null && !IsRegistering;
+
+    private bool HasCurrentJob
+        => Guid.TryParse(JobIdText, out _);
+
+    private bool CanCancel
+        => CurrentJob is not null &&
+            (string.Equals(CurrentJob.Status, "queued", StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(CurrentJob.Status, "waiting_external", StringComparison.OrdinalIgnoreCase));
+
+    private bool CanRetry
+        => CurrentJob is not null &&
+            string.Equals(CurrentJob.Status, "failed_retryable", StringComparison.OrdinalIgnoreCase);
+
+    protected override async Task OnInitializedAsync()
+    {
+        ProjectState.Changed += OnProjectStateChanged;
+        await ProjectState.LoadAsync();
+        SyncDefaultsFromProject();
+    }
+
+    private async Task ReadCsvFileAsync()
+    {
+        Errors = [];
+        Message = null;
+        try
+        {
+            KeywordsText = await JS.InvokeAsync<string>("seoIntelligence.readTextFile", CsvInputId);
+        }
+        catch (JSException exception)
+        {
+            Errors = [new ApiError("Csv.ReadFailed", exception.Message, "csv")];
+        }
+    }
+
+    private async Task RegisterJobAsync()
+    {
+        if (ProjectState.SelectedProject is not { } project || !ValidateInput())
+        {
+            return;
+        }
+
+        IsRegistering = true;
+        Errors = [];
+        Message = null;
+        var keywords = ParsedInput.Keywords;
+        var result = await ApiClient.RegisterSearchVolumeJobAsync(
+            project.ProjectId,
+            new SearchVolumeJobRequest(
+                keywords,
+                SearchVolumeForm.Location!.Trim(),
+                SearchVolumeForm.Language!.Trim(),
+                SearchVolumeForm.AggregationPeriodMonths,
+                SearchVolumeForm.SeoDifficulty));
+        if (result.IsSuccess && result.Data is { } job)
+        {
+            JobIdText = job.JobId.ToString("D");
+            Message = $"検索ボリュームジョブを登録しました: {job.JobId:D}";
+            await LoadJobAsync(job.JobId);
+        }
+        else
+        {
+            Errors = result.Errors;
+        }
+
+        IsRegistering = false;
+    }
+
+    private async Task RefreshJobAsync()
+    {
+        if (TryGetCurrentJobId(out var jobId))
+        {
+            await LoadJobAsync(jobId);
+        }
+    }
+
+    private async Task LoadJobAsync(Guid jobId)
+    {
+        IsJobLoading = true;
+        Errors = [];
+        var result = await ApiClient.GetJobAsync(jobId);
+        if (result.IsSuccess)
+        {
+            CurrentJob = result.Data;
+            JobIdText = jobId.ToString("D");
+        }
+        else
+        {
+            CurrentJob = null;
+            Errors = result.Errors;
+        }
+
+        IsJobLoading = false;
+    }
+
+    private async Task LoadResultsAsync()
+    {
+        if (ProjectState.SelectedProject is not { } project || !TryGetCurrentJobId(out var jobId))
+        {
+            return;
+        }
+
+        IsResultLoading = true;
+        Errors = [];
+        var result = await ApiClient.GetSearchVolumeResultsAsync(
+            project.ProjectId,
+            jobId,
+            ResultQuery,
+            ResultSortBy,
+            ResultOrderBy,
+            pageSize: 100);
+        if (result.IsSuccess)
+        {
+            Results = result.Data ?? [];
+        }
+        else
+        {
+            Results = [];
+            Errors = result.Errors;
+        }
+
+        IsResultLoading = false;
+    }
+
+    private async Task CancelJobAsync()
+    {
+        if (!TryGetCurrentJobId(out var jobId))
+        {
+            return;
+        }
+
+        var result = await ApiClient.CancelJobAsync(jobId);
+        if (result.IsSuccess)
+        {
+            CurrentJob = result.Data;
+        }
+        else
+        {
+            Errors = result.Errors;
+        }
+    }
+
+    private async Task RetryJobAsync()
+    {
+        if (!TryGetCurrentJobId(out var jobId))
+        {
+            return;
+        }
+
+        var result = await ApiClient.RetryJobAsync(jobId);
+        if (result.IsSuccess)
+        {
+            CurrentJob = result.Data;
+        }
+        else
+        {
+            Errors = result.Errors;
+        }
+    }
+
+    private async Task CreateResultsExportAsync()
+    {
+        if (ProjectState.SelectedProject is not { } project || !TryGetCurrentJobId(out var jobId))
+        {
+            return;
+        }
+
+        IsExporting = true;
+        Errors = [];
+        Message = null;
+        var filter = JsonSerializer.SerializeToElement(
+            new
+            {
+                jobId = jobId.ToString("D"),
+                q = ResultQuery
+            },
+            JsonOptions);
+        var result = await ApiClient.CreateCsvExportAsync(
+            project.ProjectId,
+            new DataExportRequest("search_volume_results", filter));
+        if (result.IsSuccess && result.Data is { } exportJob)
+        {
+            Message = $"CSV出力ジョブを登録しました: {exportJob.JobId:D}";
+        }
+        else
+        {
+            Errors = result.Errors;
+        }
+
+        IsExporting = false;
+    }
+
+    private bool ValidateInput()
+    {
+        var errors = new List<ApiError>();
+        if (ProjectState.SelectedProject is null)
+        {
+            errors.Add(new ApiError("Validation.Project.Required", "プロジェクトを選択してください。", "projectId"));
+        }
+
+        var parsed = ParsedInput;
+        if (parsed.Keywords.Count == 0)
+        {
+            errors.Add(new ApiError("Validation.Keywords.Required", "キーワードを1件以上入力してください。", "keywords"));
+        }
+        else if (parsed.Keywords.Count > KeywordInputParser.MaxKeywordCount)
+        {
+            errors.Add(new ApiError("Validation.Keywords.Max", "キーワードは重複除外後50,000件までです。", "keywords"));
+        }
+
+        if (string.IsNullOrWhiteSpace(SearchVolumeForm.Location))
+        {
+            errors.Add(new ApiError("Validation.Location.Required", "地域を入力してください。", "location"));
+        }
+
+        if (string.IsNullOrWhiteSpace(SearchVolumeForm.Language))
+        {
+            errors.Add(new ApiError("Validation.Language.Required", "言語を入力してください。", "language"));
+        }
+
+        if (SearchVolumeForm.AggregationPeriodMonths is < 1 or > 24)
+        {
+            errors.Add(new ApiError("Validation.AggregationPeriod.Range", "集計月数は1から24で指定してください。", "aggregationPeriodMonths"));
+        }
+
+        Errors = errors;
+        return errors.Count == 0;
+    }
+
+    private bool TryGetCurrentJobId(out Guid jobId)
+    {
+        if (Guid.TryParse(JobIdText, out jobId))
+        {
+            return true;
+        }
+
+        Errors = [new ApiError("Validation.JobId.Invalid", "Job Idを正しいGUIDで入力してください。", "jobId")];
+        return false;
+    }
+
+    private void ClearInput()
+    {
+        KeywordsText = null;
+        Results = [];
+        Message = null;
+        Errors = [];
+    }
+
+    private void OnProjectStateChanged()
+    {
+        SyncDefaultsFromProject();
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void SyncDefaultsFromProject()
+    {
+        if (ProjectState.SelectedProject is not { } project)
+        {
+            return;
+        }
+
+        SearchVolumeForm.Location = project.DefaultLocation;
+        SearchVolumeForm.Language = project.DefaultLanguage;
+    }
+
+    private static string FormatNullable(decimal? value)
+        => value.HasValue ? value.Value.ToString("0.####") : "-";
+
+    private static string FormatMonthly(IReadOnlyDictionary<string, int>? values)
+        => values is null || values.Count == 0
+            ? "-"
+            : string.Join(", ", values.OrderByDescending(pair => pair.Key).Take(6).Select(pair => $"{pair.Key}:{pair.Value}"));
+
+    private static string FormatDateTime(DateTime value)
+        => value.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
+
+    public void Dispose()
+        => ProjectState.Changed -= OnProjectStateChanged;
+
+    private sealed class SearchVolumeFormModel
+    {
+        public string? Location { get; set; } = "JP";
+
+        public string? Language { get; set; } = "ja";
+
+        public int AggregationPeriodMonths { get; set; } = 12;
+
+        public bool SeoDifficulty { get; set; } = true;
+    }
+}

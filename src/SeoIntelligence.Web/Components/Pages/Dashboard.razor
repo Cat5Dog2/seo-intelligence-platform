@@ -1,0 +1,220 @@
+@page "/dashboard"
+@using System.Text.Json
+@implements IDisposable
+@inject ISeoIntelligenceApiClient ApiClient
+@inject ProjectSelectionState ProjectState
+@inject NavigationManager Navigation
+
+<PageTitle>ダッシュボード - SEO Intelligence</PageTitle>
+
+<div class="page-stack">
+    <header class="page-header">
+        <div>
+            <h1>ダッシュボード</h1>
+            <p>選択中プロジェクト: @(ProjectState.SelectedProject?.Name ?? "未選択")</p>
+        </div>
+        <div class="toolbar">
+            <button type="button" class="secondary-button" @onclick="LoadAsync" disabled="@IsLoading">更新</button>
+            <button type="button" class="secondary-button" @onclick="NavigateToKeywords">キーワード探索</button>
+            <button type="button" class="secondary-button" @onclick="NavigateToSearchVolume">一括調査</button>
+        </div>
+    </header>
+
+    <ErrorSummary Errors="@Errors" />
+    @if (!string.IsNullOrWhiteSpace(Message))
+    {
+        <div class="state-row">@Message</div>
+    }
+
+    @if (ProjectState.SelectedProject is null)
+    {
+        <div class="state-row">プロジェクトを選択してください。</div>
+    }
+    else if (IsLoading)
+    {
+        <div class="state-row">読み込み中</div>
+    }
+    else if (Snapshot is null)
+    {
+        <div class="state-row">ダッシュボードを表示できません。</div>
+    }
+    else
+    {
+        <section class="metric-strip dashboard-metrics" aria-label="MVP指標">
+            <div class="metric">
+                <span>キーワード探索</span>
+                <strong>@Snapshot.KeywordDiscoveryCount</strong>
+            </div>
+            <div class="metric">
+                <span>一括調査ジョブ</span>
+                <strong>@Snapshot.SearchVolumeJobCount</strong>
+            </div>
+            <div class="metric">
+                <span>検索ボリューム結果</span>
+                <strong>@Snapshot.SearchVolumeResultCount</strong>
+            </div>
+            <div class="metric">
+                <span>機会スコア</span>
+                <strong>@Snapshot.OpportunityScoreCount</strong>
+            </div>
+            <div class="metric">
+                <span>消費クレジット</span>
+                <strong>@Snapshot.ConsumedCredit</strong>
+            </div>
+            <div class="metric">
+                <span>実行中ジョブ</span>
+                <strong>@Snapshot.RunningJobCount</strong>
+            </div>
+            <div class="metric">
+                <span>失敗ジョブ</span>
+                <strong>@Snapshot.FailedJobCount</strong>
+            </div>
+            <div class="metric">
+                <span>通知失敗</span>
+                <strong>@Snapshot.NotificationFailureCount</strong>
+            </div>
+        </section>
+
+        @if (IsEmptyDashboard)
+        {
+            <section class="panel">
+                <div class="section-heading">
+                    <h2>次のアクション</h2>
+                </div>
+                <div class="button-row">
+                    <button type="button" class="primary-button" @onclick="NavigateToKeywords">キーワード探索を開始</button>
+                    <button type="button" class="secondary-button" @onclick="NavigateToSearchVolume">一括調査を開始</button>
+                </div>
+            </section>
+        }
+
+        <section class="panel">
+            <div class="section-heading">
+                <h2>機会スコア上位</h2>
+                <button type="button" class="secondary-button" @onclick="CreateKeywordMetricsExportAsync" disabled="@IsExporting">CSV出力</button>
+            </div>
+            <DataTable Items="@TopOpportunityScores" Columns="@OpportunityColumns" IsLoading="false" EmptyText="機会スコアはありません。" />
+        </section>
+
+        <section class="panel">
+            <JobProgressPanel Title="プロジェクトジョブ" ProjectScoped="true" />
+        </section>
+    }
+</div>
+
+@code {
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
+    private static readonly IReadOnlyList<DataTableColumn<DashboardOpportunityScoreRow>> OpportunityColumns =
+    [
+        new("keyword", row => row.Keyword),
+        new("score", row => row.OpportunityScore.ToString("0.####"), "table-number"),
+        new("location", row => row.Location),
+        new("language", row => row.Language),
+        new("scored", row => FormatDateTime(row.ScoredAt))
+    ];
+
+    private DashboardSnapshot? Snapshot { get; set; }
+
+    private IReadOnlyList<ApiError> Errors { get; set; } = [];
+
+    private string? Message { get; set; }
+
+    private bool IsLoading { get; set; }
+
+    private bool IsExporting { get; set; }
+
+    private IReadOnlyList<DashboardOpportunityScoreRow> TopOpportunityScores
+        => Snapshot?.TopOpportunityScores ?? [];
+
+    private bool IsEmptyDashboard
+        => Snapshot is not null &&
+            Snapshot.KeywordDiscoveryCount == 0 &&
+            Snapshot.SearchVolumeJobCount == 0 &&
+            Snapshot.OpportunityScoreCount == 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        ProjectState.Changed += OnProjectStateChanged;
+        await ProjectState.LoadAsync();
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        Errors = [];
+        Message = null;
+        if (ProjectState.SelectedProject is not { } project)
+        {
+            Snapshot = null;
+            return;
+        }
+
+        IsLoading = true;
+        var result = await ApiClient.GetDashboardAsync(project.ProjectId);
+        if (result.IsSuccess)
+        {
+            Snapshot = result.Data;
+        }
+        else
+        {
+            Snapshot = null;
+            Errors = result.Errors;
+        }
+
+        IsLoading = false;
+    }
+
+    private async Task CreateKeywordMetricsExportAsync()
+    {
+        if (ProjectState.SelectedProject is not { } project)
+        {
+            return;
+        }
+
+        IsExporting = true;
+        Errors = [];
+        Message = null;
+        var filter = JsonSerializer.SerializeToElement(
+            new
+            {
+                location = project.DefaultLocation,
+                language = project.DefaultLanguage
+            },
+            JsonOptions);
+        var result = await ApiClient.CreateCsvExportAsync(
+            project.ProjectId,
+            new DataExportRequest("keyword_metrics", filter));
+        if (result.IsSuccess && result.Data is { } exportJob)
+        {
+            Message = $"CSV出力ジョブを登録しました: {exportJob.JobId:D}";
+        }
+        else
+        {
+            Errors = result.Errors;
+        }
+
+        IsExporting = false;
+    }
+
+    private async void OnProjectStateChanged()
+    {
+        await InvokeAsync(async () =>
+        {
+            await LoadAsync();
+            StateHasChanged();
+        });
+    }
+
+    private void NavigateToKeywords()
+        => Navigation.NavigateTo("/keywords");
+
+    private void NavigateToSearchVolume()
+        => Navigation.NavigateTo("/search-volume");
+
+    private static string FormatDateTime(DateTime value)
+        => value.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
+
+    public void Dispose()
+        => ProjectState.Changed -= OnProjectStateChanged;
+}
