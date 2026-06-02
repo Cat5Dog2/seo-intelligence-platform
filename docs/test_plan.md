@@ -161,6 +161,7 @@ GitHub Actionsと同じスクリプトで確認する場合は以下を使う。
 bash scripts/build.sh
 bash scripts/test.sh
 bash scripts/migration-dry-run.sh
+dotnet tool run dotnet-ef database update --project src/SeoIntelligence.Infrastructure --startup-project src/SeoIntelligence.Api
 bash scripts/smoke-test.sh
 ```
 

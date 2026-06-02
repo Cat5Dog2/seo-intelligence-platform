@@ -45,9 +45,17 @@ request_json() {
   local response
 
   if [ -n "$body" ]; then
-    response="$(curl -fsS -X "$method" -H "Content-Type: application/json" -d "$body" "$api_url$path")"
+    if ! response="$(curl -fsS -X "$method" -H "Content-Type: application/json" -d "$body" "$api_url$path")"; then
+      echo "Smoke request failed: $method $path"
+      tail -n 200 "$log_path" || true
+      exit 1
+    fi
   else
-    response="$(curl -fsS -X "$method" "$api_url$path")"
+    if ! response="$(curl -fsS -X "$method" "$api_url$path")"; then
+      echo "Smoke request failed: $method $path"
+      tail -n 200 "$log_path" || true
+      exit 1
+    fi
   fi
 
   case "$response" in
