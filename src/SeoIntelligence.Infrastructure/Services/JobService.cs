@@ -12,6 +12,7 @@ using Microsoft.Extensions.Options;
 using SeoIntelligence.Application.Auditing;
 using SeoIntelligence.Application.Common;
 using SeoIntelligence.Application.Configuration;
+using SeoIntelligence.Application.Diagnostics;
 using SeoIntelligence.Application.Jobs;
 using SeoIntelligence.Application.Redis;
 using SeoIntelligence.Application.Services;
@@ -267,6 +268,7 @@ internal sealed class JobService(
 
         AddJobAudit(context, AuditLogActionNames.JobCanceled, job, before);
         await dbContext.SaveChangesAsync(cancellationToken);
+        SeoIntelligenceDiagnostics.RecordJobDuration(job.JobType, job.Status, job.CreatedAt, job.CompletedAt ?? now);
         return Result<JobDetails>.Success(await MapJobWithExternalRequestAsync(job, cancellationToken));
     }
 
@@ -297,6 +299,7 @@ internal sealed class JobService(
 
         AddJobAudit(context, AuditLogActionNames.JobRetried, job, before);
         await dbContext.SaveChangesAsync(cancellationToken);
+        SeoIntelligenceDiagnostics.RecordJobRetry(job.JobType, "manual");
         await jobQueueClient.EnqueueAsync(job.Id, ResolveQueue(job.JobType), cancellationToken);
         return Result<JobDetails>.Success(MapJob(job));
     }
@@ -410,6 +413,15 @@ internal sealed class JobService(
 
         AddJobAudit(context, AuditLogActionNames.JobFailed, job, before);
         await dbContext.SaveChangesAsync(cancellationToken);
+        if (nextStatus == JobStatus.FailedRetryable)
+        {
+            SeoIntelligenceDiagnostics.RecordJobRetry(job.JobType, "automatic");
+        }
+        else
+        {
+            SeoIntelligenceDiagnostics.RecordJobDuration(job.JobType, job.Status, job.CreatedAt, job.CompletedAt ?? now);
+        }
+
         await EnqueueFailureNotificationAsync(context, job, failure, cancellationToken);
         return Result<JobDetails>.Success(MapJob(job));
     }
@@ -445,6 +457,7 @@ internal sealed class JobService(
 
         AddJobAudit(context, AuditLogActionNames.JobSucceeded, job, before);
         await dbContext.SaveChangesAsync(cancellationToken);
+        SeoIntelligenceDiagnostics.RecordJobDuration(job.JobType, job.Status, job.CreatedAt, job.CompletedAt ?? now);
         return Result<JobDetails>.Success(MapJob(job));
     }
 

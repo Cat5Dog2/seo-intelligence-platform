@@ -17,6 +17,7 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | --- | --- | --- | --- |
 | 1.0 | 2026-05-30 | 初版作成。テストレベル、MVP受入、障害系、契約テスト、実行方針を定義。 | ChatGPT |
 | 1.1 | 2026-05-31 | CI雛形、ローカル依存サービス、migration dry-run、smoke testの実行方針を追記。 | Codex |
+| 1.2 | 2026-06-02 | MVP運用メトリクスと包括Runbookスモークの実行手順を追記。 | Codex |
 
 ## 1. 目的
 
@@ -94,6 +95,8 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | T-MVP-018 | 403モック | failed_fatal、APIキー/権限/契約スコープ確認誘導、Discord通知、監査ログ記録の扱いになる。 |
 | T-MVP-019 | 500/503モック | 最大リトライまではfailed_retryableで再キューされ、上限超過時は失敗ジョブとして保持され通知される。 |
 | T-MVP-020 | 別プロジェクト参照 | 404または403で拒否される。 |
+| T-MVP-021 | 運用メトリクス | `job_success_rate`、`job_queue_depth`、`job_duration_p95`、外部API402/429/クレジット、通知失敗、再試行回数のinstrument名が公開される。 |
+| T-MVP-022 | Runbookスモーク | `/healthz`、`/readyz`、プロジェクト一覧、監査ログ検索、マスタ同期ジョブ登録、CSV出力ジョブ登録が成功する。Discordテスト通知はチャンネルID指定時に実行する。 |
 
 ## 6. 外部APIモック
 
@@ -170,7 +173,18 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/migration-dry-run.ps
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-test.ps1
 ```
 
-現時点のmigration dry-runは、EF Core `DbContext` が未実装の場合にskipして成功終了する。Integration/Contract/E2Eの正式な実行条件、テストDB初期化、外部API Mockの固定データは各実装Issueで追記する。
+包括Runbookスモークは、ローカル依存サービスとDB migration適用後に実行する。
+
+```text
+docker compose up -d postgres redis minio minio-init
+dotnet ef database update --project src/SeoIntelligence.Infrastructure --startup-project src/SeoIntelligence.Api
+dotnet build
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-test.ps1
+```
+
+既存プロジェクトやDiscordテスト通知を使う場合は、必要に応じて `SMOKE_PROJECT_ID` と `SMOKE_DISCORD_CHANNEL_ID` を指定する。Discord Webhook URLの実値はテストコマンドやログへ出さない。
+
+Integration/Contract/E2Eの正式な実行条件、テストDB初期化、外部API Mockの固定データは各実装Issueで追記する。
 
 ## 11. 完了条件
 

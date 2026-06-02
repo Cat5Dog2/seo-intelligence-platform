@@ -140,6 +140,10 @@
                     <strong>@ExternalCalls.Count(call => call.StatusCode == 402)</strong>
                 </div>
                 <div class="metric">
+                    <span>429</span>
+                    <strong>@ExternalCalls.Count(call => call.StatusCode == 429)</strong>
+                </div>
+                <div class="metric">
                     <span>失敗</span>
                     <strong>@ExternalCalls.Count(call => call.StatusCode >= 400)</strong>
                 </div>

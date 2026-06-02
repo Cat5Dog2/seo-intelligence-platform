@@ -20,6 +20,7 @@
 | 日付 | 領域 | 判断 | 理由 | 追跡先 |
 | --- | --- | --- | --- | --- |
 | 2026-05-31 | Docs | `mvp_implementation_plan.md`、`domain_glossary.md`、`api_examples.md`、`implementation_notes.md`を追加 | Codex実装時の参照性を上げるため。正本は既存設計書のまま維持する。 | 本書 |
+| 2026-06-02 | Observability | MVP運用メトリクスは既存 `SeoIntelligence` Meterへ追加し、p95計算はOTelバックエンド側で行う | 新規依存を追加せず、既存のOpenTelemetry導入口と設計上のメトリクス名を維持するため。 | `docs/operations_runbook.md` |
 
 ## 4. 実装時チェックリスト
 
