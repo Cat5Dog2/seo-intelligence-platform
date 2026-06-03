@@ -9,6 +9,17 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+. (Join-Path $PSScriptRoot "load-dotenv.ps1")
+Import-DotEnvFile -Path (Join-Path $PSScriptRoot "..\.env")
+
+if ([string]::IsNullOrWhiteSpace($SmokeProjectId)) {
+    $SmokeProjectId = $env:SMOKE_PROJECT_ID
+}
+
+if ([string]::IsNullOrWhiteSpace($DiscordChannelId)) {
+    $DiscordChannelId = $env:SMOKE_DISCORD_CHANNEL_ID
+}
+
 $logDirectory = "artifacts/smoke"
 $stdoutPath = Join-Path $logDirectory "api.out.log"
 $stderrPath = Join-Path $logDirectory "api.err.log"

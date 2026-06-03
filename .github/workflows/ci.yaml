@@ -38,41 +38,20 @@ jobs:
       - name: Migration dry-run
         run: bash scripts/migration-dry-run.sh
 
-      - name: Start local dependencies
-        run: docker compose up -d postgres redis minio minio-init
-
-      - name: Show dependency status
-        run: docker compose ps
-
-      - name: Wait for local dependencies
-        shell: bash
+      - name: Comprehensive smoke test
+        shell: pwsh
         run: |
-          for attempt in {1..30}; do
-            if docker compose exec -T postgres pg_isready -U seo -d seo && docker compose exec -T redis redis-cli ping; then
-              exit 0
-            fi
+          $smokeArgs = @{
+            Configuration = $env:CONFIGURATION
+            SkipBuild = $true
+            StopDependencies = $true
+          }
+          if ("${{ vars.RUN_BROWSER_E2E }}" -eq "true") {
+            $smokeArgs.RunBrowserTests = $true
+            $smokeArgs.InstallPlaywrightBrowsers = $true
+          }
 
-            sleep 2
-          done
-
-          docker compose ps
-          docker compose logs postgres redis
-          exit 1
-
-      - name: Apply database migrations
-        run: >
-          dotnet tool run dotnet-ef database update
-          --no-build
-          --configuration ${{ env.CONFIGURATION }}
-          --project src/SeoIntelligence.Infrastructure/SeoIntelligence.Infrastructure.csproj
-          --startup-project src/SeoIntelligence.Api/SeoIntelligence.Api.csproj
-
-      - name: Smoke test
-        run: bash scripts/smoke-test.sh
-
-      - name: Stop local dependencies
-        if: always()
-        run: docker compose down --volumes --remove-orphans
+          & ./scripts/smoke-local.ps1 @smokeArgs
 
   container-scan:
     runs-on: ubuntu-latest

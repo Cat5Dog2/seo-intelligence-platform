@@ -5,19 +5,19 @@
     <span>Project</span>
     @if (ProjectState.IsLoading)
     {
-        <select disabled>
+        <select data-testid="project-switcher" disabled>
             <option>読み込み中</option>
         </select>
     }
     else if (ProjectState.Projects.Count == 0)
     {
-        <select disabled>
+        <select data-testid="project-switcher" disabled>
             <option>プロジェクトなし</option>
         </select>
     }
     else
     {
-        <select value="@SelectedProjectId" @onchange="SelectProjectAsync">
+        <select data-testid="project-switcher" value="@SelectedProjectId" @onchange="SelectProjectAsync">
             @foreach (var project in ProjectState.Projects)
             {
                 <option value="@project.ProjectId">@project.Name</option>
