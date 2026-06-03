@@ -17,7 +17,7 @@
             <button type="button" class="secondary-button" @onclick="RegisterJobAsync" disabled="@(!CanRegister)">ジョブ登録</button>
             <button type="button" class="secondary-button" @onclick="RefreshJobAsync" disabled="@(!HasCurrentJob)">状態更新</button>
             <button type="button" class="secondary-button" @onclick="LoadResultsAsync" disabled="@(!HasCurrentJob)">結果表示</button>
-            <button type="button" class="secondary-button" @onclick="CreateResultsExportAsync" disabled="@(!HasCurrentJob || IsExporting)">CSV出力</button>
+            <button type="button" class="secondary-button" data-testid="search-volume-export-button" @onclick="CreateResultsExportAsync" disabled="@(!HasCurrentJob || IsExporting)">CSV出力</button>
         </div>
     </header>
 
@@ -36,7 +36,7 @@
             <div class="form-grid dense-form">
                 <label class="field wide-field">
                     <span>キーワード貼付</span>
-                    <textarea @bind="KeywordsText" @bind:event="oninput" disabled="@(ProjectState.SelectedProject is null)"></textarea>
+                    <textarea data-testid="search-volume-keywords-input" @bind="KeywordsText" @bind:event="oninput" disabled="@(ProjectState.SelectedProject is null)"></textarea>
                 </label>
                 <label class="field">
                     <span>CSVファイル</span>
@@ -44,11 +44,11 @@
                 </label>
                 <label class="field">
                     <span>Location</span>
-                    <input @bind="SearchVolumeForm.Location" disabled="@(ProjectState.SelectedProject is null)" />
+                    <input data-testid="search-volume-location-input" @bind="SearchVolumeForm.Location" disabled="@(ProjectState.SelectedProject is null)" />
                 </label>
                 <label class="field">
                     <span>Language</span>
-                    <input @bind="SearchVolumeForm.Language" disabled="@(ProjectState.SelectedProject is null)" />
+                    <input data-testid="search-volume-language-input" @bind="SearchVolumeForm.Language" disabled="@(ProjectState.SelectedProject is null)" />
                 </label>
                 <label class="field">
                     <span>集計月数</span>
@@ -60,7 +60,7 @@
                 </label>
             </div>
             <div class="button-row">
-                <button type="button" class="primary-button" @onclick="RegisterJobAsync" disabled="@(!CanRegister)">登録</button>
+                <button type="button" class="primary-button" data-testid="search-volume-register-button" @onclick="RegisterJobAsync" disabled="@(!CanRegister)">登録</button>
                 <button type="button" class="text-button" @onclick="ClearInput">入力クリア</button>
             </div>
         </div>
@@ -76,7 +76,7 @@
             <div class="form-grid dense-form">
                 <label class="field wide-field">
                     <span>Job Id</span>
-                    <input @bind="JobIdText" />
+                    <input data-testid="search-volume-job-id-input" @bind="JobIdText" />
                 </label>
                 <button type="button" class="secondary-button" @onclick="RefreshJobAsync" disabled="@(!HasCurrentJob)">読み込み</button>
             </div>

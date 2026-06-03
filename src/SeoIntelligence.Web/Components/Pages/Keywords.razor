@@ -14,9 +14,9 @@
             <p>選択中プロジェクト: @(ProjectState.SelectedProject?.Name ?? "未選択")</p>
         </div>
         <div class="toolbar">
-            <button type="button" class="secondary-button" @onclick="DiscoverAsync" disabled="@(!CanRunDiscovery)">調査開始</button>
-            <button type="button" class="secondary-button" @onclick="RegisterCandidateSearchVolumeAsync" disabled="@(!CanSendCandidates)">検索ボリューム調査へ送る</button>
-            <button type="button" class="secondary-button" @onclick="CreateCandidateExportAsync" disabled="@(!CanExportCandidates)">CSV出力</button>
+            <button type="button" class="secondary-button" data-testid="keyword-discovery-run-button" @onclick="DiscoverAsync" disabled="@(!CanRunDiscovery)">調査開始</button>
+            <button type="button" class="secondary-button" data-testid="keyword-candidates-search-volume-button" @onclick="RegisterCandidateSearchVolumeAsync" disabled="@(!CanSendCandidates)">検索ボリューム調査へ送る</button>
+            <button type="button" class="secondary-button" data-testid="keyword-candidates-export-button" @onclick="CreateCandidateExportAsync" disabled="@(!CanExportCandidates)">CSV出力</button>
         </div>
     </header>
 
@@ -34,11 +34,11 @@
         <div class="form-grid dense-form">
             <label class="field wide-field">
                 <span>シードキーワード</span>
-                <input @bind="DiscoveryForm.SeedKeyword" @bind:event="oninput" disabled="@(ProjectState.SelectedProject is null)" />
+                <input data-testid="keyword-seed-input" @bind="DiscoveryForm.SeedKeyword" @bind:event="oninput" disabled="@(ProjectState.SelectedProject is null)" />
             </label>
             <label class="field">
                 <span>limit</span>
-                <input type="number" min="1" max="25000" @bind="DiscoveryForm.Limit" disabled="@(ProjectState.SelectedProject is null)" />
+                <input data-testid="keyword-limit-input" type="number" min="1" max="25000" @bind="DiscoveryForm.Limit" disabled="@(ProjectState.SelectedProject is null)" />
             </label>
             <label class="field">
                 <span>sortBy</span>
@@ -60,7 +60,7 @@
                 </select>
             </label>
             <label class="check-option compact-check">
-                <input type="checkbox" @bind="DiscoveryForm.SyncPreferred" disabled="@(ProjectState.SelectedProject is null)" />
+                <input type="checkbox" data-testid="keyword-sync-preferred-input" @bind="DiscoveryForm.SyncPreferred" disabled="@(ProjectState.SelectedProject is null)" />
                 <span>同期希望</span>
             </label>
         </div>
@@ -162,7 +162,7 @@
         </section>
     }
 
-    <section class="panel">
+    <section class="panel" data-testid="keyword-candidates-section">
         <div class="section-heading">
             <h2>候補語</h2>
             <span class="muted">@CandidateCountLabel</span>

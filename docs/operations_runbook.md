@@ -132,37 +132,41 @@ OpenTelemetry Meter名は `SeoIntelligence`。MVPで記録する運用メトリ�
 
 ## 8. スモークテスト
 
-RunbookスモークはAPI起動、依存サービスReady、プロジェクト一覧、監査ログ検索、マスタ同期ジョブ登録、CSV出力ジョブ登録を確認する。Discordテスト通知はSecret参照が設定済みの通知チャンネルIDを `SMOKE_DISCORD_CHANNEL_ID` に渡した場合だけ実行する。
+Runbookスモークは依存サービスReady、DB migration適用、API/Worker/Web起動、プロジェクト一覧、監査ログ検索、マスタ同期ジョブ完了、CSV出力ジョブ完了を確認する。Discordテスト通知はSecret参照が設定済みの通知チャンネルIDを `SMOKE_DISCORD_CHANNEL_ID` に渡した場合だけ実行する。
 
 ```powershell
-docker compose up -d postgres redis minio minio-init
-dotnet ef database update --project src/SeoIntelligence.Infrastructure --startup-project src/SeoIntelligence.Api
-dotnet build
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-test.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-local.ps1
 ```
 
 既存プロジェクトでCSV出力を確認する場合:
 
 ```powershell
 $env:SMOKE_PROJECT_ID = "<project-guid>"
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-test.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-local.ps1
 ```
 
 Discordテスト通知まで含める場合:
 
 ```powershell
 $env:SMOKE_DISCORD_CHANNEL_ID = "<notification-channel-guid>"
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-test.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-local.ps1
+```
+
+Playwrightで画面操作まで含める場合:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-local.ps1 -RunBrowserTests -InstallPlaywrightBrowsers
 ```
 
 | 対象 | 確認 |
 | --- | --- |
 | API | `/healthz`、`/readyz`が成功する。 |
 | DB | プロジェクト一覧、監査ログ検索が成功する。 |
-| Worker | テストジョブまたはマスタ同期ジョブが成功する。 |
+| Worker | マスタ同期ジョブとCSV出力ジョブが`succeeded`になる。 |
 | ラッコAPI | 地域/言語マスタまたは軽量APIが成功する。 |
 | Discord | テスト通知が成功し履歴が残る。 |
 | CSV出力 | 小規模データを出力でき、監査ログが残る。 |
+| BrowserE2E | プロジェクト選択、キーワード探索、検索ボリューム登録、CSV出力ボタン操作が成功する。 |
 
 ## 9. インシデント記録
 

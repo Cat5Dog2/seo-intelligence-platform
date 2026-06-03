@@ -161,8 +161,7 @@ GitHub Actionsと同じスクリプトで確認する場合は以下を使う。
 bash scripts/build.sh
 bash scripts/test.sh
 bash scripts/migration-dry-run.sh
-dotnet tool run dotnet-ef database update --project src/SeoIntelligence.Infrastructure --startup-project src/SeoIntelligence.Api
-bash scripts/smoke-test.sh
+pwsh -NoProfile -File scripts/smoke-local.ps1 -Configuration Release -SkipBuild -StopDependencies
 ```
 
 PowerShell環境では以下を使う。
@@ -172,15 +171,19 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test.ps1 -Filter Category=Unit
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/migration-dry-run.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-test.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-local.ps1
 ```
 
-包括Runbookスモークは、ローカル依存サービスとDB migration適用後に実行する。
+包括Runbookスモークは、依存サービス起動、ready待機、DB migration適用、API/Worker/Web起動、マスタ同期ジョブ完了、CSV出力ジョブ完了をまとめて確認する。
 
 ```text
-docker compose up -d postgres redis minio minio-init
-dotnet ef database update --project src/SeoIntelligence.Infrastructure --startup-project src/SeoIntelligence.Api
-dotnet build
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-test.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-local.ps1
+```
+
+Playwrightによる実ブラウザ操作は `BrowserE2E` カテゴリとして分離する。通常の `dotnet test` では環境変数未指定のため実ブラウザを起動しない。実行する場合は以下を使う。
+
+```text
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-local.ps1 -RunBrowserTests -InstallPlaywrightBrowsers
 ```
 
 既存プロジェクトやDiscordテスト通知を使う場合は、必要に応じて `SMOKE_PROJECT_ID` と `SMOKE_DISCORD_CHANNEL_ID` を指定する。Discord Webhook URLの実値はテストコマンドやログへ出さない。

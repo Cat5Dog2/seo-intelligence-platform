@@ -142,7 +142,20 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test.ps1 -Filter Category=Unit
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/migration-dry-run.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-test.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-local.ps1
 ```
+
+`scripts/smoke-test.ps1` はAPI単体のRunbookスモーク、`scripts/smoke-local.ps1` はDocker Compose依存サービス、DB migration、API/Worker/Web起動、マスタ同期ジョブ、CSV出力ジョブまで含めた包括スモークとして使う。
+`scripts/smoke-local.ps1 -StopDependencies` はCI向けに `docker compose down --volumes --remove-orphans` 相当まで行うため、ローカルDB/MinIOデータを残したい通常開発では付けない。
+
+実ブラウザ操作まで確認する場合は、PlaywrightのChromiumをインストールしてからBrowserE2Eを有効化する。
+
+```powershell
+dotnet build tests/E2ETests/E2ETests.csproj
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-local.ps1 -RunBrowserTests -InstallPlaywrightBrowsers
+```
+
+`-InstallPlaywrightBrowsers` はChromiumをインストールする。Windows PowerShell 5.1で `playwright.ps1` が起動できない場合は、同梱Node CLIへフォールバックする。
 
 ## 5. 環境変数
 
@@ -172,13 +185,15 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-test.ps1
 
 ## 6. Secret管理
 
+ローカル開発では `.env.example` を `.env` にコピーし、Discord Webhook URLなどの実値は `.env` にだけ置く。`.env` はGit管理対象外で、PowerShellのスモークスクリプトは起動時に自動読み込みする。既にプロセス環境変数が設定されている場合は、そちらを優先する。
+
 | Secret | 用途 | 注意 |
 | --- | --- | --- |
 | `rakko-keyword-api-key-dev` | ラッコキーワードAPIキー | DBへ実値保存しない。 |
 | `discord-webhook-dev` | Discord Webhook URL | DBへ実値保存しない。 |
 | `ai-api-key-dev` | AI APIキー | Phase 3。必要時のみ設定。 |
 
-ローカルでは.NET User Secrets、開発用Key Vault、または安全なSecret管理を使う。MVPの`Configuration` Secret Storeは `Secrets:{secretName}` を参照する。APIが`secretValue`を受け取った場合は生成したSecret名へ登録し、DBには参照名だけを保存する。`Configuration`実装のAPI経由登録はプロセス内の設定値として扱い、`.env`や設定ファイルへ実値をコミットしない。
+ローカルでは `.env`、.NET User Secrets、開発用Key Vault、または安全なSecret管理を使う。MVPの`Configuration` Secret Storeは `Secrets:{secretName}` を参照する。たとえば `.env` に `Secrets__discord-webhook-dev=<Webhook URL>` を置くと、`webhook_secret_ref=discord-webhook-dev` から解決される。APIが`secretValue`を受け取った場合は生成したSecret名へ登録し、DBには参照名だけを保存する。`Configuration`実装のAPI経由登録はプロセス内の設定値として扱い、`.env`や設定ファイルへ実値をコミットしない。
 
 ## 7. DB初期化
 
@@ -228,7 +243,7 @@ GitHub Actionsは `.github/workflows/ci.yaml` を使う。
 
 | Job | 実行内容 |
 | --- | --- |
-| `build-test-smoke` | restore、build、test、migration dry-run、Docker Compose依存サービス起動、依存サービスready待機、DB migration適用、API smoke test。 |
+| `build-test-smoke` | restore、build、test、migration dry-run、包括スモーク（Docker Compose依存サービス起動、依存サービスready待機、DB migration適用、API/Worker/Web起動、ジョブ完了確認）。リポジトリ変数 `RUN_BROWSER_E2E=true` の場合のみPlaywright BrowserE2Eも実行する。 |
 | `container-scan` | PostgreSQL、Redis、MinIO、MinIO Clientのコンテナイメージをリトライ付きでpullし、Trivyでvuln-only scanする。初期雛形では検出結果を表示し、fail条件は後続の運用品質ゲートで調整する。 |
 
 通常CIでは外部API Realを使わず、Mock既定のまま実行する。
