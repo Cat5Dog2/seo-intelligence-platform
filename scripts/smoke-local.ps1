@@ -105,19 +105,20 @@ function Start-SmokeProcess {
 
     $stdoutPath = Join-Path $logDirectory "$Name.out.log"
     $stderrPath = Join-Path $logDirectory "$Name.err.log"
+    $argumentString = Join-ProcessArguments -Values $Arguments
 
     $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
     $startInfo.FileName = "dotnet"
-    $startInfo.Arguments = Join-ProcessArguments -Values $Arguments
+    $startInfo.Arguments = $argumentString
     $startInfo.UseShellExecute = $false
-    $startInfo.RedirectStandardOutput = $true
-    $startInfo.RedirectStandardError = $true
+    $startInfo.RedirectStandardOutput = $false
+    $startInfo.RedirectStandardError = $false
     $startInfo.CreateNoWindow = $true
 
     $process = [System.Diagnostics.Process]::new()
     $process.StartInfo = $startInfo
 
-    Write-Host ("Starting {0}: dotnet {1}" -f $Name, $startInfo.Arguments)
+    Write-Host ("Starting {0}: dotnet {1}" -f $Name, $argumentString)
     $null = $process.Start()
 
     $entry = [pscustomobject]@{
@@ -146,10 +147,14 @@ function Write-ProcessLogs {
     }
 
     try {
-        $stdout = $Entry.Process.StandardOutput.ReadToEnd()
-        $stderr = $Entry.Process.StandardError.ReadToEnd()
-        Set-Content -Path $Entry.StdoutPath -Value $stdout -Encoding UTF8
-        Set-Content -Path $Entry.StderrPath -Value $stderr -Encoding UTF8
+        if (-not (Test-Path $Entry.StdoutPath)) {
+            New-Item -ItemType File -Force -Path $Entry.StdoutPath | Out-Null
+        }
+
+        if (-not (Test-Path $Entry.StderrPath)) {
+            New-Item -ItemType File -Force -Path $Entry.StderrPath | Out-Null
+        }
+
         $Entry.LogsWritten = $true
     }
     catch {
