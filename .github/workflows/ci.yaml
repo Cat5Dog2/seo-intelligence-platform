@@ -41,13 +41,17 @@ jobs:
       - name: Comprehensive smoke test
         shell: pwsh
         run: |
-          $smokeArgs = @("-Configuration", $env:CONFIGURATION, "-SkipBuild", "-StopDependencies")
+          $smokeArgs = @{
+            Configuration = $env:CONFIGURATION
+            SkipBuild = $true
+            StopDependencies = $true
+          }
           if ("${{ vars.RUN_BROWSER_E2E }}" -eq "true") {
-            $smokeArgs += "-RunBrowserTests"
-            $smokeArgs += "-InstallPlaywrightBrowsers"
+            $smokeArgs.RunBrowserTests = $true
+            $smokeArgs.InstallPlaywrightBrowsers = $true
           }
 
-          ./scripts/smoke-local.ps1 @smokeArgs
+          & ./scripts/smoke-local.ps1 @smokeArgs
 
   container-scan:
     runs-on: ubuntu-latest
