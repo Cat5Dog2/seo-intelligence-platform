@@ -940,6 +940,7 @@ internal sealed class JobDispatcher(
     CompetitorRefreshJob competitorRefreshJob,
     ContentAnalyzeJob contentAnalyzeJob,
     GenerateBriefJob generateBriefJob,
+    TopicClusterGenerateJob topicClusterGenerateJob,
     OpportunityScoringJob opportunityScoringJob,
     DataExportJob dataExportJob,
     ArticleBriefExportJob articleBriefExportJob,
@@ -1002,6 +1003,12 @@ internal sealed class JobDispatcher(
         if (string.Equals(job.JobType, GenerateBriefJob.JobType, StringComparison.Ordinal))
         {
             await generateBriefJob.ExecuteAsync(jobId);
+            return;
+        }
+
+        if (string.Equals(job.JobType, TopicClusterGenerateJob.JobType, StringComparison.Ordinal))
+        {
+            await topicClusterGenerateJob.ExecuteAsync(jobId);
             return;
         }
 

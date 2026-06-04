@@ -100,6 +100,7 @@ app.MapDashboardEndpoints();
 app.MapKeywordDiscoveryEndpoints();
 app.MapSearchVolumeEndpoints();
 app.MapCompetitiveAnalysisEndpoints();
+app.MapTopicClusterEndpoints();
 app.MapContentAnalysisEndpoints();
 app.MapDataExportEndpoints();
 

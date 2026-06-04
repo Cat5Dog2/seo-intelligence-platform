@@ -130,6 +130,15 @@ public interface IContentAnalysisService
     Task<Result<JobReference>> ExportBriefAsync(ProjectExecutionContext context, Guid briefId, ArticleBriefExportRequest request, CancellationToken cancellationToken = default);
 }
 
+public interface ITopicClusterService
+{
+    Task<Result<JobReference>> GenerateAsync(ProjectExecutionContext context, TopicClusterGenerateRequest request, CancellationToken cancellationToken = default);
+
+    Task<Result<PagedResult<TopicClusterSummary>>> GetClustersAsync(ProjectExecutionContext context, TopicClusterSearchQuery query, CancellationToken cancellationToken = default);
+
+    Task<Result<TopicClusterDetails>> GetClusterAsync(ProjectExecutionContext context, Guid clusterId, CancellationToken cancellationToken = default);
+}
+
 public interface IScoringService
 {
     Task<Result<OpportunityScoreResult>> CalculateOpportunityScoresAsync(ProjectExecutionContext context, OpportunityScoreRequest request, CancellationToken cancellationToken = default);
@@ -603,6 +612,78 @@ public sealed record ArticleBriefVersionDetails(
     string ReviewStatus,
     string? ChangeSummary,
     DateTime CreatedAt);
+
+public sealed record TopicClusterGenerateRequest(bool Regenerate = true);
+
+public sealed record TopicClusterSearchQuery(
+    SearchQuery Search,
+    Guid? ParentId = null,
+    string? IntentLabel = null);
+
+public sealed record TopicClusterSummary(
+    Guid ClusterId,
+    Guid ProjectId,
+    string Name,
+    Guid? ParentId,
+    string? ParentName,
+    Guid? RepresentativeKeywordId,
+    string? RepresentativeKeyword,
+    decimal Score,
+    int KeywordCount,
+    string? IntentLabel,
+    int ChildCount,
+    IReadOnlyList<ArticleCandidateSummary> ArticleCandidates,
+    IReadOnlyList<InternalLinkCandidate> InternalLinkCandidates,
+    DateTime CreatedAt,
+    DateTime UpdatedAt);
+
+public sealed record TopicClusterDetails(
+    Guid ClusterId,
+    Guid ProjectId,
+    string Name,
+    Guid? ParentId,
+    string? ParentName,
+    Guid? RepresentativeKeywordId,
+    string? RepresentativeKeyword,
+    decimal Score,
+    int KeywordCount,
+    string? IntentLabel,
+    IReadOnlyList<TopicClusterKeywordRow> Keywords,
+    IReadOnlyList<TopicClusterSummary> Children,
+    IReadOnlyList<ArticleCandidateSummary> ArticleCandidates,
+    IReadOnlyList<InternalLinkCandidate> InternalLinkCandidates,
+    DateTime CreatedAt,
+    DateTime UpdatedAt);
+
+public sealed record TopicClusterKeywordRow(
+    Guid KeywordId,
+    string Keyword,
+    string Role,
+    decimal OpportunityScore,
+    string? IntentLabel,
+    TopicClusterKeywordEvidence Evidence);
+
+public sealed record TopicClusterKeywordEvidence(
+    decimal LexicalSimilarity,
+    decimal CoRankingScore,
+    int FaqCount,
+    IReadOnlyList<string> Sources);
+
+public sealed record ArticleCandidateSummary(
+    Guid? BriefId,
+    string Title,
+    Guid? TargetKeywordId,
+    string? TargetKeyword,
+    string? IntentLabel,
+    decimal OpportunityScore,
+    string Status);
+
+public sealed record InternalLinkCandidate(
+    Guid SourceClusterId,
+    string SourceClusterName,
+    Guid TargetClusterId,
+    string TargetClusterName,
+    string Reason);
 
 public sealed record OpportunityScoreRequest(IReadOnlyList<Guid> KeywordIds, string Location, string Language);
 
