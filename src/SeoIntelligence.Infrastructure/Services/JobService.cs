@@ -937,6 +937,8 @@ internal sealed class JobDispatcher(
     KeywordDiscoveryJob keywordDiscoveryJob,
     RegisterSearchVolumeJob registerSearchVolumeJob,
     PollSearchVolumeStatusJob pollSearchVolumeStatusJob,
+    RegisterRankCheckJob registerRankCheckJob,
+    PollRankStatusJob pollRankStatusJob,
     CompetitorRefreshJob competitorRefreshJob,
     ContentAnalyzeJob contentAnalyzeJob,
     GenerateBriefJob generateBriefJob,
@@ -944,6 +946,7 @@ internal sealed class JobDispatcher(
     OpportunityScoringJob opportunityScoringJob,
     DataExportJob dataExportJob,
     ArticleBriefExportJob articleBriefExportJob,
+    RankAlertEvaluateJob rankAlertEvaluateJob,
     ILogger<JobDispatcher> logger)
     : IJobDispatcher
 {
@@ -986,6 +989,27 @@ internal sealed class JobDispatcher(
                 await pollSearchVolumeStatusJob.ExecuteAsync(jobId);
                 return;
             }
+        }
+
+        if (string.Equals(job.JobType, RegisterRankCheckJob.JobType, StringComparison.Ordinal))
+        {
+            if (string.Equals(job.Status, StatusValues.Queued, StringComparison.Ordinal))
+            {
+                await registerRankCheckJob.ExecuteAsync(jobId);
+                return;
+            }
+
+            if (string.Equals(job.Status, StatusValues.WaitingExternal, StringComparison.Ordinal))
+            {
+                await pollRankStatusJob.ExecuteAsync(jobId);
+                return;
+            }
+        }
+
+        if (string.Equals(job.JobType, RankAlertEvaluateJob.JobType, StringComparison.Ordinal))
+        {
+            await rankAlertEvaluateJob.ExecuteAsync(jobId);
+            return;
         }
 
         if (string.Equals(job.JobType, CompetitorRefreshJob.JobType, StringComparison.Ordinal))

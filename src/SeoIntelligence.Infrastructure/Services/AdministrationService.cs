@@ -35,6 +35,8 @@ public static class AdministrationServiceCollectionExtensions
         services.TryAddScoped<ICompetitiveAnalysisService>(serviceProvider => serviceProvider.GetRequiredService<CompetitiveAnalysisService>());
         services.TryAddScoped<ContentAnalysisService>();
         services.TryAddScoped<IContentAnalysisService>(serviceProvider => serviceProvider.GetRequiredService<ContentAnalysisService>());
+        services.TryAddScoped<RankMonitoringService>();
+        services.TryAddScoped<IRankMonitoringService>(serviceProvider => serviceProvider.GetRequiredService<RankMonitoringService>());
         services.TryAddScoped<TopicClusterService>();
         services.TryAddScoped<ITopicClusterService>(serviceProvider => serviceProvider.GetRequiredService<TopicClusterService>());
         services.TryAddScoped<IScoringService, ScoringService>();
@@ -51,6 +53,7 @@ public static class AdministrationServiceCollectionExtensions
         services.TryAddScoped<IJobQueueClient, HangfireJobQueueClient>();
         services.TryAddScoped<IJobDispatcher, JobDispatcher>();
         services.TryAddScoped<ISearchVolumeJobScheduler, SearchVolumeHangfireJobScheduler>();
+        services.TryAddScoped<IRankCheckJobScheduler, RankCheckHangfireJobScheduler>();
         services.TryAddSingleton<OperationalMetricsObserver>();
         services.AddHostedService(serviceProvider => serviceProvider.GetRequiredService<OperationalMetricsObserver>());
         services.TryAddScoped<MasterDataSyncJob>();
@@ -58,6 +61,10 @@ public static class AdministrationServiceCollectionExtensions
         services.TryAddScoped<RegisterSearchVolumeJob>();
         services.TryAddScoped<PollSearchVolumeStatusJob>();
         services.TryAddScoped<FetchSearchVolumeResultsJob>();
+        services.TryAddScoped<RegisterRankCheckJob>();
+        services.TryAddScoped<PollRankStatusJob>();
+        services.TryAddScoped<FetchRankResultsJob>();
+        services.TryAddScoped<RankAlertEvaluateJob>();
         services.TryAddScoped<CompetitorRefreshJob>();
         services.TryAddScoped<ContentAnalyzeJob>();
         services.TryAddScoped<GenerateBriefJob>();

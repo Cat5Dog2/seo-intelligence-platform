@@ -30,6 +30,7 @@ internal sealed class NotificationService(
 {
     public const string JobFailedEventType = "job_failed";
     public const string CreditLowEventType = "credit_low";
+    public const string RankAlertEventType = "rank_alert";
     public const string TestEventType = "test";
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -73,13 +74,13 @@ internal sealed class NotificationService(
         CancellationToken cancellationToken = default)
     {
         var eventType = NormalizeEventType(request.EventType);
-        if (eventType is null || !IsPhaseOneEventType(eventType))
+        if (eventType is null || !IsSupportedEventType(eventType))
         {
             return Result<NotificationResult>.Failure(Error.Validation(
                 "Validation failed.",
                 new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
                 {
-                    ["eventType"] = ["eventType must be job_failed or credit_low."]
+                    ["eventType"] = ["eventType must be job_failed, credit_low, or rank_alert."]
                 }));
         }
 
@@ -240,9 +241,10 @@ internal sealed class NotificationService(
         }
     }
 
-    private static bool IsPhaseOneEventType(string eventType)
+    private static bool IsSupportedEventType(string eventType)
         => string.Equals(eventType, JobFailedEventType, StringComparison.Ordinal)
-            || string.Equals(eventType, CreditLowEventType, StringComparison.Ordinal);
+            || string.Equals(eventType, CreditLowEventType, StringComparison.Ordinal)
+            || string.Equals(eventType, RankAlertEventType, StringComparison.Ordinal);
 
     private static string? NormalizeEventType(string? value)
         => OptionalText(value)?.ToLowerInvariant();
@@ -411,6 +413,7 @@ internal sealed class NotificationDeliveryJob(
         {
             NotificationService.CreditLowEventType => BuildCreditLowContent(delivery, job),
             NotificationService.JobFailedEventType => BuildJobFailedContent(delivery, job),
+            NotificationService.RankAlertEventType => await BuildRankAlertContentAsync(delivery, job, cancellationToken),
             NotificationService.TestEventType => "SEO Intelligence test notification.",
             _ => $"SEO Intelligence notification: {delivery.EventType}"
         };
@@ -437,6 +440,43 @@ internal sealed class NotificationDeliveryJob(
                 job is null ? null : $"Status: {job.Status}",
                 ExtractFailureMessage(job),
                 BuildResourceLine(delivery)));
+
+    private async Task<string> BuildRankAlertContentAsync(
+        NotificationDeliveryEntity delivery,
+        JobEntity? job,
+        CancellationToken cancellationToken)
+    {
+        AlertEventEntity? alertEvent = null;
+        KeywordEntity? keyword = null;
+        if (string.Equals(delivery.ResourceType, RankMonitoringService.AlertEventResourceType, StringComparison.Ordinal) &&
+            Guid.TryParse(delivery.ResourceId, out var alertEventId))
+        {
+            alertEvent = await dbContext.AlertEvents
+                .AsNoTracking()
+                .FirstOrDefaultAsync(entity => entity.Id == alertEventId, cancellationToken);
+            if (alertEvent?.KeywordId.HasValue == true)
+            {
+                keyword = await dbContext.Keywords
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(entity => entity.Id == alertEvent.KeywordId.Value, cancellationToken);
+            }
+        }
+
+        var current = ParseJson(alertEvent?.CurrentValueJson);
+        var previous = ParseJson(alertEvent?.PreviousValueJson);
+        return string.Join(
+            Environment.NewLine,
+            NonEmptyLines(
+                "[rank_alert] Rank alert triggered.",
+                alertEvent is null ? null : $"Event: {alertEvent.EventType} ({alertEvent.Id:D})",
+                keyword is null ? null : $"Keyword: {keyword.NormalizedText}",
+                GetJsonString(current, "target") is { } target ? $"Target: {target}" : null,
+                GetJsonInt(current, "position") is { } position ? $"Position: {position.ToString(CultureInfo.InvariantCulture)}" : null,
+                GetJsonInt(previous, "position") is { } previousPosition ? $"Previous: {previousPosition.ToString(CultureInfo.InvariantCulture)}" : null,
+                GetJsonString(current, "rankedUrl") is { } rankedUrl ? $"Ranked URL: {rankedUrl}" : null,
+                job is null ? null : $"Job: {job.JobType} ({job.Id:D})",
+                BuildResourceLine(delivery)));
+    }
 
     private static string? ExtractFailureMessage(JobEntity? job)
     {
@@ -466,6 +506,52 @@ internal sealed class NotificationDeliveryJob(
 
     private static IEnumerable<string> NonEmptyLines(params string?[] values)
         => values.Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value!);
+
+    private static JsonElement? ParseJson(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            return document.RootElement.Clone();
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static string? GetJsonString(JsonElement? element, string propertyName)
+        => element.HasValue &&
+            element.Value.ValueKind == JsonValueKind.Object &&
+            element.Value.TryGetProperty(propertyName, out var value) &&
+            value.ValueKind == JsonValueKind.String
+                ? value.GetString()
+                : null;
+
+    private static int? GetJsonInt(JsonElement? element, string propertyName)
+    {
+        if (!element.HasValue ||
+            element.Value.ValueKind != JsonValueKind.Object ||
+            !element.Value.TryGetProperty(propertyName, out var value))
+        {
+            return null;
+        }
+
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var number))
+        {
+            return number;
+        }
+
+        return value.ValueKind == JsonValueKind.String &&
+            int.TryParse(value.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
+                ? parsed
+                : null;
+    }
 
     private async Task RecordFailureAsync(
         NotificationDeliveryEntity delivery,
