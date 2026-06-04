@@ -142,7 +142,7 @@ queued -> running -> waiting_external -> running -> succeeded
 | 登録 | keywords、targets、matchType、depth、withMetricsを検証し外部APIへ登録する。 |
 | 上限 | targetsは1から50件、depthは許可値のみ。 |
 | 結果 | `rank_results`へ順位、ranked_url、推定流入、source_call_id、contract_scope_key、checked_atを保存する。 |
-| 後続 | アラート評価で`alert_events`を保存し、カニバリ候補更新、月次レポート材料更新を起動する。 |
+| 後続 | Phase 2では`RankAlertEvaluateJob`で`alert_events`を保存し、必要に応じて`rank_alert`通知を送る。カニバリ候補更新と月次レポート材料更新はPhase 3の`CannibalizationDetectionJob` / `MonthlyReportJob`で扱う。 |
 
 ### 7.4 ContentAnalyzeJob
 

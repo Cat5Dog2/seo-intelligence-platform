@@ -68,7 +68,7 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | 画面ID | 画面名 | Phase | 主API |
 | --- | --- | --- | --- |
 | S-001 | 起動/プロジェクト選択 | MVP | `GET /api/projects` |
-| S-010 | ホームダッシュボード | MVP | `GET /api/projects/{projectId}/dashboard` |
+| S-010 | ホームダッシュボード | MVP（段階拡張） | `GET /api/projects/{projectId}/dashboard` |
 | S-020 | キーワード探索 | MVP | `POST /api/projects/{projectId}/keyword-discovery/suggest` |
 | S-030 | 一括検索ボリューム | MVP | `POST /api/projects/{projectId}/search-volume/jobs` |
 | S-040 | トピッククラスター | Phase 2 | `GET /api/projects/{projectId}/clusters` |
@@ -81,7 +81,7 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | S-110 | EC/YouTube/画像企画 | 推奨 | `POST /api/projects/{projectId}/keyword-discovery/suggest` |
 | S-120 | レポート | Phase 3 | `POST /api/projects/{projectId}/reports` |
 | S-130 | AIアシスタント | Phase 3 | `POST /api/projects/{projectId}/ai/chat` |
-| S-900 | 管理 | MVP（Phase 3拡張） | MVPは`/api/admin/*`、Phase 3で`/api/projects/{projectId}/connectors` |
+| S-900 | 管理 | MVP（段階拡張） | MVPは`/api/admin/*`、Phase 2で`rank_alert`/`alert_events`/Phase 2ジョブ導線、Phase 3で`/api/projects/{projectId}/connectors` |
 
 ## 6. 画面詳細
 
@@ -101,8 +101,8 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | 項目 | 内容 |
 | --- | --- |
 | 目的 | Phase別に主要KPI、ジョブ状況、クレジット、次アクションを俯瞰する。 |
-| 表示 | キーワード探索件数、一括調査件数、機会スコア上位、クレジット消費、失敗ジョブ、通知失敗。 |
-| 操作 | キーワード探索開始、一括調査開始、失敗ジョブ詳細、CSV出力。 |
+| 表示 | Phase 1はキーワード探索件数、一括調査件数、機会スコア上位、クレジット消費、失敗ジョブ、通知失敗。Phase 2では競合数、獲得語/ページ件数、コンテンツ分析件数、記事ブリーフ件数、順位チェック件数、順位分布、未解決アラート件数を追加する。 |
+| 操作 | キーワード探索開始、一括調査開始、失敗ジョブ詳細、CSV出力。Phase 2では競合分析、コンテンツ分析、記事ブリーフ、順位監視への導線を追加する。 |
 | API | `GET /api/projects/{projectId}/dashboard`、`GET /api/jobs?project_id={projectId}`、`POST /api/projects/{projectId}/exports/csv`、`GET /api/projects/{projectId}/exports/{exportId}`、`GET /api/projects/{projectId}/exports/{exportId}/download` |
 | 空状態 | プロジェクト作成直後はキーワード探索への導線を表示する。 |
 
@@ -237,10 +237,10 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 
 | 項目 | 内容 |
 | --- | --- |
-| 目的 | ワークスペース、APIキー、クレジット消費、通知、ジョブ、監査ログを管理する。Phase 3で外部連携スタブ設定を扱う。 |
-| 表示 | MVPは設定値、API認証情報、クレジット消費、通知チャンネル、送信履歴、ジョブ一覧、監査ログ。Phase 3で外部連携スタブ設定と実行履歴を追加する。 |
-| 操作 | MVPはAPIキー登録/無効化/ローテーション、通知テスト、ジョブ再実行、監査検索。Phase 3で外部連携スタブ接続テストを追加する。 |
-| API | MVPは`/api/admin/workspace`、`/api/admin/api-credentials`、`/api/admin/notification-channels`、`/api/jobs`、`/api/admin/audit-logs`。Phase 3で`/api/projects/{projectId}/connectors`を追加する。 |
+| 目的 | ワークスペース、APIキー、クレジット消費、通知、ジョブ、監査ログを管理する。Phase 2で順位アラート運用導線、Phase 3で外部連携スタブ設定を扱う。 |
+| 表示 | MVPは設定値、API認証情報、クレジット消費、通知チャンネル、送信履歴、ジョブ一覧、監査ログ。Phase 2では`rank_alert`通知、`alert_events`、Phase 2ジョブ種別（競合分析、コンテンツ分析、ブリーフ生成、クラスタ生成、順位チェック、順位アラート評価）を検索・参照できる。Phase 3で外部連携スタブ設定と実行履歴を追加する。 |
+| 操作 | MVPはAPIキー登録/無効化/ローテーション、通知テスト、ジョブ再実行、監査検索。Phase 2では順位アラート通知履歴の確認、`alert_events`から送信履歴への遷移、Phase 2ジョブ種別での絞り込み、関連リソースID/Correlation IDによる監査検索導線を追加する。Phase 3で外部連携スタブ接続テストを追加する。 |
+| API | MVPは`/api/admin/workspace`、`/api/admin/api-credentials`、`/api/admin/notification-channels`、`/api/jobs`、`/api/admin/audit-logs`。Phase 2では`/api/projects/{projectId}/alerts`、`/api/projects/{projectId}/alert-events`、`/api/admin/notification-deliveries`、`/api/jobs`のPhase 2 job_type検索を管理導線で利用する。Phase 3で`/api/projects/{projectId}/connectors`を追加する。 |
 | セキュリティ | 秘密値は保存直後も再表示しない。 |
 
 ## 7. 共通バリデーション

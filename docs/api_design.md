@@ -221,7 +221,7 @@ API認証情報の作成/ローテーションでは、`secretValue`系と`keyRe
 | MVP | PUT | `/api/projects/{projectId}/sites/{siteId}` | サイト更新 |
 | MVP | DELETE | `/api/projects/{projectId}/sites/{siteId}` | `status=archived`へアーカイブ |
 | MVP | POST | `/api/projects/{projectId}/sites/{siteId}/restore` | `status=active`へ復元 |
-| MVP | GET | `/api/projects/{projectId}/dashboard` | Phase 1ダッシュボード指標取得 |
+| MVP | GET | `/api/projects/{projectId}/dashboard` | 段階拡張ダッシュボード指標取得。Phase 1はキーワード探索、一括検索ボリューム、機会スコア、APIクレジット。Phase 2は競合、コンテンツ、記事ブリーフ、順位、アラート指標を追加 |
 | MVP | GET | `/api/master-data/locations` | 地域マスタ一覧 |
 | MVP | GET | `/api/master-data/languages` | 言語マスタ一覧 |
 
@@ -317,6 +317,7 @@ API認証情報の作成/ローテーションでは、`secretValue`系と`keyRe
 | `ApiCredentialRotateRequest` | API認証情報ローテーション | `newSecretValue`または`newKeyRef`のいずれか一方。契約スコープはAPI認証情報APIでは管理しない。 |
 | `KeywordDiscoveryRequest` | キーワード探索 | `seedKeyword`、`sources`、`limit`、`filter`、`sortBy`、`orderBy`、`syncPreferred` |
 | `SearchVolumeJobRequest` | 一括検索ボリューム調査 | `keywords`、`location`、`language`、`seoDifficulty`、`aggregationPeriodMonths`。MVPのCSV入力はブラウザ内でパースし、APIへは`keywords` JSON配列として送る。 |
+| `ProjectDashboardResponse` | ダッシュボード | Phase 1項目として`keywordDiscoverySummary`、`searchVolumeSummary`、`opportunityScoreSummary`、`creditUsageSummary`、`jobSummary`、`notificationSummary`を返す。Phase 2では`competitorSummary`、`influxSummary`、`contentAnalysisSummary`、`briefSummary`、`rankSummary`、`rankAlertSummary`を追加する。 |
 | `ContentAnalyzeRequest` | コンテンツ分析 | `keyword`、`includeContentSearch`、`includeHeadline`、`includeCoOccurrence`、`limit` |
 | `RankCheckJobRequest` | 順位チェック | `keywords`、`targets`、`matchType`、`depth`、`withMetrics`、`deduplicate` |
 | `ReportRequest` | レポート生成 | `reportType`、`period`、`format`（pdf/excel）、`sections`、`shareExpiresAt`。生成完了後は`reports.file_uri`を保持し、ダウンロードは専用APIで短時間URLを返す。 |

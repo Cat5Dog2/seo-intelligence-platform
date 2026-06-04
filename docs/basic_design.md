@@ -189,7 +189,7 @@ SeoIntelligence.sln
 | コンポーネント | 責務 |
 | --- | --- |
 | ProjectContextService | ワークスペース/プロジェクトコンテキストを全ユースケースに注入する。 |
-| DashboardService | Phase 1のキーワード探索、一括検索ボリューム、機会スコア、APIクレジットを集計し、Phase 2以降の競合/順位/リライト指標を段階追加する。 |
+| DashboardService | Phase 1のキーワード探索、一括検索ボリューム、機会スコア、APIクレジットを集計する。Phase 2では競合、獲得語/ページ、コンテンツ分析、記事ブリーフ、順位、順位アラート指標を追加し、リライト/カニバリ/レポート/AI指標はPhase 3で追加する。 |
 | AdministrationService | workspaces、projects、sites、api_credentials、notification_channels、外部連携スタブ設定の管理操作を実行する。 |
 | MasterDataService | ラッコキーワードAPIの地域/言語マスタを同期し、プロジェクト既定値と調査条件の入力候補を提供する。 |
 | KeywordDiscoveryService | サジェスト、関連語、LSI/PAA、FAQ、同時ランクインを統合する。 |
@@ -369,7 +369,7 @@ artifact_versionsは記事ブリーフ、レポート、AI生成結果など成�
 | GET | /api/jobs/{jobId} | 管理/監査向け非同期ジョブ共通状態取得。job_type、status、progress、result_resource、error、retry_countを返す。プロジェクト画面ではproject-scopedな個別ジョブAPIを優先する |
 | POST | /api/jobs/{jobId}/cancel | 実行前または待機中ジョブのキャンセル |
 | POST | /api/jobs/{jobId}/retry | retry可能な失敗ジョブの手動再実行 |
-| GET | /api/projects/{projectId}/dashboard | Phase 1ダッシュボード指標取得。キーワード探索、一括検索ボリューム、機会スコア、APIクレジットを返す |
+| GET | /api/projects/{projectId}/dashboard | 段階拡張ダッシュボード指標取得。Phase 1はキーワード探索、一括検索ボリューム、機会スコア、APIクレジットを返し、Phase 2で競合、獲得語/ページ、コンテンツ分析、記事ブリーフ、順位、順位アラート指標を追加する |
 | GET | /api/master-data/locations | 地域マスタ一覧取得 |
 | GET | /api/master-data/languages | 言語マスタ一覧取得 |
 | POST | /api/admin/master-data/sync | 地域/言語マスタ同期ジョブ登録 |
@@ -621,7 +621,7 @@ queued -> running -> waiting_external -> running -> succeeded
 
 1. resultsを取得し、external_api_calls.idをsource_call_idとしてcontract_scope_keyとともにrank_resultsに保存。順位分布と推定流入を集計する。
 
-1. アラート条件とカニバリ候補を評価し、Discord通知、cannibalization_candidates、月次レポート材料を更新する。
+1. Phase 2ではアラート条件を評価し、`alert_events`とDiscord `rank_alert`通知を更新する。カニバリ候補更新と月次レポート材料更新はPhase 3の`CannibalizationDetectionJob` / `MonthlyReportJob`で扱う。
 
 ## 10. スコアリング/分析ロジック
 
@@ -670,7 +670,7 @@ rewriteScore =
 | 画面ID | 画面名 | 対象フェーズ | 主なUI要素/処理 |
 | --- | --- | --- | --- |
 | S-001 | 起動/プロジェクト選択 | MVP | 単一利用者として起動し、既定ワークスペース内でプロジェクトを切り替える。SSO/テナント選択/権限別メニューは初期版では扱わない。 |
-| S-010 | ホームダッシュボード | MVP（段階拡張） | Phase 1ではキーワード探索、一括検索ボリューム、機会スコア、APIクレジットを表示し、競合・順位・リライト表示はPhase 2以降に拡張する。 |
+| S-010 | ホームダッシュボード | MVP（段階拡張） | Phase 1ではキーワード探索、一括検索ボリューム、機会スコア、APIクレジットを表示する。Phase 2では競合、コンテンツ、記事ブリーフ、順位、順位アラート指標を追加し、リライト、カニバリ、レポート、AI関連指標はPhase 3で追加する。 |
 | S-020 | キーワード探索 | MVP | シード入力、検索エンジン選択、サジェスト/関連語/LSI/PAA/FAQ統合結果、フィルタ、保存。 |
 | S-030 | 一括検索ボリューム | MVP | CSV貼付/アップロード、地域/言語、ジョブ登録、進捗、結果テーブル、トレンドグラフ。 |
 | S-040 | トピッククラスター | Phase 2 | クラスタ一覧、親子関係、代表語、記事候補、機会スコア、内部リンク候補。 |
@@ -683,7 +683,7 @@ rewriteScore =
 | S-110 | EC/YouTube/画像企画 | 推奨 | 検索ソース別の候補語、商品/動画/画像SEOタグ、季節性、商業性。 |
 | S-120 | レポート | Phase 3 | 月次レポート作成、テンプレート、PDF/Excel/共有URL、Discord通知履歴。 |
 | S-130 | AIアシスタント | Phase 3 | 自然言語から調査ジョブ、ブリーフ生成、差分分析、レポート要約を実行。 |
-| S-900 | 管理 | MVP（段階拡張） | MVPはワークスペース設定、APIキー、クレジット消費、Discord通知設定、監査ログ、ジョブキュー。Phase 3で外部連携スタブ設定と実行履歴を追加する。 |
+| S-900 | 管理 | MVP（段階拡張） | MVPはワークスペース設定、APIキー、クレジット消費、Discord通知設定、監査ログ、ジョブキュー。Phase 2では`rank_alert`、`alert_events`、Phase 2ジョブ種別、監査検索導線を追加する。Phase 3で外部連携スタブ設定と実行履歴を追加する。 |
 
 ### 11.1 代表画面レイアウト
 
@@ -832,7 +832,7 @@ API別の保存先、カラム、リレーション、インデックスの正�
 | influx-keywords/pages | influx_keyword_results, influx_page_results, external_api_calls | 自社/競合分析、リライト候補、ギャップ分析。 |
 | competitive | competitive_results, competitor_sites, external_api_calls | 競合サイトと重複率/独自語数を保存。 |
 | content-search/headline/co-occurrence | content_search_results, serp_headline_pages, serp_headlines, co_occurrence_words, external_api_calls | 記事ブリーフ・リライト差分の根拠。 |
-| search-rank | rank_check_jobs, job_external_requests, rank_check_targets, rank_results, cannibalization_candidates, external_api_calls | 順位履歴、アラート、カニバリ候補、レポート。 |
+| search-rank | rank_check_jobs, job_external_requests, rank_check_targets, rank_results, alerts, alert_events, external_api_calls | Phase 2では順位履歴、順位分布、順位アラートを保存する。カニバリ候補とレポート材料はPhase 3で順位履歴から派生させる。 |
 | exports/imports | data_exports, data_imports, audit_logs | CSV/Excel入出力の条件、ファイル参照、検証エラー、操作履歴を保存。 |
 
 ## 付録D. 参照資料
