@@ -35,6 +35,8 @@ public static class AdministrationServiceCollectionExtensions
         services.TryAddScoped<ICompetitiveAnalysisService>(serviceProvider => serviceProvider.GetRequiredService<CompetitiveAnalysisService>());
         services.TryAddScoped<ContentAnalysisService>();
         services.TryAddScoped<IContentAnalysisService>(serviceProvider => serviceProvider.GetRequiredService<ContentAnalysisService>());
+        services.TryAddScoped<TopicClusterService>();
+        services.TryAddScoped<ITopicClusterService>(serviceProvider => serviceProvider.GetRequiredService<TopicClusterService>());
         services.TryAddScoped<IScoringService, ScoringService>();
         services.TryAddScoped<DataTransferService>();
         services.TryAddScoped<IDataTransferService>(serviceProvider => serviceProvider.GetRequiredService<DataTransferService>());
@@ -59,6 +61,7 @@ public static class AdministrationServiceCollectionExtensions
         services.TryAddScoped<CompetitorRefreshJob>();
         services.TryAddScoped<ContentAnalyzeJob>();
         services.TryAddScoped<GenerateBriefJob>();
+        services.TryAddScoped<TopicClusterGenerateJob>();
         services.TryAddScoped<ArticleBriefExportJob>();
         services.TryAddScoped<OpportunityScoringJob>();
         services.TryAddScoped<DataExportJob>();

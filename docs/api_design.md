@@ -268,6 +268,8 @@ API認証情報の作成/ローテーションでは、`secretValue`系と`keyRe
 | Phase 2 | GET | `/api/projects/{projectId}/briefs/{briefId}/versions` | 記事ブリーフ版履歴取得 |
 | Phase 2 | POST | `/api/projects/{projectId}/briefs/{briefId}/export` | 記事ブリーフのMarkdown/CSV出力ジョブ登録 |
 
+`/api/projects/{projectId}/clusters` は `score` 降順を既定とし、`name`、`representativeKeyword`、`score`、`keywordCount`、`childCount`、`createdAt`、`updatedAt` でソートできる。レスポンスはクラスタID、親クラスタID、代表語、keyword数、機会スコア、検索意図、子クラスタ数、記事候補、内部リンク候補を返す。詳細APIは所属keywordごとに `role`、`opportunityScore`、`intentLabel`、語彙類似度、同時ランクイン度、FAQ件数、根拠sourceを返す。生成APIは既存のキーワード探索、同時ランクイン、FAQ、共起語、機会スコアを使う分析キューの `TopicClusterGenerateJob` を登録し、`202 Accepted` と `jobId` を返す。
+
 ### 7.6 順位・リライト・レポートAPI
 
 | Phase | Method | Path | 概要 |

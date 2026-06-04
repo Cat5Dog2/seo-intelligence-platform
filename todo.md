@@ -802,15 +802,15 @@ ISSUE-MVP-00X の続きから再開してください。
 
 範囲:
 
-- [ ] `TopicClusterGenerateJob` を実装する。
-- [ ] 同時ランクイン度、語彙類似度、検索意図、FAQでクラスタリングする。
-- [ ] `GET /api/projects/{projectId}/clusters`
-- [ ] `GET /api/projects/{projectId}/clusters/{clusterId}`
-- [ ] `POST /api/projects/{projectId}/clusters/generate`
+- [x] `TopicClusterGenerateJob` を実装する。
+- [x] 同時ランクイン度、語彙類似度、検索意図、FAQでクラスタリングする。
+- [x] `GET /api/projects/{projectId}/clusters`
+- [x] `GET /api/projects/{projectId}/clusters/{clusterId}`
+- [x] `POST /api/projects/{projectId}/clusters/generate`
 
 受入条件:
 
-- [ ] クラスタ一覧、親子関係、代表語、記事候補、機会スコアを確認できる。
+- [x] クラスタ一覧、親子関係、代表語、記事候補、機会スコアを確認できる。
 
 ### ISSUE-P2-005 順位監視と順位アラートを実装する
 
