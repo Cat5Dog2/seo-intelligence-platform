@@ -117,7 +117,7 @@ ISSUE-MVP-00X の続きから再開してください。
 - [x] ISSUE-MVP-018 MVP運用、監視、ドキュメントを整備する
 - [ ] ISSUE-P2-001 Phase 2 DB/API/外部API基盤を追加する
 - [x] ISSUE-P2-002 競合分析と獲得語/ページ分析を実装する
-- [ ] ISSUE-P2-003 コンテンツ分析と記事ブリーフを実装する
+- [x] ISSUE-P2-003 コンテンツ分析と記事ブリーフを実装する
 - [ ] ISSUE-P2-004 トピッククラスターを実装する
 - [ ] ISSUE-P2-005 順位監視と順位アラートを実装する
 - [ ] ISSUE-P2-006 Phase 2 UIを実装する
@@ -778,21 +778,21 @@ ISSUE-MVP-00X の続きから再開してください。
 
 範囲:
 
-- [ ] `ContentAnalyzeJob` を実装する。
-- [ ] `GenerateBriefJob` を実装する。
-- [ ] `GET /api/projects/{projectId}/content-analyses`
-- [ ] `POST /api/projects/{projectId}/content/analyze`
-- [ ] `GET /api/projects/{projectId}/briefs`
-- [ ] `POST /api/projects/{projectId}/briefs/generate`
-- [ ] `GET /api/projects/{projectId}/briefs/{briefId}`
-- [ ] `PUT /api/projects/{projectId}/briefs/{briefId}`
-- [ ] `GET /api/projects/{projectId}/briefs/{briefId}/versions`
-- [ ] `POST /api/projects/{projectId}/briefs/{briefId}/export`
-- [ ] 記事ブリーフの版履歴を `artifact_versions` に保存する。
+- [x] `ContentAnalyzeJob` を実装する。
+- [x] `GenerateBriefJob` を実装する。
+- [x] `GET /api/projects/{projectId}/content-analyses`
+- [x] `POST /api/projects/{projectId}/content/analyze`
+- [x] `GET /api/projects/{projectId}/briefs`
+- [x] `POST /api/projects/{projectId}/briefs/generate`
+- [x] `GET /api/projects/{projectId}/briefs/{briefId}`
+- [x] `PUT /api/projects/{projectId}/briefs/{briefId}`
+- [x] `GET /api/projects/{projectId}/briefs/{briefId}/versions`
+- [x] `POST /api/projects/{projectId}/briefs/{briefId}/export`
+- [x] 記事ブリーフの版履歴を `artifact_versions` に保存する。
 
 受入条件:
 
-- [ ] 指定キーワードで集客コンテンツ、見出し、共起語を取得し、記事ブリーフを生成できる。
+- [x] 指定キーワードで集客コンテンツ、見出し、共起語を取得し、記事ブリーフを生成できる。
 
 ### ISSUE-P2-004 トピッククラスターを実装する
 

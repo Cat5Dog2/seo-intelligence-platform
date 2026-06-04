@@ -938,8 +938,11 @@ internal sealed class JobDispatcher(
     RegisterSearchVolumeJob registerSearchVolumeJob,
     PollSearchVolumeStatusJob pollSearchVolumeStatusJob,
     CompetitorRefreshJob competitorRefreshJob,
+    ContentAnalyzeJob contentAnalyzeJob,
+    GenerateBriefJob generateBriefJob,
     OpportunityScoringJob opportunityScoringJob,
     DataExportJob dataExportJob,
+    ArticleBriefExportJob articleBriefExportJob,
     ILogger<JobDispatcher> logger)
     : IJobDispatcher
 {
@@ -990,6 +993,18 @@ internal sealed class JobDispatcher(
             return;
         }
 
+        if (string.Equals(job.JobType, ContentAnalyzeJob.JobType, StringComparison.Ordinal))
+        {
+            await contentAnalyzeJob.ExecuteAsync(jobId);
+            return;
+        }
+
+        if (string.Equals(job.JobType, GenerateBriefJob.JobType, StringComparison.Ordinal))
+        {
+            await generateBriefJob.ExecuteAsync(jobId);
+            return;
+        }
+
         if (string.Equals(job.JobType, OpportunityScoringJob.JobType, StringComparison.Ordinal))
         {
             await opportunityScoringJob.ExecuteAsync(jobId);
@@ -999,6 +1014,12 @@ internal sealed class JobDispatcher(
         if (string.Equals(job.JobType, DataExportJob.JobType, StringComparison.Ordinal))
         {
             await dataExportJob.ExecuteAsync(jobId);
+            return;
+        }
+
+        if (string.Equals(job.JobType, ArticleBriefExportJob.JobType, StringComparison.Ordinal))
+        {
+            await articleBriefExportJob.ExecuteAsync(jobId);
             return;
         }
 

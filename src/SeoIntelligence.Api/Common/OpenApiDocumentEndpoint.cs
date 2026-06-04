@@ -41,9 +41,16 @@ internal static class OpenApiDocumentEndpoint
         new("/api/projects/{projectId}/competitors/analyze", Post: "Register competitor refresh job", PostSuccessCode: "202"),
         new("/api/projects/{projectId}/influx-keywords", Get: "List influx keyword results"),
         new("/api/projects/{projectId}/influx-pages", Get: "List influx page results"),
+        new("/api/projects/{projectId}/content-analyses", Get: "List content analysis results"),
+        new("/api/projects/{projectId}/content/analyze", Post: "Register content analysis job", PostSuccessCode: "202"),
+        new("/api/projects/{projectId}/briefs", Get: "List article briefs"),
+        new("/api/projects/{projectId}/briefs/generate", Post: "Register article brief generation job", PostSuccessCode: "202"),
+        new("/api/projects/{projectId}/briefs/{briefId}", Get: "Get article brief", Put: "Update article brief"),
+        new("/api/projects/{projectId}/briefs/{briefId}/versions", Get: "List article brief versions"),
+        new("/api/projects/{projectId}/briefs/{briefId}/export", Post: "Register article brief export job", PostSuccessCode: "202"),
         new("/api/projects/{projectId}/exports/csv", Post: "Register Phase 1 CSV export job", PostSuccessCode: "202"),
-        new("/api/projects/{projectId}/exports/{exportId}", Get: "Get CSV export state and file metadata"),
-        new("/api/projects/{projectId}/exports/{exportId}/download", Get: "Issue a short-lived CSV download URL")
+        new("/api/projects/{projectId}/exports/{exportId}", Get: "Get export state and file metadata"),
+        new("/api/projects/{projectId}/exports/{exportId}/download", Get: "Issue a short-lived export download URL")
     ];
 
     public static IResult GetV1(HttpContext context)
