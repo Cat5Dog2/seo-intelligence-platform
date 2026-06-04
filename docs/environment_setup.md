@@ -174,9 +174,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-local.ps1 -Run
 | `OpenTelemetry__Enabled` | OTel exporter有効化 | `false` |
 | `OpenTelemetry__ServiceName` | OTel service name | `SeoIntelligence.Api` |
 | `OpenTelemetry__OtlpEndpoint` | OTLP endpoint | `http://localhost:4317` |
+| `RakkoKeyword__Mode` | ラッコAPI連携モード | 通常開発/CIは`Mock`。実API接続時のみ`Real` |
 | `RakkoKeyword__BaseUrl` | ラッコAPI URL | `https://api.rakkokeyword.com` |
-| `RakkoKeyword__ApiKeySecretName` | APIキーSecret名 | `rakko-keyword-api-key-dev` |
-| `RakkoKeyword__MaxConcurrentRequests` | 同時実行数 | `2` |
+| `RakkoKeyword__ApiKeySecretRef` | APIキーSecret参照名 | `rakko-keyword-api-key-dev` |
+| `RakkoKeyword__TimeoutSeconds` | 通常APIタイムアウト | `30` |
+| `RakkoKeyword__LongTimeoutSeconds` | 長時間APIタイムアウト | `60` |
 | `Jobs__SearchVolumePollIntervalSeconds` | 検索ボリュームポーリング | `60` |
 | `Jobs__RankCheckPollIntervalSeconds` | 順位チェックポーリング | `60` |
 | `Credits__ResetTimeZone` | クレジットリセットTZ | `Asia/Tokyo` |
@@ -197,7 +199,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-local.ps1 -Run
 | `discord-webhook-dev` | Discord Webhook URL | DBへ実値保存しない。 |
 | `ai-api-key-dev` | AI APIキー | Phase 3。必要時のみ設定。 |
 
-ローカルでは `.env`、.NET User Secrets、開発用Key Vault、または安全なSecret管理を使う。MVPの`Configuration` Secret Storeは `Secrets:{secretName}` を参照する。たとえば `.env` に `Secrets__discord-webhook-dev=<Webhook URL>` を置くと、`webhook_secret_ref=discord-webhook-dev` から解決される。APIが`secretValue`を受け取った場合は生成したSecret名へ登録し、DBには参照名だけを保存する。`Configuration`実装のAPI経由登録はプロセス内の設定値として扱い、`.env`や設定ファイルへ実値をコミットしない。
+ローカルでは `.env`、.NET User Secrets、開発用Key Vault、または安全なSecret管理を使う。MVPの`Configuration` Secret Storeは `Secrets:{secretName}` を参照する。たとえば `.env` に `Secrets__discord-webhook-dev=<Webhook URL>` を置くと、`webhook_secret_ref=discord-webhook-dev` から解決される。ラッコキーワードAPIへ実接続する場合は `RakkoKeyword__Mode=Real`、`RakkoKeyword__ApiKeySecretRef=rakko-keyword-api-key-dev`、`Secrets__rakko-keyword-api-key-dev=<API Key>` を設定する。通常開発とCIは既定の`Mock`を使い、実APIキーは不要。APIが`secretValue`を受け取った場合は生成したSecret名へ登録し、DBには参照名だけを保存する。`Configuration`実装のAPI経由登録はプロセス内の設定値として扱い、`.env`や設定ファイルへ実値をコミットしない。
 
 ## 7. DB初期化
 
