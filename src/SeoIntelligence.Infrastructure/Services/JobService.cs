@@ -593,6 +593,9 @@ internal sealed class JobService(
 
         if (normalized.Contains("search", StringComparison.Ordinal) ||
             normalized.Contains("rank", StringComparison.Ordinal) ||
+            normalized.Contains("competitor", StringComparison.Ordinal) ||
+            normalized.Contains("competitive", StringComparison.Ordinal) ||
+            normalized.Contains("influx", StringComparison.Ordinal) ||
             normalized.Contains("external", StringComparison.Ordinal))
         {
             return "external-api";
@@ -934,6 +937,7 @@ internal sealed class JobDispatcher(
     KeywordDiscoveryJob keywordDiscoveryJob,
     RegisterSearchVolumeJob registerSearchVolumeJob,
     PollSearchVolumeStatusJob pollSearchVolumeStatusJob,
+    CompetitorRefreshJob competitorRefreshJob,
     OpportunityScoringJob opportunityScoringJob,
     DataExportJob dataExportJob,
     ILogger<JobDispatcher> logger)
@@ -978,6 +982,12 @@ internal sealed class JobDispatcher(
                 await pollSearchVolumeStatusJob.ExecuteAsync(jobId);
                 return;
             }
+        }
+
+        if (string.Equals(job.JobType, CompetitorRefreshJob.JobType, StringComparison.Ordinal))
+        {
+            await competitorRefreshJob.ExecuteAsync(jobId);
+            return;
         }
 
         if (string.Equals(job.JobType, OpportunityScoringJob.JobType, StringComparison.Ordinal))

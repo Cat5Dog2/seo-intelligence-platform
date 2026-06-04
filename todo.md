@@ -116,7 +116,7 @@ ISSUE-MVP-00X の続きから再開してください。
 - [x] ISSUE-MVP-017 MVP受入テストを整備する
 - [x] ISSUE-MVP-018 MVP運用、監視、ドキュメントを整備する
 - [ ] ISSUE-P2-001 Phase 2 DB/API/外部API基盤を追加する
-- [ ] ISSUE-P2-002 競合分析と獲得語/ページ分析を実装する
+- [x] ISSUE-P2-002 競合分析と獲得語/ページ分析を実装する
 - [ ] ISSUE-P2-003 コンテンツ分析と記事ブリーフを実装する
 - [ ] ISSUE-P2-004 トピッククラスターを実装する
 - [ ] ISSUE-P2-005 順位監視と順位アラートを実装する
@@ -759,16 +759,16 @@ ISSUE-MVP-00X の続きから再開してください。
 
 範囲:
 
-- [ ] `CompetitorRefreshJob` を実装する。
-- [ ] `GET /api/projects/{projectId}/competitors`
-- [ ] `POST /api/projects/{projectId}/competitors/analyze`
-- [ ] `GET /api/projects/{projectId}/influx-keywords`
-- [ ] `GET /api/projects/{projectId}/influx-pages`
-- [ ] 競合、獲得語、獲得ページ、ギャップを保存/表示できるようにする。
+- [x] `CompetitorRefreshJob` を実装する。
+- [x] `GET /api/projects/{projectId}/competitors`
+- [x] `POST /api/projects/{projectId}/competitors/analyze`
+- [x] `GET /api/projects/{projectId}/influx-keywords`
+- [x] `GET /api/projects/{projectId}/influx-pages`
+- [x] 競合、獲得語、獲得ページ、ギャップを保存/表示できるようにする。
 
 受入条件:
 
-- [ ] 対象ドメインから競合、獲得語、獲得ページ、ギャップを表示できる。
+- [x] 対象ドメインから競合、獲得語、獲得ページ、ギャップを表示できる。
 
 ### ISSUE-P2-003 コンテンツ分析と記事ブリーフを実装する
 

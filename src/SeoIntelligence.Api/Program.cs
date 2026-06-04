@@ -99,6 +99,7 @@ app.MapJobEndpoints();
 app.MapDashboardEndpoints();
 app.MapKeywordDiscoveryEndpoints();
 app.MapSearchVolumeEndpoints();
+app.MapCompetitiveAnalysisEndpoints();
 app.MapDataExportEndpoints();
 
 app.MapGet("/openapi/v1.json", OpenApiDocumentEndpoint.GetV1);
