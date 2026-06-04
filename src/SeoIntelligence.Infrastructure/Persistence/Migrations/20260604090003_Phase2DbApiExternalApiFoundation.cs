@@ -703,7 +703,7 @@ namespace SeoIntelligence.Infrastructure.Persistence.Migrations
             migrationBuilder.Sql("""
                 CREATE INDEX ix_content_search_results_title_description_fts
                 ON content_search_results
-                USING gin (to_tsvector('simple', concat_ws(' ', title, description)));
+                USING gin (to_tsvector('simple', title || ' ' || description));
                 """);
 
             migrationBuilder.CreateIndex(

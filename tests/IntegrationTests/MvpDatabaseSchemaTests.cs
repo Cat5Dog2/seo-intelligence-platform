@@ -140,7 +140,7 @@ public sealed class MvpDatabaseSchemaTests
         Assert.Contains("ux_artifact_versions_artifact_type_artifact_id_version_no", sql, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("ix_influx_keyword_results_project_id_target", sql, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("ix_content_search_results_title_description_fts", sql, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("to_tsvector('simple', concat_ws(' ', title, description))", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("to_tsvector('simple', title || ' ' || description)", sql, StringComparison.OrdinalIgnoreCase);
     }
 
     private static SeoIntelligenceDbContext CreateContext()
