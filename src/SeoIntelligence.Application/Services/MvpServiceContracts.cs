@@ -111,6 +111,25 @@ public interface ICompetitiveAnalysisService
     Task<Result<PagedResult<InfluxPageResultRow>>> GetInfluxPagesAsync(ProjectExecutionContext context, InfluxPageSearchQuery query, CancellationToken cancellationToken = default);
 }
 
+public interface IContentAnalysisService
+{
+    Task<Result<JobReference>> AnalyzeAsync(ProjectExecutionContext context, ContentAnalyzeRequest request, CancellationToken cancellationToken = default);
+
+    Task<Result<PagedResult<ContentAnalysisResultRow>>> GetContentAnalysesAsync(ProjectExecutionContext context, ContentAnalysisSearchQuery query, CancellationToken cancellationToken = default);
+
+    Task<Result<JobReference>> GenerateBriefAsync(ProjectExecutionContext context, GenerateBriefRequest request, CancellationToken cancellationToken = default);
+
+    Task<Result<PagedResult<ArticleBriefSummary>>> GetBriefsAsync(ProjectExecutionContext context, ArticleBriefSearchQuery query, CancellationToken cancellationToken = default);
+
+    Task<Result<ArticleBriefDetails>> GetBriefAsync(ProjectExecutionContext context, Guid briefId, CancellationToken cancellationToken = default);
+
+    Task<Result<ArticleBriefDetails>> UpdateBriefAsync(ProjectExecutionContext context, Guid briefId, ArticleBriefUpdateRequest request, CancellationToken cancellationToken = default);
+
+    Task<Result<PagedResult<ArticleBriefVersionDetails>>> GetBriefVersionsAsync(ProjectExecutionContext context, Guid briefId, SearchQuery query, CancellationToken cancellationToken = default);
+
+    Task<Result<JobReference>> ExportBriefAsync(ProjectExecutionContext context, Guid briefId, ArticleBriefExportRequest request, CancellationToken cancellationToken = default);
+}
+
 public interface IScoringService
 {
     Task<Result<OpportunityScoreResult>> CalculateOpportunityScoresAsync(ProjectExecutionContext context, OpportunityScoreRequest request, CancellationToken cancellationToken = default);
@@ -457,6 +476,132 @@ public sealed record InfluxPageResultRow(
     decimal TrafficValue,
     Guid? TopKeywordId,
     string? TopKeyword,
+    DateTime CreatedAt);
+
+public sealed record ContentAnalyzeRequest(
+    string? Keyword,
+    bool IncludeContentSearch = true,
+    bool IncludeHeadline = true,
+    bool IncludeCoOccurrence = true,
+    int? Limit = 10);
+
+public sealed record ContentAnalysisSearchQuery(
+    SearchQuery Search,
+    Guid? KeywordId = null);
+
+public sealed record ContentAnalysisResultRow(
+    Guid KeywordId,
+    string Keyword,
+    IReadOnlyList<ContentSearchResultRow> ContentResults,
+    IReadOnlyList<SerpHeadlinePageResultRow> HeadlinePages,
+    IReadOnlyList<CoOccurrenceWordResultRow> CoOccurrences,
+    DateTime LastAnalyzedAt);
+
+public sealed record ContentSearchResultRow(
+    Guid ContentSearchResultId,
+    string Url,
+    string Domain,
+    string Title,
+    string Description,
+    decimal EstimatedTraffic,
+    decimal TrafficValue,
+    Guid? TopKeywordId,
+    string? TopKeyword,
+    DateTime CreatedAt);
+
+public sealed record SerpHeadlinePageResultRow(
+    Guid HeadlinePageId,
+    int Rank,
+    string Url,
+    string Title,
+    string Description,
+    int HeadlineCount,
+    int WordCount,
+    IReadOnlyList<SerpHeadlineResultRow> Headlines,
+    DateTime CreatedAt);
+
+public sealed record SerpHeadlineResultRow(
+    Guid HeadlineId,
+    short Level,
+    string Text,
+    int OrderNo);
+
+public sealed record CoOccurrenceWordResultRow(
+    Guid CoOccurrenceWordId,
+    string Word,
+    JsonElement OccurrenceCounts,
+    JsonElement SiteCounts,
+    IReadOnlyList<CoOccurrencePageDetailResultRow> PageDetails,
+    DateTime CreatedAt);
+
+public sealed record CoOccurrencePageDetailResultRow(
+    Guid DetailId,
+    int Rank,
+    string Url,
+    string Title,
+    int Count,
+    int CountInHeadline,
+    int CountInTitle);
+
+public sealed record GenerateBriefRequest(
+    string? TargetKeyword = null,
+    Guid? TargetKeywordId = null,
+    Guid? ClusterId = null,
+    string? Title = null,
+    IReadOnlyList<string>? CompetitorUrls = null);
+
+public sealed record ArticleBriefSearchQuery(
+    SearchQuery Search,
+    Guid? TargetKeywordId = null,
+    Guid? ClusterId = null,
+    string? ReviewStatus = null);
+
+public sealed record ArticleBriefUpdateRequest(
+    string? Title = null,
+    JsonElement? Content = null,
+    string? ReviewStatus = null,
+    string? Status = null,
+    string? ChangeSummary = null);
+
+public sealed record ArticleBriefExportRequest(string? Format = "markdown");
+
+public sealed record ArticleBriefSummary(
+    Guid BriefId,
+    Guid ProjectId,
+    Guid? ClusterId,
+    string Title,
+    Guid? TargetKeywordId,
+    string? TargetKeyword,
+    int CurrentVersion,
+    JsonElement Content,
+    string ReviewStatus,
+    string Status,
+    DateTime CreatedAt,
+    DateTime UpdatedAt);
+
+public sealed record ArticleBriefDetails(
+    Guid BriefId,
+    Guid ProjectId,
+    Guid? ClusterId,
+    string Title,
+    Guid? TargetKeywordId,
+    string? TargetKeyword,
+    int CurrentVersion,
+    JsonElement Content,
+    string ReviewStatus,
+    string Status,
+    DateTime CreatedAt,
+    DateTime UpdatedAt);
+
+public sealed record ArticleBriefVersionDetails(
+    Guid VersionId,
+    int VersionNo,
+    string ContentHash,
+    string? ContentUri,
+    JsonElement Content,
+    string CreatedBy,
+    string ReviewStatus,
+    string? ChangeSummary,
     DateTime CreatedAt);
 
 public sealed record OpportunityScoreRequest(IReadOnlyList<Guid> KeywordIds, string Location, string Language);
