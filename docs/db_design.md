@@ -142,7 +142,7 @@ external_connector_settings
 | `alerts` | `id uuid PK`, `project_id uuid FK`, `alert_type text`, `condition_json jsonb`, `notification_channel_id uuid NULL FK`, `status text`, `last_triggered_at timestamptz`, `created_at`, `updated_at` | アラート定義。発火履歴の正本は`alert_events`。 |
 | `alert_events` | `id uuid PK`, `alert_id uuid FK`, `project_id uuid FK`, `job_id uuid NULL FK`, `keyword_id uuid NULL FK`, `event_type text`, `previous_value_json jsonb`, `current_value_json jsonb`, `evidence_json jsonb`, `notification_delivery_id uuid NULL FK`, `triggered_at timestamptz`, `resolved_at timestamptz NULL` | アラート発火履歴の正本。順位差分、圏外化、競合抜かれ等の根拠と通知結果を保持する。 |
 | `reports` | `id uuid PK`, `project_id uuid FK`, `report_type text`, `period text`, `format text`, `current_version integer`, `file_uri text`, `share_token_hash text`, `share_expires_at timestamptz`, `status text`, `generated_by text`, `created_at`, `updated_at` | `format`はpdf/excel。共有URLはトークンハッシュのみ保存。 |
-| `artifact_versions` | `id uuid PK`, `workspace_id uuid FK`, `project_id uuid NULL FK`, `artifact_type text`, `artifact_id uuid`, `version_no integer`, `content_hash text`, `content_uri text`, `content_json jsonb`, `created_by text`, `review_status text`, `change_summary text`, `created_at` | ブリーフ、レポート、AI生成物の版管理。 |
+| `artifact_versions` | `id uuid PK`, `workspace_id uuid FK`, `project_id uuid NULL FK`, `artifact_type text`, `artifact_id uuid`, `version_no integer`, `content_hash text`, `content_uri text`, `content_json jsonb`, `created_by text`, `review_status text`, `change_summary text`, `created_at` | Phase 2から記事ブリーフ版履歴で使用する。Phase 3でレポート、AI生成物の版管理にも利用する。 |
 
 ### 5.6 入出力・AI
 

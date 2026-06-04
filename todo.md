@@ -742,7 +742,7 @@ ISSUE-MVP-00X の続きから再開してください。
 
 範囲:
 
-- [ ] Phase 2テーブルを追加する: `competitor_sites`, `influx_keyword_results`, `influx_page_results`, `competitive_results`, `content_search_results`, `serp_headline_pages`, `serp_headlines`, `co_occurrence_words`, `co_occurrence_page_details`, `topic_clusters`, `cluster_keywords`, `article_briefs`, `rank_check_jobs`, `rank_check_targets`, `rank_results`, `alerts`, `alert_events`。
+- [ ] Phase 2テーブルを追加する: `competitor_sites`, `influx_keyword_results`, `influx_page_results`, `competitive_results`, `content_search_results`, `serp_headline_pages`, `serp_headlines`, `co_occurrence_words`, `co_occurrence_page_details`, `topic_clusters`, `cluster_keywords`, `article_briefs`, `artifact_versions`, `rank_check_jobs`, `rank_check_targets`, `rank_results`, `alerts`, `alert_events`。
 - [ ] Phase 2外部APIを連携する: influx-keywords, influx-pages, competitive, content-search, headline, co-occurrence, search-rank register/status/results。
 - [ ] Phase 2用インデックスを追加する。
 
@@ -832,6 +832,7 @@ ISSUE-MVP-00X の続きから再開してください。
 - [ ] `POST /api/projects/{projectId}/alerts/{alertId}/enable`
 - [ ] `GET /api/projects/{projectId}/alert-events`
 - [ ] Discord通知 `rank_alert` を実装する。
+- [ ] Phase 2の順位監視は順位結果、順位分布、`alert_events`、`rank_alert`までを対象とし、カニバリ候補更新と月次レポート材料更新はPhase 3で扱う。
 
 受入条件:
 
@@ -849,7 +850,7 @@ ISSUE-MVP-00X の続きから再開してください。
 - [ ] S-070 コンテンツ分析を実装する。
 - [ ] S-080 記事ブリーフのPhase 2範囲を実装する。
 - [ ] S-100 順位監視を実装する。
-- [ ] S-010 ダッシュボードに競合、コンテンツ、記事ブリーフ、順位指標を追加する。
+- [ ] S-010 ダッシュボードに競合、コンテンツ、記事ブリーフ、順位指標を追加し、Phase 2用のdashboardレスポンス項目を返す。
 - [ ] S-900 管理にPhase 2の通知/ジョブ/監査導線を追加する。
 
 受入条件:
@@ -866,6 +867,7 @@ ISSUE-MVP-00X の続きから再開してください。
 - [ ] AC-005 コンテンツ分析/記事ブリーフのE2E/Integrationを通す。
 - [ ] AC-006 順位監視/順位分布/`alert_events`/通知連携のE2E/Integrationを通す。
 - [ ] AC-012のPhase 2順位アラート通知を通す。
+- [ ] S-010のPhase 2ダッシュボードレスポンスと表示のIntegration/E2Eを通す。
 - [ ] 競合、コンテンツ、記事ブリーフ、順位監視の契約テストを通す。
 
 受入条件:
@@ -880,7 +882,7 @@ ISSUE-MVP-00X の続きから再開してください。
 
 範囲:
 
-- [ ] Phase 3テーブルを追加する: `rewrite_tasks`, `cannibalization_candidates`, `reports`, `artifact_versions`, `data_imports`, `external_connector_settings`, `external_connector_runs`, `ai_sessions`, `ai_messages`。
+- [ ] Phase 3テーブルを追加する: `rewrite_tasks`, `cannibalization_candidates`, `reports`, `data_imports`, `external_connector_settings`, `external_connector_runs`, `ai_sessions`, `ai_messages`。
 - [ ] `IAiContentService` を定義する。
 - [ ] AIプロンプトからAPIキー、Webhook、認証情報、個人情報を除去する共通処理を実装する。
 - [ ] 共有URLのトークンハッシュ、期限、失効、期限切れ制御の共通処理を実装する。
