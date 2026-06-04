@@ -2,6 +2,46 @@ namespace SeoIntelligence.Api.Common;
 
 internal static class OpenApiDocumentEndpoint
 {
+    private static readonly OpenApiPathDefinition[] MvpPathDefinitions =
+    [
+        new("/api/admin/workspace", Get: "Get workspace settings", Put: "Update workspace settings"),
+        new("/api/admin/api-credentials", Get: "List API credentials", Post: "Create API credential", PostSuccessCode: "201"),
+        new("/api/admin/api-credentials/{credentialId}", Get: "Get API credential", Put: "Update API credential", Delete: "Disable API credential"),
+        new("/api/admin/api-credentials/{credentialId}/enable", Post: "Enable API credential"),
+        new("/api/admin/api-credentials/{credentialId}/rotate", Post: "Rotate API credential key reference"),
+        new("/api/admin/notification-channels", Get: "List notification channels", Post: "Create notification channel", PostSuccessCode: "201"),
+        new("/api/admin/notification-channels/{channelId}", Get: "Get notification channel", Put: "Update notification channel", Delete: "Disable notification channel"),
+        new("/api/admin/notification-channels/{channelId}/enable", Post: "Enable notification channel"),
+        new("/api/admin/notification-channels/{channelId}/test", Post: "Create notification test delivery"),
+        new("/api/admin/notification-deliveries", Get: "List notification deliveries"),
+        new("/api/admin/notification-deliveries/{deliveryId}", Get: "Get notification delivery"),
+        new("/api/admin/notification-deliveries/{deliveryId}/retry", Post: "Retry notification delivery"),
+        new("/api/admin/master-data/sync", Post: "Register master data sync job", PostSuccessCode: "202"),
+        new("/api/master-data/locations", Get: "List active master locations"),
+        new("/api/master-data/languages", Get: "List active master languages"),
+        new("/api/admin/external-api-calls", Get: "List external API calls"),
+        new("/api/admin/audit-logs", Get: "List audit logs"),
+        new("/api/admin/audit-logs/{auditLogId}", Get: "Get audit log"),
+        new("/api/jobs", Get: "List jobs"),
+        new("/api/jobs/{jobId}", Get: "Get job"),
+        new("/api/jobs/{jobId}/cancel", Post: "Cancel queued or waiting external job"),
+        new("/api/jobs/{jobId}/retry", Post: "Retry failed retryable job"),
+        new("/api/projects", Get: "List projects", Post: "Create project", PostSuccessCode: "201"),
+        new("/api/projects/{projectId}", Get: "Get project", Put: "Update project", Delete: "Archive project"),
+        new("/api/projects/{projectId}/restore", Post: "Restore project"),
+        new("/api/projects/{projectId}/dashboard", Get: "Get Phase 1 dashboard metrics"),
+        new("/api/projects/{projectId}/sites", Get: "List sites", Post: "Create site", PostSuccessCode: "201"),
+        new("/api/projects/{projectId}/sites/{siteId}", Get: "Get site", Put: "Update site", Delete: "Archive site"),
+        new("/api/projects/{projectId}/sites/{siteId}/restore", Post: "Restore site"),
+        new("/api/projects/{projectId}/keyword-discovery/suggest", UseKeywordDiscoveryResponses: true),
+        new("/api/projects/{projectId}/search-volume/jobs", Post: "Register search volume job", PostSuccessCode: "202"),
+        new("/api/projects/{projectId}/search-volume/jobs/{jobId}", Get: "Get search volume job"),
+        new("/api/projects/{projectId}/search-volume/jobs/{jobId}/results", Get: "List search volume results"),
+        new("/api/projects/{projectId}/exports/csv", Post: "Register Phase 1 CSV export job", PostSuccessCode: "202"),
+        new("/api/projects/{projectId}/exports/{exportId}", Get: "Get CSV export state and file metadata"),
+        new("/api/projects/{projectId}/exports/{exportId}/download", Get: "Issue a short-lived CSV download URL")
+    ];
+
     public static IResult GetV1(HttpContext context)
     {
         var serverUrl = $"{context.Request.Scheme}://{context.Request.Host}";
@@ -43,7 +83,7 @@ internal static class OpenApiDocumentEndpoint
                 }
             }
         };
-        AddMvpManagementPaths(paths);
+        AddMvpPaths(paths);
 
         var document = new
         {
@@ -120,44 +160,12 @@ internal static class OpenApiDocumentEndpoint
             }
         };
 
-    private static void AddMvpManagementPaths(IDictionary<string, object?> paths)
+    private static void AddMvpPaths(IDictionary<string, object?> paths)
     {
-        paths["/api/admin/workspace"] = PathItem(get: "Get workspace settings", put: "Update workspace settings");
-        paths["/api/admin/api-credentials"] = PathItem(get: "List API credentials", post: "Create API credential", postSuccessCode: "201");
-        paths["/api/admin/api-credentials/{credentialId}"] = PathItem(get: "Get API credential", put: "Update API credential", delete: "Disable API credential");
-        paths["/api/admin/api-credentials/{credentialId}/enable"] = PathItem(post: "Enable API credential");
-        paths["/api/admin/api-credentials/{credentialId}/rotate"] = PathItem(post: "Rotate API credential key reference");
-        paths["/api/admin/notification-channels"] = PathItem(get: "List notification channels", post: "Create notification channel", postSuccessCode: "201");
-        paths["/api/admin/notification-channels/{channelId}"] = PathItem(get: "Get notification channel", put: "Update notification channel", delete: "Disable notification channel");
-        paths["/api/admin/notification-channels/{channelId}/enable"] = PathItem(post: "Enable notification channel");
-        paths["/api/admin/notification-channels/{channelId}/test"] = PathItem(post: "Create notification test delivery");
-        paths["/api/admin/notification-deliveries"] = PathItem(get: "List notification deliveries");
-        paths["/api/admin/notification-deliveries/{deliveryId}"] = PathItem(get: "Get notification delivery");
-        paths["/api/admin/notification-deliveries/{deliveryId}/retry"] = PathItem(post: "Retry notification delivery");
-        paths["/api/admin/master-data/sync"] = PathItem(post: "Register master data sync job", postSuccessCode: "202");
-        paths["/api/master-data/locations"] = PathItem(get: "List active master locations");
-        paths["/api/master-data/languages"] = PathItem(get: "List active master languages");
-        paths["/api/admin/external-api-calls"] = PathItem(get: "List external API calls");
-        paths["/api/admin/audit-logs"] = PathItem(get: "List audit logs");
-        paths["/api/admin/audit-logs/{auditLogId}"] = PathItem(get: "Get audit log");
-        paths["/api/jobs"] = PathItem(get: "List jobs");
-        paths["/api/jobs/{jobId}"] = PathItem(get: "Get job");
-        paths["/api/jobs/{jobId}/cancel"] = PathItem(post: "Cancel queued or waiting external job");
-        paths["/api/jobs/{jobId}/retry"] = PathItem(post: "Retry failed retryable job");
-        paths["/api/projects"] = PathItem(get: "List projects", post: "Create project", postSuccessCode: "201");
-        paths["/api/projects/{projectId}"] = PathItem(get: "Get project", put: "Update project", delete: "Archive project");
-        paths["/api/projects/{projectId}/restore"] = PathItem(post: "Restore project");
-        paths["/api/projects/{projectId}/dashboard"] = PathItem(get: "Get Phase 1 dashboard metrics");
-        paths["/api/projects/{projectId}/sites"] = PathItem(get: "List sites", post: "Create site", postSuccessCode: "201");
-        paths["/api/projects/{projectId}/sites/{siteId}"] = PathItem(get: "Get site", put: "Update site", delete: "Archive site");
-        paths["/api/projects/{projectId}/sites/{siteId}/restore"] = PathItem(post: "Restore site");
-        paths["/api/projects/{projectId}/keyword-discovery/suggest"] = KeywordDiscoveryPathItem();
-        paths["/api/projects/{projectId}/search-volume/jobs"] = PathItem(post: "Register search volume job", postSuccessCode: "202");
-        paths["/api/projects/{projectId}/search-volume/jobs/{jobId}"] = PathItem(get: "Get search volume job");
-        paths["/api/projects/{projectId}/search-volume/jobs/{jobId}/results"] = PathItem(get: "List search volume results");
-        paths["/api/projects/{projectId}/exports/csv"] = PathItem(post: "Register Phase 1 CSV export job", postSuccessCode: "202");
-        paths["/api/projects/{projectId}/exports/{exportId}"] = PathItem(get: "Get CSV export state and file metadata");
-        paths["/api/projects/{projectId}/exports/{exportId}/download"] = PathItem(get: "Issue a short-lived CSV download URL");
+        foreach (var definition in MvpPathDefinitions)
+        {
+            paths[definition.Template] = definition.ToPathItem();
+        }
     }
 
     private static object PathItem(
@@ -222,4 +230,24 @@ internal static class OpenApiDocumentEndpoint
                 ["409"] = JsonResponse("Conflict error envelope.")
             }
         };
+
+    private sealed record OpenApiPathDefinition(
+        string Template,
+        string? Get = null,
+        string? Post = null,
+        string? Put = null,
+        string? Delete = null,
+        string PostSuccessCode = "200",
+        bool UseKeywordDiscoveryResponses = false)
+    {
+        public object ToPathItem()
+            => UseKeywordDiscoveryResponses
+                ? KeywordDiscoveryPathItem()
+                : PathItem(
+                    get: Get,
+                    post: Post,
+                    put: Put,
+                    delete: Delete,
+                    postSuccessCode: PostSuccessCode);
+    }
 }

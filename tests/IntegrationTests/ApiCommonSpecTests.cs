@@ -1,12 +1,15 @@
 using System.Net;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace IntegrationTests;
 
-public sealed class ApiCommonSpecTests
+public sealed partial class ApiCommonSpecTests
 {
     [Fact]
     [Trait("Category", "Integration")]
@@ -129,6 +132,44 @@ public sealed class ApiCommonSpecTests
         }
     }
 
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task OpenApiV1JsonDocumentsMappedMvpApiEndpoints()
+    {
+        var storagePath = CreateTempStoragePath();
+        await using var factory = new ApiFactory(storagePath);
+        using var client = CreateClient(factory);
+
+        try
+        {
+            using var response = await client.GetAsync("/openapi/v1.json");
+            using var document = await ReadJsonAsync(response);
+            var documentedPaths = document.RootElement
+                .GetProperty("paths")
+                .EnumerateObject()
+                .Select(property => NormalizeRoutePath(property.Name))
+                .ToHashSet(StringComparer.Ordinal);
+
+            var mappedPaths = factory.Services
+                .GetRequiredService<EndpointDataSource>()
+                .Endpoints
+                .OfType<RouteEndpoint>()
+                .Select(endpoint => NormalizeRoutePath(endpoint.RoutePattern.RawText ?? string.Empty))
+                .Where(path => IsMvpApiPath(path))
+                .ToHashSet(StringComparer.Ordinal);
+
+            var missingFromOpenApi = mappedPaths.Except(documentedPaths, StringComparer.Ordinal).ToArray();
+            var missingFromRuntime = documentedPaths.Except(mappedPaths, StringComparer.Ordinal).ToArray();
+
+            Assert.Empty(missingFromOpenApi);
+            Assert.Empty(missingFromRuntime);
+        }
+        finally
+        {
+            DeleteTempStoragePath(storagePath);
+        }
+    }
+
     private static async Task<JsonDocument> ReadJsonAsync(HttpResponseMessage response)
     {
         var content = await response.Content.ReadAsStringAsync();
@@ -141,6 +182,25 @@ public sealed class ApiCommonSpecTests
         {
             BaseAddress = new Uri("https://localhost")
         });
+
+    private static string NormalizeRoutePath(string path)
+    {
+        var normalized = path.StartsWith("/", StringComparison.Ordinal)
+            ? path
+            : $"/{path}";
+        normalized = RouteConstraintRegex().Replace(normalized, "{$1}");
+        return normalized.Length > 1
+            ? normalized.TrimEnd('/')
+            : normalized;
+    }
+
+    private static bool IsMvpApiPath(string path)
+        => path is "/healthz" or "/readyz"
+            || (path.StartsWith("/api", StringComparison.Ordinal)
+                && !string.Equals(path, "/openapi/v1.json", StringComparison.Ordinal));
+
+    [GeneratedRegex(@"\{([^}:]+):[^}]+\}")]
+    private static partial Regex RouteConstraintRegex();
 
     private static string CreateTempStoragePath()
         => Path.Combine(Path.GetTempPath(), "seo-intelligence-api-tests", Guid.NewGuid().ToString("N"));

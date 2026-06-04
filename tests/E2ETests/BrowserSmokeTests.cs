@@ -1,7 +1,6 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Playwright;
-using Xunit.Abstractions;
 
 namespace E2ETests;
 
@@ -9,23 +8,10 @@ public sealed class BrowserSmokeTests
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
-    private readonly ITestOutputHelper output;
-
-    public BrowserSmokeTests(ITestOutputHelper output)
-    {
-        this.output = output;
-    }
-
-    [Fact]
+    [EnvironmentEnabledFact("E2E_BROWSER_ENABLED")]
     [Trait("Category", "BrowserE2E")]
     public async Task MvpBrowserSmokeCompletesPrimaryUserFlows()
     {
-        if (!IsBrowserE2EEnabled())
-        {
-            output.WriteLine("BrowserE2E is disabled. Set E2E_BROWSER_ENABLED=true to run Playwright browser smoke tests.");
-            return;
-        }
-
         var webUrl = RequiredEnvironment("E2E_WEB_URL").TrimEnd('/');
         var apiUrl = RequiredEnvironment("E2E_API_URL").TrimEnd('/');
         var project = await CreateSmokeProjectAsync(apiUrl);
@@ -209,16 +195,36 @@ public sealed class BrowserSmokeTests
             data.GetProperty("name").GetString() ?? throw new InvalidOperationException("Project creation response did not include name."));
     }
 
-    private static bool IsBrowserE2EEnabled()
-        => string.Equals(Environment.GetEnvironmentVariable("E2E_BROWSER_ENABLED"), "true", StringComparison.OrdinalIgnoreCase);
-
     private static bool IsHeadless()
-        => !string.Equals(Environment.GetEnvironmentVariable("E2E_HEADLESS"), "false", StringComparison.OrdinalIgnoreCase);
+    {
+        DotEnvEnvironment.LoadRepositoryDotEnv();
+        return !string.Equals(Environment.GetEnvironmentVariable("E2E_HEADLESS"), "false", StringComparison.OrdinalIgnoreCase);
+    }
 
     private static string RequiredEnvironment(string name)
-        => Environment.GetEnvironmentVariable(name) is { Length: > 0 } value
+    {
+        DotEnvEnvironment.LoadRepositoryDotEnv();
+        return Environment.GetEnvironmentVariable(name) is { Length: > 0 } value
             ? value
             : throw new InvalidOperationException($"{name} is required when E2E_BROWSER_ENABLED=true.");
+    }
 
     private sealed record SmokeProject(string ProjectId, string Name);
+}
+
+public sealed class EnvironmentEnabledFactAttribute : FactAttribute
+{
+    public EnvironmentEnabledFactAttribute(string environmentVariable, string requiredValue = "true")
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(environmentVariable);
+        DotEnvEnvironment.LoadRepositoryDotEnv();
+
+        if (!string.Equals(
+            Environment.GetEnvironmentVariable(environmentVariable),
+            requiredValue,
+            StringComparison.OrdinalIgnoreCase))
+        {
+            Skip = $"{environmentVariable}={requiredValue} is required to run this test.";
+        }
+    }
 }
