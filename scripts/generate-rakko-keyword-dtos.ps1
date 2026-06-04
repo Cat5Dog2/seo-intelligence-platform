@@ -7,8 +7,9 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 $specPath = Join-Path $root "docs/rakko-keyword-api-docs.json"
 $targetPath = Join-Path $root "src/SeoIntelligence.Infrastructure/RakkoKeyword/Generated/RakkoKeywordDtos.g.cs"
+$phase2TargetPath = Join-Path $root "src/SeoIntelligence.Infrastructure/RakkoKeyword/Generated/RakkoKeywordPhase2Dtos.g.cs"
 
-$requiredSchemas = @(
+$mvpSchemas = @(
     "SuggestKeywordsDto",
     "SuggestKeywordsResponseDto",
     "RelatedKeywordsDto",
@@ -27,6 +28,28 @@ $requiredSchemas = @(
     "LocationsResponseDto",
     "LanguagesResponseDto"
 )
+
+$phase2Schemas = @(
+    "InfluxKeywordsKeywordDto",
+    "InfluxKeywordsKeywordResponseDto",
+    "InfluxPagesDto",
+    "InfluxPagesResponseDto",
+    "CompetitiveDto",
+    "CompetitiveResponseDto",
+    "ContentSearchDto",
+    "ContentSearchResponseDto",
+    "HeadlineDto",
+    "HeadlineResponseDto",
+    "CoOccurrenceDto",
+    "CoOccurrenceResponseDto",
+    "SearchRankHistoryDto",
+    "SearchRankHistoryResponseDto",
+    "SearchRankStatusResponseDto",
+    "SearchRankResultsDto",
+    "SearchRankResultsResponseDto"
+)
+
+$requiredSchemas = @($mvpSchemas + $phase2Schemas)
 
 $spec = Get-Content -Encoding UTF8 -Raw $specPath | ConvertFrom-Json
 $specText = [System.IO.File]::ReadAllText($specPath, [System.Text.Encoding]::UTF8)
@@ -47,31 +70,44 @@ if (-not (Test-Path $targetPath)) {
     throw "Generated DTO file is missing: $targetPath."
 }
 
-$content = Get-Content -Encoding UTF8 -Raw $targetPath
+if (-not (Test-Path $phase2TargetPath)) {
+    throw "Generated Phase 2 DTO file is missing: $phase2TargetPath."
+}
+
+$contentsByPath = [ordered]@{
+    $targetPath = Get-Content -Encoding UTF8 -Raw $targetPath
+    $phase2TargetPath = Get-Content -Encoding UTF8 -Raw $phase2TargetPath
+}
 $expectedVersionLine = "public const string OpenApiVersion = `"$version`";"
 $expectedHashLine = "public const string SourceSha256 = `"$hash`";"
 
 if ($ValidateOnly) {
-    if (-not $content.Contains($expectedVersionLine)) {
-        throw "Generated DTO metadata OpenApiVersion is out of date. Expected $version."
-    }
+    foreach ($path in $contentsByPath.Keys) {
+        $content = $contentsByPath[$path]
+        if (-not $content.Contains($expectedVersionLine)) {
+            throw "Generated DTO metadata OpenApiVersion is out of date in $path. Expected $version."
+        }
 
-    if (-not $content.Contains($expectedHashLine)) {
-        throw "Generated DTO metadata SourceSha256 is out of date. Expected $hash."
+        if (-not $content.Contains($expectedHashLine)) {
+            throw "Generated DTO metadata SourceSha256 is out of date in $path. Expected $hash."
+        }
     }
 
     Write-Output "Rakko Keyword generated DTO metadata is up to date."
     exit 0
 }
 
-$content = [regex]::Replace(
-    $content,
-    'public const string OpenApiVersion = "[^"]+";',
-    $expectedVersionLine)
-$content = [regex]::Replace(
-    $content,
-    'public const string SourceSha256 = "[^"]+";',
-    $expectedHashLine)
+foreach ($path in $contentsByPath.Keys) {
+    $content = [regex]::Replace(
+        $contentsByPath[$path],
+        'public const string OpenApiVersion = "[^"]+";',
+        $expectedVersionLine)
+    $content = [regex]::Replace(
+        $content,
+        'public const string SourceSha256 = "[^"]+";',
+        $expectedHashLine)
 
-[System.IO.File]::WriteAllText($targetPath, $content, [System.Text.UTF8Encoding]::new($false))
+    [System.IO.File]::WriteAllText($path, $content, [System.Text.UTF8Encoding]::new($false))
+}
+
 Write-Output "Updated Rakko Keyword generated DTO metadata from $specPath."

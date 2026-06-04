@@ -742,14 +742,14 @@ ISSUE-MVP-00X の続きから再開してください。
 
 範囲:
 
-- [ ] Phase 2テーブルを追加する: `competitor_sites`, `influx_keyword_results`, `influx_page_results`, `competitive_results`, `content_search_results`, `serp_headline_pages`, `serp_headlines`, `co_occurrence_words`, `co_occurrence_page_details`, `topic_clusters`, `cluster_keywords`, `article_briefs`, `artifact_versions`, `rank_check_jobs`, `rank_check_targets`, `rank_results`, `alerts`, `alert_events`。
-- [ ] Phase 2外部APIを連携する: influx-keywords, influx-pages, competitive, content-search, headline, co-occurrence, search-rank register/status/results。
-- [ ] Phase 2用インデックスを追加する。
+- [x] Phase 2テーブルを追加する: `competitor_sites`, `influx_keyword_results`, `influx_page_results`, `competitive_results`, `content_search_results`, `serp_headline_pages`, `serp_headlines`, `co_occurrence_words`, `co_occurrence_page_details`, `topic_clusters`, `cluster_keywords`, `article_briefs`, `artifact_versions`, `rank_check_jobs`, `rank_check_targets`, `rank_results`, `alerts`, `alert_events`。
+- [x] Phase 2外部APIを連携する: influx-keywords, influx-pages, competitive, content-search, headline, co-occurrence, search-rank register/status/results。
+- [x] Phase 2用インデックスを追加する。
 
 受入条件:
 
-- [ ] Phase 2 migrationが通る。
-- [ ] Phase 2外部APIのContract testが通る。
+- [x] Phase 2 migrationが通る。
+- [x] Phase 2外部APIのContract testが通る。
 
 ### ISSUE-P2-002 競合分析と獲得語/ページ分析を実装する
 

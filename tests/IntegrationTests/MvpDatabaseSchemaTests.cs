@@ -39,6 +39,28 @@ public sealed class MvpDatabaseSchemaTests
         "data_exports"
     ];
 
+    private static readonly string[] RequiredPhase2Tables =
+    [
+        "competitor_sites",
+        "influx_keyword_results",
+        "influx_page_results",
+        "competitive_results",
+        "content_search_results",
+        "serp_headline_pages",
+        "serp_headlines",
+        "co_occurrence_words",
+        "co_occurrence_page_details",
+        "topic_clusters",
+        "cluster_keywords",
+        "article_briefs",
+        "artifact_versions",
+        "rank_check_jobs",
+        "rank_check_targets",
+        "rank_results",
+        "alerts",
+        "alert_events"
+    ];
+
     [Fact]
     [Trait("Category", "Integration")]
     public void ModelContainsMvpTablesAndSeedData()
@@ -87,6 +109,38 @@ public sealed class MvpDatabaseSchemaTests
         Assert.Contains("ix_external_api_calls_contract_scope_key", sql, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("INSERT INTO workspaces", sql, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("INSERT INTO api_contract_scopes", sql, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public void ModelAndMigrationSqlContainPhase2TablesAndIndexes()
+    {
+        using var context = CreateContext();
+        var model = context.Model;
+
+        foreach (var tableName in RequiredPhase2Tables)
+        {
+            Assert.Contains(model.GetEntityTypes(), entityType => entityType.GetTableName() == tableName);
+        }
+
+        var clusterKeyword = model.FindEntityType(typeof(ClusterKeywordEntity));
+        Assert.NotNull(clusterKeyword);
+        Assert.Equal(
+            ["ClusterId", "KeywordId"],
+            clusterKeyword!.FindPrimaryKey()!.Properties.Select(property => property.Name).ToArray());
+
+        var migrator = context.GetService<IMigrator>();
+        var sql = migrator.GenerateScript(options: MigrationsSqlGenerationOptions.Idempotent);
+
+        Assert.Contains("CREATE TABLE competitor_sites", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("CREATE TABLE rank_results", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ix_rank_results_project_id_keyword_id_target_checked_at", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ix_rank_results_contract_scope_key", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ix_alert_events_project_id_triggered_at", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ux_artifact_versions_artifact_type_artifact_id_version_no", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ix_influx_keyword_results_project_id_target", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ix_content_search_results_title_description_fts", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("to_tsvector('simple', concat_ws(' ', title, description))", sql, StringComparison.OrdinalIgnoreCase);
     }
 
     private static SeoIntelligenceDbContext CreateContext()

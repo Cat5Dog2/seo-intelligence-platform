@@ -52,6 +52,61 @@ public interface IRakkoKeywordClient
     Task<RakkoKeywordCallResult<RakkoLanguageCatalog>> ListLanguagesAsync(
         RakkoKeywordClientContext context,
         CancellationToken cancellationToken = default);
+
+    Task<RakkoKeywordCallResult<RakkoExternalSearchResults>> GetInfluxKeywordsAsync(
+        RakkoKeywordClientContext context,
+        RakkoInfluxKeywordsRequest request,
+        CancellationToken cancellationToken = default)
+        => throw new NotSupportedException("Phase 2 Rakko influx keywords API is not implemented by this client.");
+
+    Task<RakkoKeywordCallResult<RakkoExternalSearchResults>> GetInfluxPagesAsync(
+        RakkoKeywordClientContext context,
+        RakkoInfluxPagesRequest request,
+        CancellationToken cancellationToken = default)
+        => throw new NotSupportedException("Phase 2 Rakko influx pages API is not implemented by this client.");
+
+    Task<RakkoKeywordCallResult<RakkoExternalSearchResults>> GetCompetitiveSitesAsync(
+        RakkoKeywordClientContext context,
+        RakkoCompetitiveRequest request,
+        CancellationToken cancellationToken = default)
+        => throw new NotSupportedException("Phase 2 Rakko competitive API is not implemented by this client.");
+
+    Task<RakkoKeywordCallResult<RakkoExternalSearchResults>> GetContentSearchAsync(
+        RakkoKeywordClientContext context,
+        RakkoContentSearchRequest request,
+        CancellationToken cancellationToken = default)
+        => throw new NotSupportedException("Phase 2 Rakko content search API is not implemented by this client.");
+
+    Task<RakkoKeywordCallResult<RakkoExternalSearchResults>> GetHeadlinesAsync(
+        RakkoKeywordClientContext context,
+        RakkoHeadlineRequest request,
+        CancellationToken cancellationToken = default)
+        => throw new NotSupportedException("Phase 2 Rakko headline API is not implemented by this client.");
+
+    Task<RakkoKeywordCallResult<RakkoExternalSearchResults>> GetCoOccurrencesAsync(
+        RakkoKeywordClientContext context,
+        RakkoCoOccurrenceRequest request,
+        CancellationToken cancellationToken = default)
+        => throw new NotSupportedException("Phase 2 Rakko co-occurrence API is not implemented by this client.");
+
+    Task<RakkoKeywordCallResult<RakkoSearchRankRegistration>> RegisterSearchRankAsync(
+        RakkoKeywordClientContext context,
+        RakkoSearchRankRegistrationRequest request,
+        CancellationToken cancellationToken = default)
+        => throw new NotSupportedException("Phase 2 Rakko search rank register API is not implemented by this client.");
+
+    Task<RakkoKeywordCallResult<RakkoSearchRankStatus>> GetSearchRankStatusAsync(
+        RakkoKeywordClientContext context,
+        string requestId,
+        CancellationToken cancellationToken = default)
+        => throw new NotSupportedException("Phase 2 Rakko search rank status API is not implemented by this client.");
+
+    Task<RakkoKeywordCallResult<RakkoExternalSearchResults>> GetSearchRankResultsAsync(
+        RakkoKeywordClientContext context,
+        string requestId,
+        RakkoSearchRankResultsRequest request,
+        CancellationToken cancellationToken = default)
+        => throw new NotSupportedException("Phase 2 Rakko search rank results API is not implemented by this client.");
 }
 
 public sealed record RakkoKeywordClientContext(
@@ -111,6 +166,77 @@ public sealed record RakkoSearchVolumeResultsRequest(
     int Limit = 100,
     string SortBy = "searchVolume",
     string OrderBy = "desc");
+
+public sealed record RakkoApiTargetRequest(
+    string Url,
+    string MatchType = "domain");
+
+public sealed record RakkoInfluxKeywordsRequest(
+    IReadOnlyList<RakkoApiTargetRequest> Targets,
+    bool KeywordCollapse = true,
+    IReadOnlyDictionary<string, object?>? Filter = null,
+    string SortBy = "estimatedTraffic",
+    string OrderBy = "desc",
+    int? Limit = 100);
+
+public sealed record RakkoInfluxPagesRequest(
+    IReadOnlyList<RakkoApiTargetRequest> Targets,
+    bool TopKeywordCollapse = true,
+    IReadOnlyDictionary<string, object?>? Filter = null,
+    string SortBy = "estimatedTraffic",
+    string OrderBy = "desc",
+    int? Limit = 100);
+
+public sealed record RakkoCompetitiveRequest(
+    string Url,
+    string SortBy = "duplicateRate",
+    string OrderBy = "desc");
+
+public sealed record RakkoContentSearchRequest(
+    string Keyword,
+    string SearchTarget = "google",
+    bool IsAdvancedSearch = false,
+    bool TopKeywordCollapse = true,
+    IReadOnlyDictionary<string, object?>? Filter = null,
+    string SortBy = "estimatedTraffic",
+    string OrderBy = "desc",
+    int? Limit = 100);
+
+public sealed record RakkoHeadlineRequest(
+    string Keyword,
+    bool LessHeadlines = false,
+    bool LessCharacters = false,
+    bool H1 = true,
+    bool H2 = true,
+    bool H3 = true,
+    bool H4 = true,
+    bool H5 = true,
+    bool H6 = true,
+    string SortBy = "rank",
+    string OrderBy = "asc",
+    int? Limit = 10);
+
+public sealed record RakkoCoOccurrenceRequest(
+    string Keyword,
+    bool GetDetails = true,
+    string SortBy = "occurrencePageCount",
+    string OrderBy = "desc",
+    int? Limit = 100);
+
+public sealed record RakkoSearchRankRegistrationRequest(
+    IReadOnlyList<string> Keywords,
+    IReadOnlyList<string> Urls,
+    string MatchType = "domain",
+    int Depth = 100,
+    bool WithMetrics = true,
+    bool Deduplicate = true);
+
+public sealed record RakkoSearchRankResultsRequest(
+    IReadOnlyDictionary<string, object?>? Filter = null,
+    string SortBy = "keyword",
+    string OrderBy = "asc",
+    int Limit = 100,
+    bool WithAggregation = true);
 
 public sealed record RakkoKeywordCallResult<T>(
     bool IsSuccess,
@@ -188,8 +314,31 @@ public sealed record RakkoSearchVolumeStatus(
     bool IsCompleted,
     IReadOnlyDictionary<string, string> Statuses);
 
+public sealed record RakkoSearchRankRegistration(string RequestId);
+
+public sealed record RakkoSearchRankStatus(
+    bool IsCompleted,
+    IReadOnlyDictionary<string, string> Statuses);
+
 public sealed record RakkoSearchVolumeResults(
     IReadOnlyList<RakkoSearchVolumeResultItem> Items);
+
+public sealed record RakkoExternalSearchResults(
+    string Source,
+    IReadOnlyList<RakkoExternalSearchResultItem> Items,
+    string? QueryJson,
+    string? SummaryJson);
+
+public sealed record RakkoExternalSearchResultItem(
+    string? Keyword,
+    string? Target,
+    string? Url,
+    string? Domain,
+    string? Title,
+    decimal? Position,
+    decimal? EstimatedTraffic,
+    decimal? TrafficValue,
+    string RawJson);
 
 public sealed record RakkoSearchVolumeResultItem(
     string Keyword,

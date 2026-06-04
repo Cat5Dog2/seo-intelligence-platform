@@ -168,6 +168,142 @@ internal sealed class RakkoKeywordRealClient(
             RakkoKeywordDtoMapper.ToApplication,
             cancellationToken);
 
+    public Task<RakkoKeywordCallResult<RakkoExternalSearchResults>> GetInfluxKeywordsAsync(
+        RakkoKeywordClientContext context,
+        RakkoInfluxKeywordsRequest request,
+        CancellationToken cancellationToken = default)
+        => SendAsync<InfluxKeywordsKeywordDto, InfluxKeywordsKeywordResponseDto, RakkoExternalSearchResults>(
+            context,
+            RakkoKeywordClientSupport.InfluxKeywordsEndpoint,
+            RakkoKeywordClientSupport.InfluxKeywordsEndpoint,
+            HttpMethod.Post,
+            RakkoKeywordDtoMapper.ToDto(request),
+            requiresApiKey: true,
+            useLongTimeout: true,
+            RakkoKeywordDtoMapper.ToApplication,
+            cancellationToken);
+
+    public Task<RakkoKeywordCallResult<RakkoExternalSearchResults>> GetInfluxPagesAsync(
+        RakkoKeywordClientContext context,
+        RakkoInfluxPagesRequest request,
+        CancellationToken cancellationToken = default)
+        => SendAsync<InfluxPagesDto, InfluxPagesResponseDto, RakkoExternalSearchResults>(
+            context,
+            RakkoKeywordClientSupport.InfluxPagesEndpoint,
+            RakkoKeywordClientSupport.InfluxPagesEndpoint,
+            HttpMethod.Post,
+            RakkoKeywordDtoMapper.ToDto(request),
+            requiresApiKey: true,
+            useLongTimeout: true,
+            RakkoKeywordDtoMapper.ToApplication,
+            cancellationToken);
+
+    public Task<RakkoKeywordCallResult<RakkoExternalSearchResults>> GetCompetitiveSitesAsync(
+        RakkoKeywordClientContext context,
+        RakkoCompetitiveRequest request,
+        CancellationToken cancellationToken = default)
+        => SendAsync<CompetitiveDto, CompetitiveResponseDto, RakkoExternalSearchResults>(
+            context,
+            RakkoKeywordClientSupport.CompetitiveEndpoint,
+            RakkoKeywordClientSupport.CompetitiveEndpoint,
+            HttpMethod.Post,
+            RakkoKeywordDtoMapper.ToDto(request),
+            requiresApiKey: true,
+            useLongTimeout: true,
+            RakkoKeywordDtoMapper.ToApplication,
+            cancellationToken);
+
+    public Task<RakkoKeywordCallResult<RakkoExternalSearchResults>> GetContentSearchAsync(
+        RakkoKeywordClientContext context,
+        RakkoContentSearchRequest request,
+        CancellationToken cancellationToken = default)
+        => SendAsync<ContentSearchDto, ContentSearchResponseDto, RakkoExternalSearchResults>(
+            context,
+            RakkoKeywordClientSupport.ContentSearchEndpoint,
+            RakkoKeywordClientSupport.ContentSearchEndpoint,
+            HttpMethod.Post,
+            RakkoKeywordDtoMapper.ToDto(request),
+            requiresApiKey: true,
+            useLongTimeout: true,
+            RakkoKeywordDtoMapper.ToApplication,
+            cancellationToken);
+
+    public Task<RakkoKeywordCallResult<RakkoExternalSearchResults>> GetHeadlinesAsync(
+        RakkoKeywordClientContext context,
+        RakkoHeadlineRequest request,
+        CancellationToken cancellationToken = default)
+        => SendAsync<HeadlineDto, HeadlineResponseDto, RakkoExternalSearchResults>(
+            context,
+            RakkoKeywordClientSupport.HeadlineEndpoint,
+            RakkoKeywordClientSupport.HeadlineEndpoint,
+            HttpMethod.Post,
+            RakkoKeywordDtoMapper.ToDto(request),
+            requiresApiKey: true,
+            useLongTimeout: true,
+            RakkoKeywordDtoMapper.ToApplication,
+            cancellationToken);
+
+    public Task<RakkoKeywordCallResult<RakkoExternalSearchResults>> GetCoOccurrencesAsync(
+        RakkoKeywordClientContext context,
+        RakkoCoOccurrenceRequest request,
+        CancellationToken cancellationToken = default)
+        => SendAsync<CoOccurrenceDto, CoOccurrenceResponseDto, RakkoExternalSearchResults>(
+            context,
+            RakkoKeywordClientSupport.CoOccurrenceEndpoint,
+            RakkoKeywordClientSupport.CoOccurrenceEndpoint,
+            HttpMethod.Post,
+            RakkoKeywordDtoMapper.ToDto(request),
+            requiresApiKey: true,
+            useLongTimeout: true,
+            RakkoKeywordDtoMapper.ToApplication,
+            cancellationToken);
+
+    public Task<RakkoKeywordCallResult<RakkoSearchRankRegistration>> RegisterSearchRankAsync(
+        RakkoKeywordClientContext context,
+        RakkoSearchRankRegistrationRequest request,
+        CancellationToken cancellationToken = default)
+        => SendAsync<SearchRankHistoryDto, SearchRankHistoryResponseDto, RakkoSearchRankRegistration>(
+            context,
+            RakkoKeywordClientSupport.SearchRankEndpoint,
+            RakkoKeywordClientSupport.SearchRankEndpoint,
+            HttpMethod.Post,
+            RakkoKeywordDtoMapper.ToDto(request),
+            requiresApiKey: true,
+            useLongTimeout: true,
+            RakkoKeywordDtoMapper.ToApplication,
+            cancellationToken);
+
+    public Task<RakkoKeywordCallResult<RakkoSearchRankStatus>> GetSearchRankStatusAsync(
+        RakkoKeywordClientContext context,
+        string requestId,
+        CancellationToken cancellationToken = default)
+        => SendAsync<object, SearchRankStatusResponseDto, RakkoSearchRankStatus>(
+            context,
+            RakkoKeywordClientSupport.SearchRankStatusEndpoint,
+            RakkoKeywordClientSupport.SearchRankStatusPath(requestId),
+            HttpMethod.Get,
+            requestBody: null,
+            requiresApiKey: true,
+            useLongTimeout: true,
+            RakkoKeywordDtoMapper.ToApplication,
+            cancellationToken);
+
+    public Task<RakkoKeywordCallResult<RakkoExternalSearchResults>> GetSearchRankResultsAsync(
+        RakkoKeywordClientContext context,
+        string requestId,
+        RakkoSearchRankResultsRequest request,
+        CancellationToken cancellationToken = default)
+        => SendAsync<SearchRankResultsDto, SearchRankResultsResponseDto, RakkoExternalSearchResults>(
+            context,
+            RakkoKeywordClientSupport.SearchRankResultsEndpoint,
+            RakkoKeywordClientSupport.SearchRankResultsPath(requestId),
+            HttpMethod.Post,
+            RakkoKeywordDtoMapper.ToDto(request),
+            requiresApiKey: true,
+            useLongTimeout: true,
+            RakkoKeywordDtoMapper.ToApplication,
+            cancellationToken);
+
     private async Task<RakkoKeywordCallResult<TApplication>> SendAsync<TRequest, TResponse, TApplication>(
         RakkoKeywordClientContext context,
         string endpoint,
