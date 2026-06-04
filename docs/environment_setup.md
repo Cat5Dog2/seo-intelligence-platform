@@ -148,7 +148,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-local.ps1
 `scripts/smoke-test.ps1` はAPI単体のRunbookスモーク、`scripts/smoke-local.ps1` はDocker Compose依存サービス、DB migration、API/Worker/Web起動、マスタ同期ジョブ、CSV出力ジョブまで含めた包括スモークとして使う。
 `scripts/smoke-local.ps1 -StopDependencies` はCI向けに `docker compose down --volumes --remove-orphans` 相当まで行うため、ローカルDB/MinIOデータを残したい通常開発では付けない。
 
-実ブラウザ操作まで確認する場合は、PlaywrightのChromiumをインストールしてからBrowserE2Eを有効化する。
+実ブラウザ操作まで確認する場合は、PlaywrightのChromiumをインストールしてからBrowserE2Eを有効化する。`dotnet test` で直接BrowserE2Eを実行する場合も、E2Eテストはリポジトリルートの `.env` を自動読み込みする。既にプロセス環境変数が設定されている場合は、プロセス環境変数を優先する。
 
 ```powershell
 dotnet build tests/E2ETests/E2ETests.csproj
@@ -182,10 +182,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-local.ps1 -Run
 | `Credits__ResetTimeZone` | クレジットリセットTZ | `Asia/Tokyo` |
 | `Discord__DefaultWebhookSecretName` | Discord Webhook Secret名 | `discord-webhook-dev` |
 | `Ai__Provider` | AI Provider | `Disabled`またはProvider名 |
+| `E2E_BROWSER_ENABLED` | BrowserE2E実行フラグ | `true` |
+| `E2E_WEB_URL` | BrowserE2E対象Web URL | `http://localhost:5295` |
+| `E2E_API_URL` | BrowserE2E対象API URL | `http://localhost:5251` |
+| `E2E_HEADLESS` | BrowserE2Eのheadless切替 | 通常は未設定。画面表示時のみ`false` |
 
 ## 6. Secret管理
 
-ローカル開発では `.env.example` を `.env` にコピーし、Discord Webhook URLなどの実値は `.env` にだけ置く。`.env` はGit管理対象外で、PowerShellのスモークスクリプトは起動時に自動読み込みする。既にプロセス環境変数が設定されている場合は、そちらを優先する。
+ローカル開発では `.env.example` を `.env` にコピーし、Discord Webhook URLなどの実値は `.env` にだけ置く。`.env` はGit管理対象外で、PowerShellのスモークスクリプトとE2Eテストは起動時に自動読み込みする。既にプロセス環境変数が設定されている場合は、そちらを優先する。
 
 | Secret | 用途 | 注意 |
 | --- | --- | --- |
