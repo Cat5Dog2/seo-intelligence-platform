@@ -37,6 +37,10 @@ internal static class OpenApiDocumentEndpoint
         new("/api/projects/{projectId}/search-volume/jobs", Post: "Register search volume job", PostSuccessCode: "202"),
         new("/api/projects/{projectId}/search-volume/jobs/{jobId}", Get: "Get search volume job"),
         new("/api/projects/{projectId}/search-volume/jobs/{jobId}/results", Get: "List search volume results"),
+        new("/api/projects/{projectId}/competitors", Get: "List competitor analysis results"),
+        new("/api/projects/{projectId}/competitors/analyze", Post: "Register competitor refresh job", PostSuccessCode: "202"),
+        new("/api/projects/{projectId}/influx-keywords", Get: "List influx keyword results"),
+        new("/api/projects/{projectId}/influx-pages", Get: "List influx page results"),
         new("/api/projects/{projectId}/exports/csv", Post: "Register Phase 1 CSV export job", PostSuccessCode: "202"),
         new("/api/projects/{projectId}/exports/{exportId}", Get: "Get CSV export state and file metadata"),
         new("/api/projects/{projectId}/exports/{exportId}/download", Get: "Issue a short-lived CSV download URL")

@@ -100,6 +100,17 @@ public interface ISearchVolumeService
     Task<Result<PagedResult<SearchVolumeResultRow>>> GetResultsAsync(ProjectExecutionContext context, Guid jobId, SearchQuery query, CancellationToken cancellationToken = default);
 }
 
+public interface ICompetitiveAnalysisService
+{
+    Task<Result<JobReference>> AnalyzeAsync(ProjectExecutionContext context, CompetitorAnalyzeRequest request, CancellationToken cancellationToken = default);
+
+    Task<Result<PagedResult<CompetitorResultRow>>> GetCompetitorsAsync(ProjectExecutionContext context, CompetitorSearchQuery query, CancellationToken cancellationToken = default);
+
+    Task<Result<PagedResult<InfluxKeywordResultRow>>> GetInfluxKeywordsAsync(ProjectExecutionContext context, InfluxKeywordSearchQuery query, CancellationToken cancellationToken = default);
+
+    Task<Result<PagedResult<InfluxPageResultRow>>> GetInfluxPagesAsync(ProjectExecutionContext context, InfluxPageSearchQuery query, CancellationToken cancellationToken = default);
+}
+
 public interface IScoringService
 {
     Task<Result<OpportunityScoreResult>> CalculateOpportunityScoresAsync(ProjectExecutionContext context, OpportunityScoreRequest request, CancellationToken cancellationToken = default);
@@ -391,6 +402,62 @@ public sealed record SearchVolumeResultRow(
     string? DataSource = null,
     bool CacheHit = false,
     Guid? KeywordId = null);
+
+public sealed record CompetitorAnalyzeRequest(
+    string? Target,
+    Guid? SiteId = null);
+
+public sealed record CompetitorSearchQuery(
+    SearchQuery Search,
+    string? Domain = null);
+
+public sealed record InfluxKeywordSearchQuery(
+    SearchQuery Search,
+    string? Target = null,
+    int? MinRank = null,
+    int? MaxRank = null);
+
+public sealed record InfluxPageSearchQuery(
+    SearchQuery Search,
+    string? Target = null);
+
+public sealed record CompetitorResultRow(
+    Guid CompetitorResultId,
+    string Domain,
+    decimal DuplicateRate,
+    decimal EstimatedTraffic,
+    decimal TrafficValue,
+    int KeywordCount,
+    int DuplicateKeywordCount,
+    int CompetitorUniqueKeywordCount,
+    int TargetUniqueKeywordCount,
+    bool Saved,
+    DateTime CreatedAt);
+
+public sealed record InfluxKeywordResultRow(
+    Guid InfluxKeywordResultId,
+    Guid KeywordId,
+    string Target,
+    string Keyword,
+    int Rank,
+    string RankedUrl,
+    decimal EstimatedTraffic,
+    JsonElement Metrics,
+    bool IsGap,
+    string GapType,
+    DateTime CreatedAt);
+
+public sealed record InfluxPageResultRow(
+    Guid InfluxPageResultId,
+    string Target,
+    string PageUrl,
+    string Title,
+    int KeywordCount,
+    decimal EstimatedTraffic,
+    decimal TrafficValue,
+    Guid? TopKeywordId,
+    string? TopKeyword,
+    DateTime CreatedAt);
 
 public sealed record OpportunityScoreRequest(IReadOnlyList<Guid> KeywordIds, string Location, string Language);
 
