@@ -97,7 +97,7 @@ OpenTelemetry Meter名は `SeoIntelligence`。MVPで記録する運用メトリ�
 ### 5.4 レート制限 429
 
 1. 直近の`external_api_calls`で429のendpointと頻度を確認する。
-2. `RakkoKeyword__MaxConcurrentRequests`を一時的に下げる。
+2. Workerの`Hangfire__WorkerCount`または`external-api`キューの起動数を一時的に下げる。
 3. キュー滞留が増える場合は優先度の低いジョブを停止または延期する。
 4. 429が収束したら同時実行数を段階的に戻す。
 

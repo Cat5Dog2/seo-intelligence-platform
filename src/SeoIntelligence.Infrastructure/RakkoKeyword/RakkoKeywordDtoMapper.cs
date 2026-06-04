@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using SeoIntelligence.Application.RakkoKeyword;
 using SeoIntelligence.Infrastructure.RakkoKeyword.Generated;
 
@@ -72,6 +73,97 @@ internal static class RakkoKeywordDtoMapper
             Limit = request.Limit,
             SortBy = request.SortBy,
             OrderBy = request.OrderBy
+        };
+
+    public static InfluxKeywordsKeywordDto ToDto(RakkoInfluxKeywordsRequest request)
+        => new()
+        {
+            Targets = ToDto(request.Targets),
+            KeywordCollapse = request.KeywordCollapse,
+            Filter = request.Filter,
+            SortBy = request.SortBy,
+            OrderBy = request.OrderBy,
+            Limit = request.Limit
+        };
+
+    public static InfluxPagesDto ToDto(RakkoInfluxPagesRequest request)
+        => new()
+        {
+            Targets = ToDto(request.Targets),
+            TopKeywordCollapse = request.TopKeywordCollapse,
+            Filter = request.Filter,
+            SortBy = request.SortBy,
+            OrderBy = request.OrderBy,
+            Limit = request.Limit
+        };
+
+    public static CompetitiveDto ToDto(RakkoCompetitiveRequest request)
+        => new()
+        {
+            Url = request.Url,
+            SortBy = request.SortBy,
+            OrderBy = request.OrderBy
+        };
+
+    public static ContentSearchDto ToDto(RakkoContentSearchRequest request)
+        => new()
+        {
+            Keyword = request.Keyword,
+            SearchTarget = request.SearchTarget,
+            IsAdvancedSearch = request.IsAdvancedSearch,
+            TopKeywordCollapse = request.TopKeywordCollapse,
+            Filter = request.Filter,
+            SortBy = request.SortBy,
+            OrderBy = request.OrderBy,
+            Limit = request.Limit
+        };
+
+    public static HeadlineDto ToDto(RakkoHeadlineRequest request)
+        => new()
+        {
+            Keyword = request.Keyword,
+            LessHeadlines = request.LessHeadlines,
+            LessCharacters = request.LessCharacters,
+            H1 = request.H1,
+            H2 = request.H2,
+            H3 = request.H3,
+            H4 = request.H4,
+            H5 = request.H5,
+            H6 = request.H6,
+            SortBy = request.SortBy,
+            OrderBy = request.OrderBy,
+            Limit = request.Limit
+        };
+
+    public static CoOccurrenceDto ToDto(RakkoCoOccurrenceRequest request)
+        => new()
+        {
+            Keyword = request.Keyword,
+            GetDetails = request.GetDetails,
+            SortBy = request.SortBy,
+            OrderBy = request.OrderBy,
+            Limit = request.Limit
+        };
+
+    public static SearchRankHistoryDto ToDto(RakkoSearchRankRegistrationRequest request)
+        => new()
+        {
+            Keywords = request.Keywords,
+            Urls = request.Urls,
+            MatchType = request.MatchType,
+            Depth = request.Depth,
+            IsSearchVolumeAndSeoDifficultyEnabled = request.WithMetrics,
+            Deduplicate = request.Deduplicate
+        };
+
+    public static SearchRankResultsDto ToDto(RakkoSearchRankResultsRequest request)
+        => new()
+        {
+            Filter = request.Filter,
+            SortBy = request.SortBy,
+            OrderBy = request.OrderBy,
+            Limit = request.Limit,
+            WithAggregation = request.WithAggregation
         };
 
     public static RakkoKeywordCandidates ToApplication(SuggestKeywordsResponseDto response)
@@ -182,6 +274,33 @@ internal static class RakkoKeywordDtoMapper
                 monthlySearchVolume);
         }).ToArray());
 
+    public static RakkoExternalSearchResults ToApplication(InfluxKeywordsKeywordResponseDto response)
+        => ToExternalSearchResults("influx_keywords", response.Data);
+
+    public static RakkoExternalSearchResults ToApplication(InfluxPagesResponseDto response)
+        => ToExternalSearchResults("influx_pages", response.Data);
+
+    public static RakkoExternalSearchResults ToApplication(CompetitiveResponseDto response)
+        => ToExternalSearchResults("competitive", response.Data);
+
+    public static RakkoExternalSearchResults ToApplication(ContentSearchResponseDto response)
+        => ToExternalSearchResults("content_search", response.Data);
+
+    public static RakkoExternalSearchResults ToApplication(HeadlineResponseDto response)
+        => ToExternalSearchResults("headline", response.Data);
+
+    public static RakkoExternalSearchResults ToApplication(CoOccurrenceResponseDto response)
+        => ToExternalSearchResults("co_occurrence", response.Data);
+
+    public static RakkoSearchRankRegistration ToApplication(SearchRankHistoryResponseDto response)
+        => new(response.Data.RequestId);
+
+    public static RakkoSearchRankStatus ToApplication(SearchRankStatusResponseDto response)
+        => new(response.Data.IsCompleted, response.Data.Statuses);
+
+    public static RakkoExternalSearchResults ToApplication(SearchRankResultsResponseDto response)
+        => ToExternalSearchResults("search_rank_results", response.Data);
+
     public static RakkoLocationCatalog ToApplication(LocationsResponseDto response)
         => new(response.Data.Locations
             .Select(item => new RakkoLocation(item.Name, item.Code.ToString("D", CultureInfo.InvariantCulture), item.CountryIsoCode))
@@ -211,4 +330,119 @@ internal static class RakkoKeywordDtoMapper
                 metrics.Cpc,
                 metrics.Competition,
                 FirstSeenRange: null);
+
+    private static IReadOnlyList<RakkoKeywordTargetDto> ToDto(IReadOnlyList<RakkoApiTargetRequest> targets)
+        => targets
+            .Select(target => new RakkoKeywordTargetDto
+            {
+                Url = target.Url,
+                MatchType = target.MatchType
+            })
+            .ToArray();
+
+    private static RakkoExternalSearchResults ToExternalSearchResults(
+        string source,
+        RakkoKeywordItemsDataDto<JsonElement> data)
+        => new(
+            source,
+            data.Items.Select(ToExternalSearchResultItem).ToArray(),
+            ToRawJson(data.Query),
+            ToRawJson(data.Summary));
+
+    private static RakkoExternalSearchResultItem ToExternalSearchResultItem(JsonElement item)
+    {
+        var page = GetObject(item, "page");
+        var site = GetObject(item, "site");
+        var metrics = GetObject(item, "metrics");
+        var ranking = GetObject(item, "ranking");
+        var performance = GetObject(item, "performance");
+        var topKeyword = GetObject(item, "topKeyword");
+        var firstRanking = GetFirstObject(item, "rankings");
+
+        return new RakkoExternalSearchResultItem(
+            Keyword: GetString(item, "keyword") ?? GetString(topKeyword, "keyword") ?? GetString(item, "word"),
+            Target: GetString(item, "target") ?? GetString(firstRanking, "target"),
+            Url: GetString(item, "url") ?? GetString(page, "url") ?? GetString(ranking, "url") ?? GetString(firstRanking, "rankedUrl"),
+            Domain: GetString(item, "domain") ?? GetString(page, "domain") ?? GetString(site, "domain"),
+            Title: GetString(item, "title") ?? GetString(page, "title") ?? GetString(site, "title"),
+            Position: GetDecimal(item, "position") ?? GetDecimal(ranking, "position") ?? GetDecimal(topKeyword, "position") ?? GetDecimal(metrics, "position") ?? GetDecimal(firstRanking, "position"),
+            EstimatedTraffic: GetDecimal(item, "estimatedTraffic") ?? GetDecimal(metrics, "estimatedTraffic") ?? GetDecimal(ranking, "estimatedTraffic") ?? GetDecimal(performance, "estimatedTraffic") ?? GetDecimal(firstRanking, "estimatedTraffic"),
+            TrafficValue: GetDecimal(item, "trafficValue") ?? GetDecimal(metrics, "trafficValue") ?? GetDecimal(performance, "trafficValue"),
+            RawJson: item.GetRawText());
+    }
+
+    private static JsonElement? GetObject(JsonElement? element, string propertyName)
+    {
+        if (element is null ||
+            element.Value.ValueKind != JsonValueKind.Object ||
+            !element.Value.TryGetProperty(propertyName, out var property) ||
+            property.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        return property;
+    }
+
+    private static JsonElement? GetFirstObject(JsonElement element, string propertyName)
+    {
+        if (element.ValueKind != JsonValueKind.Object ||
+            !element.TryGetProperty(propertyName, out var property) ||
+            property.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        foreach (var item in property.EnumerateArray())
+        {
+            if (item.ValueKind == JsonValueKind.Object)
+            {
+                return item;
+            }
+        }
+
+        return null;
+    }
+
+    private static string? GetString(JsonElement? element, string propertyName)
+    {
+        if (element is null ||
+            element.Value.ValueKind != JsonValueKind.Object ||
+            !element.Value.TryGetProperty(propertyName, out var property))
+        {
+            return null;
+        }
+
+        return property.ValueKind switch
+        {
+            JsonValueKind.String => property.GetString(),
+            JsonValueKind.Number => property.GetRawText(),
+            _ => null
+        };
+    }
+
+    private static decimal? GetDecimal(JsonElement? element, string propertyName)
+    {
+        if (element is null ||
+            element.Value.ValueKind != JsonValueKind.Object ||
+            !element.Value.TryGetProperty(propertyName, out var property))
+        {
+            return null;
+        }
+
+        if (property.ValueKind == JsonValueKind.Number && property.TryGetDecimal(out var number))
+        {
+            return number;
+        }
+
+        return property.ValueKind == JsonValueKind.String &&
+            decimal.TryParse(property.GetString(), NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed)
+            ? parsed
+            : null;
+    }
+
+    private static string? ToRawJson(JsonElement? element)
+        => element is null || element.Value.ValueKind == JsonValueKind.Undefined
+            ? null
+            : element.Value.GetRawText();
 }

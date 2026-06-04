@@ -754,10 +754,12 @@ Phase 3追加: [AI再生成] [PDF出力] [共有URL発行]
 ConnectionStrings__Default=Host=...;Database=seo;Username=...;
 Redis__ConnectionString=...
 Hangfire__Storage=PostgreSQL
+Hangfire__WorkerCount=4
+RakkoKeyword__Mode=Real
 RakkoKeyword__BaseUrl=https://api.rakkokeyword.com
-RakkoKeyword__ApiKeySecretName=rakko-keyword-api-key-prod
-RakkoKeyword__MaxConcurrentRequests=2
-RakkoKeyword__Retry__MaxAttempts=5
+RakkoKeyword__ApiKeySecretRef=rakko-keyword-api-key-prod
+RakkoKeyword__TimeoutSeconds=30
+RakkoKeyword__LongTimeoutSeconds=60
 Jobs__SearchVolumePollIntervalSeconds=60
 Jobs__RankCheckPollIntervalSeconds=60
 Credits__ResetTimeZone=Asia/Tokyo

@@ -15,12 +15,27 @@ internal static class RakkoKeywordClientSupport
     public const string SearchVolumeResultsEndpoint = "/v1/search-volume/{requestId}/results";
     public const string LocationsEndpoint = "/v1/search-volume/locations";
     public const string LanguagesEndpoint = "/v1/search-volume/languages";
+    public const string InfluxKeywordsEndpoint = "/v1/influx-keywords";
+    public const string InfluxPagesEndpoint = "/v1/influx-pages";
+    public const string CompetitiveEndpoint = "/v1/competitive";
+    public const string ContentSearchEndpoint = "/v1/content-search";
+    public const string HeadlineEndpoint = "/v1/headline";
+    public const string CoOccurrenceEndpoint = "/v1/co-occurrence";
+    public const string SearchRankEndpoint = "/v1/search-rank";
+    public const string SearchRankStatusEndpoint = "/v1/search-rank/{requestId}/status";
+    public const string SearchRankResultsEndpoint = "/v1/search-rank/{requestId}/results";
 
     public static string SearchVolumeStatusPath(long requestId)
         => $"/v1/search-volume/{requestId}/status";
 
     public static string SearchVolumeResultsPath(long requestId)
         => $"/v1/search-volume/{requestId}/results";
+
+    public static string SearchRankStatusPath(string requestId)
+        => $"/v1/search-rank/{Uri.EscapeDataString(requestId)}/status";
+
+    public static string SearchRankResultsPath(string requestId)
+        => $"/v1/search-rank/{Uri.EscapeDataString(requestId)}/results";
 
     public static bool IsSuccessStatusCode(int statusCode)
         => statusCode is >= 200 and <= 299;

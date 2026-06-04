@@ -39,6 +39,9 @@ public sealed class RakkoKeywordClientContractTests
         Assert.Equal(RakkoKeywordOpenApiMetadata.OpenApiVersion, version);
         Assert.Equal(RakkoKeywordOpenApiMetadata.SourceSha256, hash);
         Assert.All(RakkoKeywordOpenApiMetadata.MvpSchemaNames, schemaName => Assert.Contains(schemaName, schemaNames));
+        Assert.Equal(RakkoKeywordOpenApiMetadata.OpenApiVersion, RakkoKeywordPhase2OpenApiMetadata.OpenApiVersion);
+        Assert.Equal(RakkoKeywordOpenApiMetadata.SourceSha256, RakkoKeywordPhase2OpenApiMetadata.SourceSha256);
+        Assert.All(RakkoKeywordPhase2OpenApiMetadata.SchemaNames, schemaName => Assert.Contains(schemaName, schemaNames));
     }
 
     [Fact]
@@ -173,6 +176,88 @@ public sealed class RakkoKeywordClientContractTests
         }
     }
 
+    [Fact]
+    [Trait("Category", "Contract")]
+    public async Task MockClientMapsPhase2ExternalApiEndpoints()
+    {
+        var storagePath = CreateTempStoragePath();
+        await using var provider = BuildProvider(storagePath);
+
+        try
+        {
+            await using var scope = provider.CreateAsyncScope();
+            var client = scope.ServiceProvider.GetRequiredService<IRakkoKeywordClient>();
+            var context = CreateContext(correlationId: "corr-contract-phase2");
+            var targets = new[] { new RakkoApiTargetRequest("https://example.com", "domain") };
+
+            var influxKeywords = await client.GetInfluxKeywordsAsync(
+                context,
+                new RakkoInfluxKeywordsRequest(targets));
+            var influxPages = await client.GetInfluxPagesAsync(
+                context,
+                new RakkoInfluxPagesRequest(targets));
+            var competitive = await client.GetCompetitiveSitesAsync(
+                context,
+                new RakkoCompetitiveRequest("https://example.com"));
+            var contentSearch = await client.GetContentSearchAsync(
+                context,
+                new RakkoContentSearchRequest("seo"));
+            var headlines = await client.GetHeadlinesAsync(
+                context,
+                new RakkoHeadlineRequest("seo"));
+            var coOccurrences = await client.GetCoOccurrencesAsync(
+                context,
+                new RakkoCoOccurrenceRequest("seo"));
+            var rankRegistration = await client.RegisterSearchRankAsync(
+                context,
+                new RakkoSearchRankRegistrationRequest(["seo"], ["https://example.com"]));
+            var rankStatus = await client.GetSearchRankStatusAsync(context, rankRegistration.Data!.RequestId);
+            var rankResults = await client.GetSearchRankResultsAsync(
+                context,
+                rankRegistration.Data.RequestId,
+                new RakkoSearchRankResultsRequest());
+
+            Assert.All(
+                new[] { influxKeywords, influxPages, competitive, contentSearch, headlines, coOccurrences, rankResults },
+                result =>
+                {
+                    Assert.True(result.IsSuccess);
+                    Assert.Equal(200, result.StatusCode);
+                    Assert.NotEmpty(result.Data!.Items);
+                    Assert.False(string.IsNullOrWhiteSpace(result.Data.Items[0].RawJson));
+                    Assert.StartsWith("storage://local/raw/rakko-keyword/", result.ExternalCall.RequestUri, StringComparison.Ordinal);
+                });
+
+            Assert.Equal("influx_keywords", influxKeywords.Data!.Source);
+            Assert.Equal("https://example.com", influxKeywords.Data.Items[0].Target);
+            Assert.Equal("seo competitor keyword", influxKeywords.Data.Items[0].Keyword);
+            Assert.Equal(4m, influxKeywords.Data.Items[0].Position);
+            Assert.Equal("influx_pages", influxPages.Data!.Source);
+            Assert.Equal("https://example.com/guide", influxPages.Data.Items[0].Url);
+            Assert.Equal("competitive", competitive.Data!.Source);
+            Assert.Equal("competitor.example", competitive.Data.Items[0].Domain);
+            Assert.Equal("content_search", contentSearch.Data!.Source);
+            Assert.Equal("SEO Content Benchmark", contentSearch.Data.Items[0].Title);
+            Assert.Equal("headline", headlines.Data!.Source);
+            Assert.Equal("https://content.example/seo", headlines.Data.Items[0].Url);
+            Assert.Equal("co_occurrence", coOccurrences.Data!.Source);
+            Assert.Equal("search intent", coOccurrences.Data.Items[0].Keyword);
+            Assert.True(rankRegistration.IsSuccess);
+            Assert.Equal("rank-request-1000001", rankRegistration.Data.RequestId);
+            Assert.True(rankStatus.IsSuccess);
+            Assert.True(rankStatus.Data!.IsCompleted);
+            Assert.Equal("completed", rankStatus.Data.Statuses["overall"]);
+            Assert.Equal("search_rank_results", rankResults.Data!.Source);
+            Assert.Equal("seo", rankResults.Data.Items[0].Keyword);
+            Assert.Equal("https://example.com", rankResults.Data.Items[0].Target);
+            Assert.Equal(5m, rankResults.Data.Items[0].Position);
+        }
+        finally
+        {
+            DeleteTempStoragePath(storagePath);
+        }
+    }
+
     [Theory]
     [Trait("Category", "Contract")]
     [InlineData(429, RakkoKeywordFailureKind.Retryable, "rate_limited")]
@@ -275,6 +360,54 @@ public sealed class RakkoKeywordClientContractTests
         Assert.Contains("\"keyword\":\"seo\"", handler.RequestBody);
         Assert.DoesNotContain("secret-value", handler.RequestBody, StringComparison.Ordinal);
         Assert.Equal(RakkoKeywordClientSupport.SuggestKeywordsEndpoint, recorder.LastRequest!.Endpoint);
+        Assert.Null(recorder.LastRequest.ErrorCode);
+    }
+
+    [Fact]
+    [Trait("Category", "Contract")]
+    public async Task RealClientUsesSecretStoreForPhase2SearchRankRegister()
+    {
+        var handler = new CapturingHandler("""
+            {
+              "result": true,
+              "meta": { "consumedCredit": 0 },
+              "data": { "requestId": "rank-request-real-1" },
+              "errors": []
+            }
+            """);
+        using var httpClient = new HttpClient(handler)
+        {
+            BaseAddress = new Uri("https://api.example.test")
+        };
+        var recorder = new CapturingRecorder();
+        var options = Options.Create(new RakkoKeywordOptions
+        {
+            Mode = RakkoKeywordOptions.RealMode,
+            BaseUrl = "https://api.example.test",
+            ApiKeySecretRef = "rakko-keyword-api-key-dev",
+            EnvironmentName = "Testing"
+        });
+        var client = new RakkoKeywordRealClient(
+            httpClient,
+            new FakeSecretStore("secret-value"),
+            recorder,
+            options,
+            NullLogger<RakkoKeywordRealClient>.Instance);
+
+        var result = await client.RegisterSearchRankAsync(
+            CreateContext(apiKeySecretRef: "rakko-keyword-api-key-dev", correlationId: "corr-rank-real-1"),
+            new RakkoSearchRankRegistrationRequest(["seo"], ["https://example.com"], Depth: 50));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("rank-request-real-1", result.Data!.RequestId);
+        Assert.Equal("/v1/search-rank", handler.RequestUri!.AbsolutePath);
+        Assert.Equal("secret-value", Assert.Single(handler.Headers["X-API-Key"]));
+        Assert.Equal("corr-rank-real-1", Assert.Single(handler.Headers["X-Correlation-Id"]));
+        Assert.Contains("\"keywords\":[\"seo\"]", handler.RequestBody);
+        Assert.Contains("\"urls\":[\"https://example.com\"]", handler.RequestBody);
+        Assert.Contains("\"depth\":50", handler.RequestBody);
+        Assert.DoesNotContain("secret-value", handler.RequestBody, StringComparison.Ordinal);
+        Assert.Equal(RakkoKeywordClientSupport.SearchRankEndpoint, recorder.LastRequest!.Endpoint);
         Assert.Null(recorder.LastRequest.ErrorCode);
     }
 

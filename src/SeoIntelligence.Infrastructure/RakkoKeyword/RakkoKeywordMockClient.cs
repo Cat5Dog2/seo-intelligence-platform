@@ -358,6 +358,361 @@ internal sealed class RakkoKeywordMockClient(
             cancellationToken);
     }
 
+    public Task<RakkoKeywordCallResult<RakkoExternalSearchResults>> GetInfluxKeywordsAsync(
+        RakkoKeywordClientContext context,
+        RakkoInfluxKeywordsRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var dto = RakkoKeywordDtoMapper.ToDto(request);
+        var response = new InfluxKeywordsKeywordResponseDto
+        {
+            Result = true,
+            Meta = new RakkoKeywordMetaDto { ConsumedCredit = 3m },
+            Data = new RakkoKeywordItemsDataDto<JsonElement>
+            {
+                Items =
+                [
+                    JsonItem(new
+                    {
+                        target = request.Targets.FirstOrDefault()?.Url ?? "example.com",
+                        keyword = "seo competitor keyword",
+                        metrics = new { seoDifficulty = 34, searchVolume = 2400, cpc = 1.4m, competition = 18 },
+                        ranking = new { position = 4, estimatedTraffic = 120.5m, url = "https://example.com/guide" }
+                    })
+                ]
+            },
+            Errors = []
+        };
+
+        return ExecuteAsync(
+            context,
+            RakkoKeywordClientSupport.InfluxKeywordsEndpoint,
+            "POST",
+            dto,
+            response,
+            RakkoKeywordDtoMapper.ToApplication,
+            cancellationToken);
+    }
+
+    public Task<RakkoKeywordCallResult<RakkoExternalSearchResults>> GetInfluxPagesAsync(
+        RakkoKeywordClientContext context,
+        RakkoInfluxPagesRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var dto = RakkoKeywordDtoMapper.ToDto(request);
+        var response = new InfluxPagesResponseDto
+        {
+            Result = true,
+            Meta = new RakkoKeywordMetaDto { ConsumedCredit = 3m },
+            Data = new RakkoKeywordItemsDataDto<JsonElement>
+            {
+                Items =
+                [
+                    JsonItem(new
+                    {
+                        target = request.Targets.FirstOrDefault()?.Url ?? "example.com",
+                        page = new { title = "SEO Guide", url = "https://example.com/guide" },
+                        performance = new { rankingKeywordCount = 25, estimatedTraffic = 340.5m, trafficValue = 1200.25m },
+                        topKeyword = new { keyword = "seo guide", position = 3, metrics = new { searchVolume = 1900 } }
+                    })
+                ]
+            },
+            Errors = []
+        };
+
+        return ExecuteAsync(
+            context,
+            RakkoKeywordClientSupport.InfluxPagesEndpoint,
+            "POST",
+            dto,
+            response,
+            RakkoKeywordDtoMapper.ToApplication,
+            cancellationToken);
+    }
+
+    public Task<RakkoKeywordCallResult<RakkoExternalSearchResults>> GetCompetitiveSitesAsync(
+        RakkoKeywordClientContext context,
+        RakkoCompetitiveRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var dto = RakkoKeywordDtoMapper.ToDto(request);
+        var response = new CompetitiveResponseDto
+        {
+            Result = true,
+            Meta = new RakkoKeywordMetaDto { ConsumedCredit = 2m },
+            Data = new RakkoKeywordItemsDataDto<JsonElement>
+            {
+                Items =
+                [
+                    JsonItem(new
+                    {
+                        site = new { domain = "competitor.example", title = "Competitor Example" },
+                        metrics = new
+                        {
+                            estimatedTraffic = 980.5m,
+                            trafficValue = 4200.75m,
+                            keywordCount = 120,
+                            pageCount = 18,
+                            duplicateKeywordCount = 35,
+                            duplicateRate = 0.42m,
+                            competitorUniqueKeywordCount = 85,
+                            targetUniqueKeywordCount = 40
+                        }
+                    })
+                ]
+            },
+            Errors = []
+        };
+
+        return ExecuteAsync(
+            context,
+            RakkoKeywordClientSupport.CompetitiveEndpoint,
+            "POST",
+            dto,
+            response,
+            RakkoKeywordDtoMapper.ToApplication,
+            cancellationToken);
+    }
+
+    public Task<RakkoKeywordCallResult<RakkoExternalSearchResults>> GetContentSearchAsync(
+        RakkoKeywordClientContext context,
+        RakkoContentSearchRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var dto = RakkoKeywordDtoMapper.ToDto(request);
+        var response = new ContentSearchResponseDto
+        {
+            Result = true,
+            Meta = new RakkoKeywordMetaDto { ConsumedCredit = 2m },
+            Data = new RakkoKeywordItemsDataDto<JsonElement>
+            {
+                Items =
+                [
+                    JsonItem(new
+                    {
+                        page = new
+                        {
+                            domain = "content.example",
+                            url = "https://content.example/seo",
+                            title = "SEO Content Benchmark",
+                            description = "Benchmark content for SEO planning."
+                        },
+                        metrics = new { estimatedTraffic = 640.5m, trafficValue = 3100.25m, rankingKeywordCount = 44 },
+                        topKeyword = new { keyword = request.Keyword, wordCount = 2, position = 2, metrics = new { searchVolume = 2200 } }
+                    })
+                ]
+            },
+            Errors = []
+        };
+
+        return ExecuteAsync(
+            context,
+            RakkoKeywordClientSupport.ContentSearchEndpoint,
+            "POST",
+            dto,
+            response,
+            RakkoKeywordDtoMapper.ToApplication,
+            cancellationToken);
+    }
+
+    public Task<RakkoKeywordCallResult<RakkoExternalSearchResults>> GetHeadlinesAsync(
+        RakkoKeywordClientContext context,
+        RakkoHeadlineRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var dto = RakkoKeywordDtoMapper.ToDto(request);
+        var response = new HeadlineResponseDto
+        {
+            Result = true,
+            Meta = new RakkoKeywordMetaDto { ConsumedCredit = 2m },
+            Data = new RakkoKeywordItemsDataDto<JsonElement>
+            {
+                Items =
+                [
+                    JsonItem(new
+                    {
+                        page = new
+                        {
+                            url = "https://content.example/seo",
+                            title = "SEO Content Benchmark",
+                            description = "Benchmark content for SEO planning."
+                        },
+                        metrics = new { position = 2, headlineCount = 6, wordCount = 3200 },
+                        headlines = new[]
+                        {
+                            new { level = "h1", text = "SEO Content Benchmark" },
+                            new { level = "h2", text = "Search intent" }
+                        }
+                    })
+                ]
+            },
+            Errors = []
+        };
+
+        return ExecuteAsync(
+            context,
+            RakkoKeywordClientSupport.HeadlineEndpoint,
+            "POST",
+            dto,
+            response,
+            RakkoKeywordDtoMapper.ToApplication,
+            cancellationToken);
+    }
+
+    public Task<RakkoKeywordCallResult<RakkoExternalSearchResults>> GetCoOccurrencesAsync(
+        RakkoKeywordClientContext context,
+        RakkoCoOccurrenceRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var dto = RakkoKeywordDtoMapper.ToDto(request);
+        var response = new CoOccurrenceResponseDto
+        {
+            Result = true,
+            Meta = new RakkoKeywordMetaDto { ConsumedCredit = 2m },
+            Data = new RakkoKeywordItemsDataDto<JsonElement>
+            {
+                Items =
+                [
+                    JsonItem(new
+                    {
+                        word = "search intent",
+                        metrics = new
+                        {
+                            occurrencePageCount = 8,
+                            occurrenceTitleCount = 4,
+                            occurrenceHeadingCount = 5,
+                            siteCountTotal = 7,
+                            siteCountHeading = 4
+                        },
+                        pageDetails = new[]
+                        {
+                            new
+                            {
+                                rank = 1,
+                                title = "SEO Content Benchmark",
+                                url = "https://content.example/seo",
+                                count = 3,
+                                countInHeadline = 1,
+                                countInTitle = 1,
+                                pageCount = 1,
+                                pageCountInHeadline = 1
+                            }
+                        }
+                    })
+                ]
+            },
+            Errors = []
+        };
+
+        return ExecuteAsync(
+            context,
+            RakkoKeywordClientSupport.CoOccurrenceEndpoint,
+            "POST",
+            dto,
+            response,
+            RakkoKeywordDtoMapper.ToApplication,
+            cancellationToken);
+    }
+
+    public Task<RakkoKeywordCallResult<RakkoSearchRankRegistration>> RegisterSearchRankAsync(
+        RakkoKeywordClientContext context,
+        RakkoSearchRankRegistrationRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var dto = RakkoKeywordDtoMapper.ToDto(request);
+        var response = new SearchRankHistoryResponseDto
+        {
+            Result = true,
+            Meta = new RakkoKeywordMetaDto { ConsumedCredit = 0m },
+            Data = new SearchRankHistoryDataDto { RequestId = "rank-request-1000001" },
+            Errors = []
+        };
+
+        return ExecuteAsync(
+            context,
+            RakkoKeywordClientSupport.SearchRankEndpoint,
+            "POST",
+            dto,
+            response,
+            RakkoKeywordDtoMapper.ToApplication,
+            cancellationToken);
+    }
+
+    public Task<RakkoKeywordCallResult<RakkoSearchRankStatus>> GetSearchRankStatusAsync(
+        RakkoKeywordClientContext context,
+        string requestId,
+        CancellationToken cancellationToken = default)
+    {
+        var response = new SearchRankStatusResponseDto
+        {
+            Result = true,
+            Meta = new RakkoKeywordMetaDto { ConsumedCredit = 0m },
+            Data = new SearchRankStatusDataDto
+            {
+                IsCompleted = true,
+                Statuses = new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    ["overall"] = "completed"
+                }
+            },
+            Errors = []
+        };
+
+        return ExecuteAsync(
+            context,
+            RakkoKeywordClientSupport.SearchRankStatusEndpoint,
+            "GET",
+            requestBody: null,
+            response,
+            RakkoKeywordDtoMapper.ToApplication,
+            cancellationToken);
+    }
+
+    public Task<RakkoKeywordCallResult<RakkoExternalSearchResults>> GetSearchRankResultsAsync(
+        RakkoKeywordClientContext context,
+        string requestId,
+        RakkoSearchRankResultsRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var dto = RakkoKeywordDtoMapper.ToDto(request);
+        var response = new SearchRankResultsResponseDto
+        {
+            Result = true,
+            Meta = new RakkoKeywordMetaDto { ConsumedCredit = 4m },
+            Data = new RakkoKeywordItemsDataDto<JsonElement>
+            {
+                Items =
+                [
+                    JsonItem(new
+                    {
+                        keyword = "seo",
+                        metrics = new { seoDifficulty = 31, searchVolume = 1200, cpc = 0.9m, competition = 12 },
+                        rankings = new[]
+                        {
+                            new
+                            {
+                                target = "https://example.com",
+                                position = 5,
+                                rankedUrl = "https://example.com/seo",
+                                estimatedTraffic = 80.5m
+                            }
+                        }
+                    })
+                ]
+            },
+            Errors = []
+        };
+
+        return ExecuteAsync(
+            context,
+            RakkoKeywordClientSupport.SearchRankResultsEndpoint,
+            "POST",
+            dto,
+            response,
+            RakkoKeywordDtoMapper.ToApplication,
+            cancellationToken);
+    }
+
     private async Task<RakkoKeywordCallResult<TApplication>> ExecuteAsync<TResponse, TApplication>(
         RakkoKeywordClientContext context,
         string endpoint,
@@ -458,4 +813,7 @@ internal sealed class RakkoKeywordMockClient(
             Competition = competition,
             FirstSeenRange = firstSeenRange
         };
+
+    private static JsonElement JsonItem(object value)
+        => JsonSerializer.SerializeToElement(value, RakkoKeywordJson.SerializerOptions);
 }
