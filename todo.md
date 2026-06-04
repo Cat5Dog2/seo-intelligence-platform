@@ -820,23 +820,23 @@ ISSUE-MVP-00X の続きから再開してください。
 
 範囲:
 
-- [ ] `RegisterRankCheckJob` を実装する。
-- [ ] `PollRankStatusJob` を60秒間隔で再スケジュールする。
-- [ ] `FetchRankResultsJob` を実装する。
-- [ ] `RankAlertEvaluateJob` を実装する。
-- [ ] `POST /api/projects/{projectId}/rank-check/jobs`
-- [ ] `GET /api/projects/{projectId}/rank-check/jobs/{jobId}/results`
-- [ ] `GET /api/projects/{projectId}/rank-results`
-- [ ] `GET/POST /api/projects/{projectId}/alerts`
-- [ ] `PUT/DELETE /api/projects/{projectId}/alerts/{alertId}`
-- [ ] `POST /api/projects/{projectId}/alerts/{alertId}/enable`
-- [ ] `GET /api/projects/{projectId}/alert-events`
-- [ ] Discord通知 `rank_alert` を実装する。
-- [ ] Phase 2の順位監視は順位結果、順位分布、`alert_events`、`rank_alert`までを対象とし、カニバリ候補更新と月次レポート材料更新はPhase 3で扱う。
+- [x] `RegisterRankCheckJob` を実装する。
+- [x] `PollRankStatusJob` を60秒間隔で再スケジュールする。
+- [x] `FetchRankResultsJob` を実装する。
+- [x] `RankAlertEvaluateJob` を実装する。
+- [x] `POST /api/projects/{projectId}/rank-check/jobs`
+- [x] `GET /api/projects/{projectId}/rank-check/jobs/{jobId}/results`
+- [x] `GET /api/projects/{projectId}/rank-results`
+- [x] `GET/POST /api/projects/{projectId}/alerts`
+- [x] `PUT/DELETE /api/projects/{projectId}/alerts/{alertId}`
+- [x] `POST /api/projects/{projectId}/alerts/{alertId}/enable`
+- [x] `GET /api/projects/{projectId}/alert-events`
+- [x] Discord通知 `rank_alert` を実装する。
+- [x] Phase 2の順位監視は順位結果、順位分布、`alert_events`、`rank_alert`までを対象とし、カニバリ候補更新と月次レポート材料更新はPhase 3で扱う。
 
 受入条件:
 
-- [ ] キーワードとURL/ドメインで順位チェックを登録し、結果、順位分布、アラートを確認できる。
+- [x] キーワードとURL/ドメインで順位チェックを登録し、結果、順位分布、アラートを確認できる。
 
 ### ISSUE-P2-006 Phase 2 UIを実装する
 

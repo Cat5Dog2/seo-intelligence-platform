@@ -130,6 +130,27 @@ public interface IContentAnalysisService
     Task<Result<JobReference>> ExportBriefAsync(ProjectExecutionContext context, Guid briefId, ArticleBriefExportRequest request, CancellationToken cancellationToken = default);
 }
 
+public interface IRankMonitoringService
+{
+    Task<Result<JobReference>> RegisterRankCheckAsync(ProjectExecutionContext context, RankCheckJobRequest request, CancellationToken cancellationToken = default);
+
+    Task<Result<PagedResult<RankResultRow>>> GetJobResultsAsync(ProjectExecutionContext context, Guid jobId, SearchQuery query, CancellationToken cancellationToken = default);
+
+    Task<Result<RankResultList>> SearchRankResultsAsync(ProjectExecutionContext context, RankResultSearchQuery query, CancellationToken cancellationToken = default);
+
+    Task<Result<PagedResult<RankAlertDetails>>> SearchAlertsAsync(ProjectExecutionContext context, RankAlertSearchQuery query, CancellationToken cancellationToken = default);
+
+    Task<Result<RankAlertDetails>> CreateAlertAsync(ProjectExecutionContext context, RankAlertCreateRequest request, CancellationToken cancellationToken = default);
+
+    Task<Result<RankAlertDetails>> UpdateAlertAsync(ProjectExecutionContext context, Guid alertId, RankAlertUpdateRequest request, CancellationToken cancellationToken = default);
+
+    Task<Result<RankAlertDetails>> DisableAlertAsync(ProjectExecutionContext context, Guid alertId, CancellationToken cancellationToken = default);
+
+    Task<Result<RankAlertDetails>> EnableAlertAsync(ProjectExecutionContext context, Guid alertId, CancellationToken cancellationToken = default);
+
+    Task<Result<PagedResult<RankAlertEventDetails>>> SearchAlertEventsAsync(ProjectExecutionContext context, RankAlertEventSearchQuery query, CancellationToken cancellationToken = default);
+}
+
 public interface ITopicClusterService
 {
     Task<Result<JobReference>> GenerateAsync(ProjectExecutionContext context, TopicClusterGenerateRequest request, CancellationToken cancellationToken = default);
@@ -573,6 +594,102 @@ public sealed record ArticleBriefUpdateRequest(
     string? ChangeSummary = null);
 
 public sealed record ArticleBriefExportRequest(string? Format = "markdown");
+
+public sealed record RankCheckJobRequest(
+    IReadOnlyList<string>? Keywords,
+    IReadOnlyList<RankCheckTargetRequest>? Targets,
+    string? MatchType = "domain",
+    int Depth = 100,
+    bool WithMetrics = true,
+    bool Deduplicate = true);
+
+public sealed record RankCheckTargetRequest(string? Target, string? TargetType = "domain");
+
+public sealed record RankResultSearchQuery(
+    SearchQuery Search,
+    Guid? JobId = null,
+    Guid? KeywordId = null,
+    string? Target = null,
+    int? MinPosition = null,
+    int? MaxPosition = null);
+
+public sealed record RankResultList(
+    IReadOnlyList<RankResultRow> Items,
+    RankDistribution Distribution,
+    int Page,
+    int PageSize,
+    long TotalCount,
+    int TotalPages);
+
+public sealed record RankResultRow(
+    Guid RankResultId,
+    Guid JobId,
+    Guid KeywordId,
+    string Keyword,
+    string Target,
+    int Position,
+    int? PreviousPosition,
+    int? PositionDelta,
+    string RankedUrl,
+    decimal EstimatedTraffic,
+    JsonElement Metrics,
+    string ContractScopeKey,
+    DateTime CheckedAt);
+
+public sealed record RankDistribution(
+    int Top3,
+    int Top10,
+    int Top20,
+    int Top50,
+    int Top100,
+    int OutOfRange);
+
+public sealed record RankAlertSearchQuery(
+    SearchQuery Search,
+    string? AlertType = null);
+
+public sealed record RankAlertCreateRequest(
+    string? AlertType,
+    JsonElement? Condition = null,
+    Guid? NotificationChannelId = null);
+
+public sealed record RankAlertUpdateRequest(
+    string? AlertType = null,
+    JsonElement? Condition = null,
+    Guid? NotificationChannelId = null);
+
+public sealed record RankAlertDetails(
+    Guid AlertId,
+    Guid ProjectId,
+    string AlertType,
+    JsonElement Condition,
+    Guid? NotificationChannelId,
+    string Status,
+    DateTime? LastTriggeredAt,
+    DateTime CreatedAt,
+    DateTime UpdatedAt);
+
+public sealed record RankAlertEventSearchQuery(
+    SearchQuery Search,
+    Guid? AlertId = null,
+    string? EventType = null,
+    DateTimeOffset? From = null,
+    DateTimeOffset? To = null);
+
+public sealed record RankAlertEventDetails(
+    Guid AlertEventId,
+    Guid AlertId,
+    Guid ProjectId,
+    Guid? JobId,
+    Guid? KeywordId,
+    string? Keyword,
+    string EventType,
+    JsonElement PreviousValue,
+    JsonElement CurrentValue,
+    JsonElement Evidence,
+    Guid? NotificationDeliveryId,
+    DateTime TriggeredAt,
+    DateTime? ResolvedAt);
 
 public sealed record ArticleBriefSummary(
     Guid BriefId,

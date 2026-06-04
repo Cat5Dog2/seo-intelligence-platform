@@ -102,6 +102,7 @@ app.MapSearchVolumeEndpoints();
 app.MapCompetitiveAnalysisEndpoints();
 app.MapTopicClusterEndpoints();
 app.MapContentAnalysisEndpoints();
+app.MapRankMonitoringEndpoints();
 app.MapDataExportEndpoints();
 
 app.MapGet("/openapi/v1.json", OpenApiDocumentEndpoint.GetV1);

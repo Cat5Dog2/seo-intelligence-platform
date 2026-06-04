@@ -51,6 +51,13 @@ internal static class OpenApiDocumentEndpoint
         new("/api/projects/{projectId}/briefs/{briefId}", Get: "Get article brief", Put: "Update article brief"),
         new("/api/projects/{projectId}/briefs/{briefId}/versions", Get: "List article brief versions"),
         new("/api/projects/{projectId}/briefs/{briefId}/export", Post: "Register article brief export job", PostSuccessCode: "202"),
+        new("/api/projects/{projectId}/rank-check/jobs", Post: "Register rank check job", PostSuccessCode: "202"),
+        new("/api/projects/{projectId}/rank-check/jobs/{jobId}/results", Get: "List rank check job results"),
+        new("/api/projects/{projectId}/rank-results", Get: "List rank history and distribution"),
+        new("/api/projects/{projectId}/alerts", Get: "List rank alerts", Post: "Create rank alert", PostSuccessCode: "201"),
+        new("/api/projects/{projectId}/alerts/{alertId}", Put: "Update rank alert", Delete: "Disable rank alert"),
+        new("/api/projects/{projectId}/alerts/{alertId}/enable", Post: "Enable rank alert"),
+        new("/api/projects/{projectId}/alert-events", Get: "List rank alert events"),
         new("/api/projects/{projectId}/exports/csv", Post: "Register Phase 1 CSV export job", PostSuccessCode: "202"),
         new("/api/projects/{projectId}/exports/{exportId}", Get: "Get export state and file metadata"),
         new("/api/projects/{projectId}/exports/{exportId}/download", Get: "Issue a short-lived export download URL")
