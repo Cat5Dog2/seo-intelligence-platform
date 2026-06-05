@@ -409,9 +409,9 @@ artifact_versionsは記事ブリーフ、レポート、AI生成結果など成�
 | POST | /api/projects/{projectId}/reports | Phase 3: レポート生成 |
 | GET | /api/projects/{projectId}/reports/{reportId} | Phase 3: レポート詳細取得 |
 | GET | /api/projects/{projectId}/reports/{reportId}/download | Phase 3: レポートファイルの短時間ダウンロードURL発行。発行操作をaudit_logsへ記録 |
-| POST | /api/projects/{projectId}/reports/{reportId}/share | Phase 3: 共有URL発行。share_token_hashとshare_expires_atを更新 |
-| DELETE | /api/projects/{projectId}/reports/{reportId}/share | Phase 3: 共有URL失効。share_token_hashを無効化し監査ログを記録 |
-| GET | /api/report-shares/{token} | Phase 3: 共有URLによるレポート公開取得。期限切れ・失効済みは404または410 |
+| POST | /api/projects/{projectId}/reports/{reportId}/share | Phase 3: 共有URL発行。トークンはレスポンスへ一度だけ返し、share_token_hashとshare_expires_atを更新する |
+| DELETE | /api/projects/{projectId}/reports/{reportId}/share | Phase 3: 共有URL失効。share_revoked_atを更新し監査ログを記録 |
+| GET | /api/report-shares/{token} | Phase 3: 共有URLによるレポート公開取得。未知/改ざんトークンは404、期限切れ・失効済みは410 |
 | POST | /api/projects/{projectId}/exports/csv | Phase 1向けCSVエクスポートジョブ登録。対象データとフィルタ条件を指定 |
 | POST | /api/projects/{projectId}/exports | Phase 3: CSV/Excelエクスポートジョブ登録。format、export_type、フィルタ条件を指定 |
 | GET | /api/projects/{projectId}/exports/{exportId} | Phase 1以降: エクスポート状態/ファイル情報取得。MVPはCSVのみ |
@@ -723,7 +723,7 @@ Phase 3追加: [AI再生成] [PDF出力] [共有URL発行]
 | 秘密情報 | APIキーはKey Vault参照。設定値はOptions patternで注入し、ログ出力禁止。 |
 | 監査 | 外部API実行、キー操作、ジョブ操作、CSV/Excel出力、レポート出力/ダウンロード、AI実行をaudit_logsへ固定の操作主体developerで保存。 |
 | 入力検証 | FluentValidation。URL/ドメイン、キーワード数、limit、sortBy/orderBy、matchTypeをサーバー側で検証。 |
-| 出力制御 | Phase 3の共有URLは期限付き署名、スコープ確認を必須にする。CSV/Excel出力とレポートダウンロードは短時間URLを発行し、監査ログを必須にする。 |
+| 出力制御 | Phase 3の共有URLは十分なランダムトークンを発行し、DBにはハッシュのみ保存する。共有URLの発行/失効はスコープ確認を必須にし、CSV/Excel出力とレポートダウンロードは短時間URLを発行して監査ログを必須にする。 |
 | AI | プロンプトに秘密情報を含めない。根拠データIDを保持し、画面上でAI生成であることを明示。 |
 
 ## 13. ログ/監視/運用設計

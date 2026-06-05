@@ -115,14 +115,14 @@ ISSUE-MVP-00X の続きから再開してください。
 - [x] ISSUE-MVP-016 Blazorキーワード探索、検索ボリューム、ダッシュボードを実装する
 - [x] ISSUE-MVP-017 MVP受入テストを整備する
 - [x] ISSUE-MVP-018 MVP運用、監視、ドキュメントを整備する
-- [ ] ISSUE-P2-001 Phase 2 DB/API/外部API基盤を追加する
+- [x] ISSUE-P2-001 Phase 2 DB/API/外部API基盤を追加する
 - [x] ISSUE-P2-002 競合分析と獲得語/ページ分析を実装する
 - [x] ISSUE-P2-003 コンテンツ分析と記事ブリーフを実装する
-- [ ] ISSUE-P2-004 トピッククラスターを実装する
-- [ ] ISSUE-P2-005 順位監視と順位アラートを実装する
+- [x] ISSUE-P2-004 トピッククラスターを実装する
+- [x] ISSUE-P2-005 順位監視と順位アラートを実装する
 - [x] ISSUE-P2-006 Phase 2 UIを実装する
-- [ ] ISSUE-P2-007 Phase 2受入テストを整備する
-- [ ] ISSUE-P3-001 Phase 3 DB/API基盤を追加する
+- [x] ISSUE-P2-007 Phase 2受入テストを整備する
+- [x] ISSUE-P3-001 Phase 3 DB/API基盤を追加する
 - [ ] ISSUE-P3-002 リライト優先度とカニバリ検出を実装する
 - [ ] ISSUE-P3-003 レポート生成、共有URL、監査を実装する
 - [ ] ISSUE-P3-004 CSV/ExcelインポートとExcelエクスポートを実装する
@@ -880,17 +880,31 @@ ISSUE-MVP-00X の続きから再開してください。
 
 参照ドキュメント: `docs/requirements.md`, `docs/db_design.md`, `docs/api_design.md`, `docs/basic_design.md`, `docs/external_api_design.md`, `docs/adr/0007-secret-store-and-audit.md`
 
+目的: Phase 3後続Issueで使うDB、Contracts、共通サービスを先に追加し、業務処理と個別API本体はISSUE-P3-002以降で実装できる状態にする。
+
 範囲:
 
-- [ ] Phase 3テーブルを追加する: `rewrite_tasks`, `cannibalization_candidates`, `reports`, `data_imports`, `external_connector_settings`, `external_connector_runs`, `ai_sessions`, `ai_messages`。
-- [ ] `IAiContentService` を定義する。
-- [ ] AIプロンプトからAPIキー、Webhook、認証情報、個人情報を除去する共通処理を実装する。
-- [ ] 共有URLのトークンハッシュ、期限、失効、期限切れ制御の共通処理を実装する。
+- [x] Phase 3テーブルを追加する: `rewrite_tasks`, `cannibalization_candidates`, `reports`, `data_imports`, `external_connector_settings`, `external_connector_runs`, `ai_sessions`, `ai_messages`。
+- [x] Phase 3 APIのContracts/DTO、ルートグループ、projectIdスコープ検証の土台を追加する。個別エンドポイント本体はISSUE-P3-002からISSUE-P3-006で実装する。
+- [x] `IAiContentService` を定義する。
+- [x] AIプロンプトからAPIキー、Webhook、認証情報、個人情報を除去する共通処理を実装する。
+- [x] 共有URLのトークン生成、ハッシュ化、期限、失効、期限切れ、改ざん拒否の共通処理を実装する。
 
 受入条件:
 
-- [ ] Phase 3 migrationが通る。
-- [ ] Secret実値を返さない設計が保たれる。
+- [x] Phase 3 migrationが通る。
+- [x] Phase 3 API土台がbuildで確認できる。
+- [x] AIプロンプト秘匿処理のUnit/Security testが通る。
+- [x] 共有URLトークンの有効、期限切れ、失効、改ざんケースを検証できる。
+- [x] Secret実値を返さない設計が保たれる。
+
+検証:
+
+- [x] `dotnet build`
+- [x] `dotnet test --filter Category=Unit`
+- [x] `dotnet test --filter Category=Contract`
+- [x] `dotnet test --filter Category=Integration`
+- [x] `dotnet test --filter Category=Security`
 
 ### ISSUE-P3-002 リライト優先度とカニバリ検出を実装する
 
@@ -904,9 +918,10 @@ ISSUE-MVP-00X の続きから再開してください。
 - [ ] `CannibalizationDetectionJob` を実装する。
 - [ ] `GET /api/projects/{projectId}/rewrite/tasks`
 - [ ] `GET /api/projects/{projectId}/rewrite/tasks/{taskId}`
-- [ ] `PUT /api/projects/{projectId}/rewrite/tasks/{taskId}`
+- [ ] `PUT /api/projects/{projectId}/rewrite/tasks/{taskId}` を実装し、`status`, `priority_score`, `assignee_actor`, `memo` を更新できるようにする。
 - [ ] `GET /api/projects/{projectId}/cannibalization/candidates`
 - [ ] `POST /api/projects/{projectId}/cannibalization/refresh`
+- [ ] P3-001で追加したContracts/DTO、ルートグループ、projectIdスコープ検証を使う。
 
 受入条件:
 
@@ -929,6 +944,7 @@ ISSUE-MVP-00X の続きから再開してください。
 - [ ] `POST /api/projects/{projectId}/reports/{reportId}/share`
 - [ ] `DELETE /api/projects/{projectId}/reports/{reportId}/share`
 - [ ] `GET /api/report-shares/{token}`
+- [ ] 共有URLの発行、検証、期限切れ、失効、改ざん拒否はP3-001の共通処理を使う。
 - [ ] レポート完了通知 `report_completed` を実装する。
 
 受入条件:
@@ -951,6 +967,7 @@ ISSUE-MVP-00X の続きから再開してください。
 - [ ] `GET /api/projects/{projectId}/imports/{importId}`
 - [ ] `GET /api/projects/{projectId}/imports/{importId}/errors`
 - [ ] 検証エラーと取込履歴を保存する。
+- [ ] P3-001で追加したContracts/DTO、ルートグループ、projectIdスコープ検証を使う。
 
 受入条件:
 
@@ -967,6 +984,7 @@ ISSUE-MVP-00X の続きから再開してください。
 - [ ] `AiAssistantJob` を実装する。
 - [ ] `POST /api/projects/{projectId}/ai/chat`
 - [ ] 自然言語から調査ジョブ、ブリーフ生成、差分分析、レポート要約を実行する。
+- [ ] AIプロンプト秘匿処理と `IAiContentService` はP3-001の共通処理/抽象を使う。
 - [ ] prompt、response、tool_calls、reference_data、token_usage、review_statusを保存する。
 - [ ] AI出力を人間レビュー前提の成果物として扱う。
 
@@ -990,6 +1008,7 @@ ISSUE-MVP-00X の続きから再開してください。
 - [ ] `GET /api/projects/{projectId}/connectors/{connectorId}/runs`
 - [ ] GSC/GA4/CMS/BIの設定、Secret参照、接続テスト履歴を保存する。
 - [ ] 実データ取得は行わない。
+- [ ] P3-001で追加したContracts/DTO、ルートグループ、projectIdスコープ検証を使う。
 
 受入条件:
 
@@ -1008,6 +1027,7 @@ ISSUE-MVP-00X の続きから再開してください。
 - [ ] S-130 AIアシスタントを実装する。
 - [ ] S-900 管理に外部連携スタブ設定と実行履歴を追加する。
 - [ ] S-010 ダッシュボードにリライト、カニバリ、レポート、AI関連指標を追加する。
+- [ ] P3-001で追加したPhase 3用Contracts/DTOとダッシュボードsummary項目を使う。
 
 受入条件:
 
@@ -1019,6 +1039,7 @@ ISSUE-MVP-00X の続きから再開してください。
 
 範囲:
 
+- [ ] P3-001のmigration、Phase 3 API土台build、AIプロンプト秘匿処理、共有URL共通処理のUnit/Security testを通す。
 - [ ] AC-007 レポート生成、ダウンロード、共有URL、期限切れ/失効制御を通す。
 - [ ] AC-015 AI prompt/response/reference/token_usage保存とレビュー状態を通す。
 - [ ] AC-016 CSV/Excelインポート、検証エラー、取込履歴を通す。

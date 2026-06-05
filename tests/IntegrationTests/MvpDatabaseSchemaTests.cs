@@ -61,6 +61,18 @@ public sealed class MvpDatabaseSchemaTests
         "alert_events"
     ];
 
+    private static readonly string[] RequiredPhase3Tables =
+    [
+        "rewrite_tasks",
+        "cannibalization_candidates",
+        "reports",
+        "data_imports",
+        "external_connector_settings",
+        "external_connector_runs",
+        "ai_sessions",
+        "ai_messages"
+    ];
+
     [Fact]
     [Trait("Category", "Integration")]
     public void ModelContainsMvpTablesAndSeedData()
@@ -141,6 +153,42 @@ public sealed class MvpDatabaseSchemaTests
         Assert.Contains("ix_influx_keyword_results_project_id_target", sql, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("ix_content_search_results_title_description_fts", sql, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("to_tsvector('simple', title || ' ' || description)", sql, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public void ModelAndMigrationSqlContainPhase3TablesIndexesAndShareTokenControls()
+    {
+        using var context = CreateContext();
+        var model = context.Model;
+
+        foreach (var tableName in RequiredPhase3Tables)
+        {
+            Assert.Contains(model.GetEntityTypes(), entityType => entityType.GetTableName() == tableName);
+        }
+
+        var report = model.FindEntityType(typeof(ReportEntity));
+        Assert.NotNull(report);
+        Assert.Contains(report!.GetProperties(), property => property.GetColumnName() == "share_token_hash");
+        Assert.Contains(report.GetProperties(), property => property.GetColumnName() == "share_revoked_at");
+
+        var migrator = context.GetService<IMigrator>();
+        var sql = migrator.GenerateScript(options: MigrationsSqlGenerationOptions.Idempotent);
+
+        Assert.Contains("CREATE TABLE rewrite_tasks", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("CREATE TABLE cannibalization_candidates", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("CREATE TABLE reports", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("CREATE TABLE data_imports", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("CREATE TABLE external_connector_settings", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("CREATE TABLE external_connector_runs", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("CREATE TABLE ai_sessions", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("CREATE TABLE ai_messages", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("share_revoked_at", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ux_reports_share_token_hash", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("share_token_hash IS NOT NULL", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ix_cannibalization_candidates_project_id_status_severity_score", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ix_external_connector_settings_workspace_id_project_id_connector_type_status", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ix_ai_messages_session_id_created_at", sql, StringComparison.OrdinalIgnoreCase);
     }
 
     private static SeoIntelligenceDbContext CreateContext()

@@ -3,11 +3,13 @@ using Hangfire.PostgreSql;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using SeoIntelligence.Application.Ai;
 using SeoIntelligence.Application.Configuration;
 using SeoIntelligence.Application.Infrastructure;
 using SeoIntelligence.Application.RakkoKeyword;
 using SeoIntelligence.Application.Redis;
 using SeoIntelligence.Application.Secrets;
+using SeoIntelligence.Application.Sharing;
 using SeoIntelligence.Application.Storage;
 using SeoIntelligence.Infrastructure.Persistence;
 using SeoIntelligence.Infrastructure.RakkoKeyword;
@@ -45,6 +47,8 @@ public static class InfrastructureServiceCollectionExtensions
 
         AddStorage(services, storageOptions);
         services.AddSeoIntelligenceAdministration();
+        services.TryAddSingleton<IPromptRedactor, SensitivePromptRedactor>();
+        services.TryAddSingleton<IShareTokenService, ShareTokenService>();
         services.AddSingleton<ISecretStore, ConfigurationSecretStore>();
         AddRakkoKeywordClient(services, rakkoKeywordOptions);
 

@@ -307,6 +307,8 @@ API認証情報の作成/ローテーションでは、`secretValue`系と`keyRe
 | Phase 3 | GET | `/api/projects/{projectId}/connectors/{connectorId}/runs` | 外部連携スタブ実行履歴取得 |
 | Phase 3 | POST | `/api/projects/{projectId}/ai/chat` | AIアシスタント実行 |
 
+ISSUE-P3-001では、上記Phase 3 APIのContracts/DTO、ルートグループ、projectIdスコープ検証の土台までを追加する。リライト、カニバリ、レポート、インポート、外部連携、AIの個別エンドポイント本体とジョブ登録はISSUE-P3-002からISSUE-P3-006で実装する。
+
 ## 8. 主要リクエスト/レスポンスモデル
 
 | モデル | 用途 | 主な項目 |
@@ -319,7 +321,7 @@ API認証情報の作成/ローテーションでは、`secretValue`系と`keyRe
 | `ApiCredentialRotateRequest` | API認証情報ローテーション | `newSecretValue`または`newKeyRef`のいずれか一方。契約スコープはAPI認証情報APIでは管理しない。 |
 | `KeywordDiscoveryRequest` | キーワード探索 | `seedKeyword`、`sources`、`limit`、`filter`、`sortBy`、`orderBy`、`syncPreferred` |
 | `SearchVolumeJobRequest` | 一括検索ボリューム調査 | `keywords`、`location`、`language`、`seoDifficulty`、`aggregationPeriodMonths`。MVPのCSV入力はブラウザ内でパースし、APIへは`keywords` JSON配列として送る。 |
-| `ProjectDashboardResponse` | ダッシュボード | Phase 1項目として`keywordDiscoverySummary`、`searchVolumeSummary`、`opportunityScoreSummary`、`creditUsageSummary`、`jobSummary`、`notificationSummary`を返す。Phase 2では`competitorSummary`、`influxSummary`、`contentAnalysisSummary`、`briefSummary`、`rankSummary`、`rankAlertSummary`を追加する。 |
+| `ProjectDashboardResponse` | ダッシュボード | Phase 1項目として`keywordDiscoverySummary`、`searchVolumeSummary`、`opportunityScoreSummary`、`creditUsageSummary`、`jobSummary`、`notificationSummary`を返す。Phase 2では`competitorSummary`、`influxSummary`、`contentAnalysisSummary`、`briefSummary`、`rankSummary`、`rankAlertSummary`を追加する。Phase 3では`rewriteSummary`、`cannibalizationSummary`、`reportSummary`、`aiSummary`を追加する。 |
 | `ContentAnalyzeRequest` | コンテンツ分析 | `keyword`、`includeContentSearch`、`includeHeadline`、`includeCoOccurrence`、`limit` |
 | `RankCheckJobRequest` | 順位チェック | `keywords`、`targets`、`matchType`、`depth`、`withMetrics`、`deduplicate` |
 | `ReportRequest` | レポート生成 | `reportType`、`period`、`format`（pdf/excel）、`sections`、`shareExpiresAt`。生成完了後は`reports.file_uri`を保持し、ダウンロードは専用APIで短時間URLを返す。 |
@@ -337,7 +339,7 @@ API認証情報の作成/ローテーションでは、`secretValue`系と`keyRe
 | 一括検索ボリューム | `keywords`は1から50,000件。重複排除後の件数でクレジット消費見込みを表示し、予算上限による停止は行わない。 |
 | 順位チェック | `targets`は1から50件。各targetはURLまたはドメインと`targetType`を持つ。`depth`は30/40/50/60/70/80/90/100。 |
 | ページング | `pageSize`は1から200。外部API結果の大容量取得はジョブまたはエクスポートに寄せる。 |
-| 共有URL | `shareExpiresAt`は未来日時のみ。失効済み、期限切れは404または410を返す。 |
+| 共有URL | `shareExpiresAt`は未来日時のみ。共有トークンは十分なランダム値をレスポンスへ一度だけ返し、DBにはハッシュのみ保存する。未知または改ざんトークンは404、期限切れまたは明示失効済みトークンは410を返す。 |
 | レポート | `format`はpdfまたはexcel。`period`は月次レポートでは`YYYY-MM`を基本とし、生成済みファイルのダウンロードはスコープ確認後に短時間URLを発行する。 |
 | CSV/Excel | インポートはPhase 3。ファイルはStorageへ直接アップロードし、APIサーバーはファイル本体を保持しない。 |
 
