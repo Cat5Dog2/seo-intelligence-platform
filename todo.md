@@ -914,19 +914,19 @@ ISSUE-MVP-00X の続きから再開してください。
 
 範囲:
 
-- [ ] `RewriteScoringJob` を実装する。
-- [ ] `CannibalizationDetectionJob` を実装する。
-- [ ] `GET /api/projects/{projectId}/rewrite/tasks`
-- [ ] `GET /api/projects/{projectId}/rewrite/tasks/{taskId}`
-- [ ] `PUT /api/projects/{projectId}/rewrite/tasks/{taskId}` を実装し、`status`, `priority_score`, `assignee_actor`, `memo` を更新できるようにする。
-- [ ] `GET /api/projects/{projectId}/cannibalization/candidates`
-- [ ] `POST /api/projects/{projectId}/cannibalization/refresh`
-- [ ] P3-001で追加したContracts/DTO、ルートグループ、projectIdスコープ検証を使う。
+- [x] `RewriteScoringJob` を実装する。
+- [x] `CannibalizationDetectionJob` を実装する。
+- [x] `GET /api/projects/{projectId}/rewrite/tasks`
+- [x] `GET /api/projects/{projectId}/rewrite/tasks/{taskId}`
+- [x] `PUT /api/projects/{projectId}/rewrite/tasks/{taskId}` を実装し、`status`, `priority_score`, `assignee_actor`, `memo` を更新できるようにする。
+- [x] `GET /api/projects/{projectId}/cannibalization/candidates`
+- [x] `POST /api/projects/{projectId}/cannibalization/refresh`
+- [x] P3-001で追加したContracts/DTO、ルートグループ、projectIdスコープ検証を使う。
 
 受入条件:
 
-- [ ] リライト候補を優先度付きで確認できる。
-- [ ] 同一キーワードに複数URLがランクインする候補を検出し、根拠と推奨対応を確認できる。
+- [x] リライト候補を優先度付きで確認できる。
+- [x] 同一キーワードに複数URLがランクインする候補を検出し、根拠と推奨対応を確認できる。
 
 ### ISSUE-P3-003 レポート生成、共有URL、監査を実装する
 

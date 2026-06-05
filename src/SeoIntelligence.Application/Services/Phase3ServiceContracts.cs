@@ -83,6 +83,7 @@ public sealed record CannibalizationCandidateDetails(
     Guid CandidateId,
     Guid ProjectId,
     Guid KeywordId,
+    string Keyword,
     string PrimaryUrl,
     JsonElement CompetingUrls,
     decimal SeverityScore,

@@ -45,6 +45,23 @@ public sealed class Phase3ApplicationContractTests
         Assert.Equal("Find rewrite priorities.", ai.RootElement.GetProperty("message").GetString());
         Assert.Equal("rank-results", ai.RootElement.GetProperty("allowedTools")[0].GetString());
         Assert.True(ai.RootElement.GetProperty("referenceScope").GetProperty("projectOnly").GetBoolean());
+
+        using var candidate = JsonDocument.Parse(JsonSerializer.Serialize(
+            new CannibalizationCandidateDetails(
+                CandidateId: Guid.Parse("018f4dd8-0002-7000-8000-000000000002"),
+                ProjectId: Guid.Parse("018f4dd8-0003-7000-8000-000000000003"),
+                KeywordId: Guid.Parse("018f4dd8-0004-7000-8000-000000000004"),
+                Keyword: "seo rewrite",
+                PrimaryUrl: "https://example.com/seo-guide",
+                CompetingUrls: JsonSerializer.SerializeToElement(new[] { new { url = "https://example.com/seo-tips" } }),
+                SeverityScore: 91.25m,
+                Evidence: JsonSerializer.SerializeToElement(new { rankSpread = 2 }),
+                Recommendation: JsonSerializer.SerializeToElement(new { action = "consolidate_or_canonicalize" }),
+                Status: "active",
+                DetectedAt: DateTime.Parse("2026-06-05T00:00:00Z")),
+            JsonOptions));
+        Assert.Equal("seo rewrite", candidate.RootElement.GetProperty("keyword").GetString());
+        Assert.Equal("consolidate_or_canonicalize", candidate.RootElement.GetProperty("recommendation").GetProperty("action").GetString());
     }
 
     [Fact]
