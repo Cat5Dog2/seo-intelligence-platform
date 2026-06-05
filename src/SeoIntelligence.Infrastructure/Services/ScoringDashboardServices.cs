@@ -359,6 +359,114 @@ internal sealed class DashboardService(SeoIntelligenceDbContext dbContext)
             .OrderByDescending(row => row.OpportunityScore)
             .ThenByDescending(row => row.ScoredAt)
             .ToArrayAsync(cancellationToken);
+        var competitorCount = await dbContext.CompetitiveResults
+            .AsNoTracking()
+            .CountAsync(entity => entity.ProjectId == projectId, cancellationToken);
+        var savedCompetitorCount = await dbContext.CompetitorSites
+            .AsNoTracking()
+            .CountAsync(entity => entity.ProjectId == projectId, cancellationToken);
+        var competitorTraffic = await dbContext.CompetitiveResults
+            .AsNoTracking()
+            .Where(entity => entity.ProjectId == projectId)
+            .GroupBy(_ => 1)
+            .Select(group => new
+            {
+                AverageDuplicateRate = group.Average(entity => entity.DuplicateRate),
+                EstimatedTraffic = group.Sum(entity => entity.EstimatedTraffic),
+                TrafficValue = group.Sum(entity => entity.TrafficValue)
+            })
+            .SingleOrDefaultAsync(cancellationToken);
+
+        var ownDomains = await dbContext.Sites
+            .AsNoTracking()
+            .Where(entity =>
+                entity.ProjectId == projectId &&
+                entity.Type == "own" &&
+                entity.Status == StatusValues.Active)
+            .Select(entity => entity.Domain)
+            .ToArrayAsync(cancellationToken);
+        var influxKeywords = await dbContext.InfluxKeywordResults
+            .AsNoTracking()
+            .Where(entity => entity.ProjectId == projectId)
+            .Select(entity => new
+            {
+                entity.Target,
+                entity.EstimatedTraffic
+            })
+            .ToArrayAsync(cancellationToken);
+        var influxPageSummary = await dbContext.InfluxPageResults
+            .AsNoTracking()
+            .Where(entity => entity.ProjectId == projectId)
+            .GroupBy(_ => 1)
+            .Select(group => new
+            {
+                PageCount = group.Count(),
+                EstimatedTraffic = group.Sum(entity => entity.EstimatedTraffic),
+                TrafficValue = group.Sum(entity => entity.TrafficValue)
+            })
+            .SingleOrDefaultAsync(cancellationToken);
+
+        var contentKeywordCount = await dbContext.ContentSearchResults
+            .AsNoTracking()
+            .Where(entity => entity.ProjectId == projectId)
+            .Select(entity => entity.KeywordId)
+            .Concat(dbContext.SerpHeadlinePages
+                .AsNoTracking()
+                .Where(entity => entity.ProjectId == projectId)
+                .Select(entity => entity.KeywordId))
+            .Concat(dbContext.CoOccurrenceWords
+                .AsNoTracking()
+                .Where(entity => entity.ProjectId == projectId)
+                .Select(entity => entity.KeywordId))
+            .Distinct()
+            .CountAsync(cancellationToken);
+        var contentResultCount = await dbContext.ContentSearchResults
+            .AsNoTracking()
+            .CountAsync(entity => entity.ProjectId == projectId, cancellationToken);
+        var headlinePageCount = await dbContext.SerpHeadlinePages
+            .AsNoTracking()
+            .CountAsync(entity => entity.ProjectId == projectId, cancellationToken);
+        var coOccurrenceWordCount = await dbContext.CoOccurrenceWords
+            .AsNoTracking()
+            .CountAsync(entity => entity.ProjectId == projectId, cancellationToken);
+
+        var briefs = await dbContext.ArticleBriefs
+            .AsNoTracking()
+            .Where(entity => entity.ProjectId == projectId)
+            .Select(entity => new { entity.Status, entity.ReviewStatus })
+            .ToArrayAsync(cancellationToken);
+
+        var rankCheckJobCount = await dbContext.Jobs
+            .AsNoTracking()
+            .CountAsync(
+                entity =>
+                    entity.WorkspaceId == context.WorkspaceId &&
+                    entity.ProjectId == projectId &&
+                    entity.JobType == RankMonitoringService.RegisterJobType,
+                cancellationToken);
+        var rankPositions = await dbContext.RankResults
+            .AsNoTracking()
+            .Where(entity => entity.ProjectId == projectId)
+            .Select(entity => entity.Position)
+            .ToArrayAsync(cancellationToken);
+        var activeAlertCount = await dbContext.Alerts
+            .AsNoTracking()
+            .CountAsync(
+                entity => entity.ProjectId == projectId && entity.Status == StatusValues.Active,
+                cancellationToken);
+        var unresolvedAlertEventCount = await dbContext.AlertEvents
+            .AsNoTracking()
+            .CountAsync(
+                entity => entity.ProjectId == projectId && entity.ResolvedAt == null,
+                cancellationToken);
+        var rankAlertNotificationCount = await dbContext.NotificationDeliveries
+            .AsNoTracking()
+            .CountAsync(
+                entity =>
+                    entity.WorkspaceId == context.WorkspaceId &&
+                    entity.ProjectId == projectId &&
+                    entity.EventType == NotificationService.RankAlertEventType,
+                cancellationToken);
 
         return Result<DashboardSnapshot>.Success(new DashboardSnapshot(
             keywordCandidateCount,
@@ -370,11 +478,54 @@ internal sealed class DashboardService(SeoIntelligenceDbContext dbContext)
             searchVolumeResultCount,
             opportunityScoreCount,
             topOpportunityScores,
-            notificationFailureCount));
+            notificationFailureCount,
+            new DashboardCompetitorSummary(
+                competitorCount,
+                savedCompetitorCount,
+                competitorTraffic?.AverageDuplicateRate ?? 0m,
+                competitorTraffic?.EstimatedTraffic ?? 0m,
+                competitorTraffic?.TrafficValue ?? 0m),
+            new DashboardInfluxSummary(
+                influxKeywords.Length,
+                influxKeywords.Count(keyword => IsGapTarget(keyword.Target, ownDomains)),
+                influxPageSummary?.PageCount ?? 0,
+                influxKeywords.Sum(keyword => keyword.EstimatedTraffic) + (influxPageSummary?.EstimatedTraffic ?? 0m),
+                influxPageSummary?.TrafficValue ?? 0m),
+            new DashboardContentAnalysisSummary(
+                contentKeywordCount,
+                contentResultCount,
+                headlinePageCount,
+                coOccurrenceWordCount),
+            new DashboardBriefSummary(
+                briefs.Length,
+                briefs.Count(brief => string.Equals(brief.Status, "draft", StringComparison.OrdinalIgnoreCase)),
+                briefs.Count(brief => string.Equals(brief.ReviewStatus, StatusValues.Pending, StringComparison.OrdinalIgnoreCase)),
+                briefs.Count(brief => string.Equals(brief.ReviewStatus, "reviewed", StringComparison.OrdinalIgnoreCase))),
+            new DashboardRankSummary(
+                rankCheckJobCount,
+                rankPositions.Length,
+                BuildRankDistribution(rankPositions)),
+            new DashboardRankAlertSummary(
+                activeAlertCount,
+                unresolvedAlertEventCount,
+                rankAlertNotificationCount)));
     }
 
     private static Result<T> Failure<T>(ErrorCode code, string message)
         => Result<T>.Failure(new Error(code, message));
+
+    private static RankDistribution BuildRankDistribution(IReadOnlyList<int> positions)
+        => new(
+            positions.Count(position => position is >= 1 and <= 3),
+            positions.Count(position => position is >= 4 and <= 10),
+            positions.Count(position => position is >= 11 and <= 20),
+            positions.Count(position => position is >= 21 and <= 50),
+            positions.Count(position => position is >= 51 and <= 100),
+            positions.Count(position => position <= 0 || position > 100));
+
+    private static bool IsGapTarget(string target, IReadOnlyList<string> ownDomains)
+        => ownDomains.Count == 0 ||
+            !ownDomains.Any(domain => target.Contains(domain, StringComparison.OrdinalIgnoreCase));
 }
 
 internal sealed class OpportunityScoringJob(

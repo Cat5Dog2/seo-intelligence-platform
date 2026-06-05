@@ -1,0 +1,487 @@
+@page "/briefs"
+@using System.Text.Json
+@implements IDisposable
+@inject ISeoIntelligenceApiClient ApiClient
+@inject ProjectSelectionState ProjectState
+
+<PageTitle>記事ブリーフ - SEO Intelligence</PageTitle>
+
+<div class="page-stack">
+    <header class="page-header">
+        <div>
+            <h1>記事ブリーフ</h1>
+            <p>選択中プロジェクト: @(ProjectState.SelectedProject?.Name ?? "未選択")</p>
+        </div>
+        <div class="toolbar">
+            <button type="button" class="secondary-button" @onclick="GenerateAsync" disabled="@(!CanOperate)">生成</button>
+            <button type="button" class="secondary-button" @onclick="LoadAsync" disabled="@(ProjectState.SelectedProject is null)">更新</button>
+        </div>
+    </header>
+
+    <ErrorSummary Errors="@Errors" />
+    @if (!string.IsNullOrWhiteSpace(Message))
+    {
+        <div class="state-row">@Message</div>
+    }
+
+    <section class="panel">
+        <div class="section-heading">
+            <h2>生成条件</h2>
+            <span class="muted">AI再生成はPhase 3</span>
+        </div>
+        <div class="form-grid dense-form">
+            <label class="field wide-field">
+                <span>target keyword</span>
+                <input @bind="GenerateForm.TargetKeyword" @bind:event="oninput" disabled="@(ProjectState.SelectedProject is null)" />
+            </label>
+            <label class="field wide-field">
+                <span>タイトル</span>
+                <input @bind="GenerateForm.Title" disabled="@(ProjectState.SelectedProject is null)" />
+            </label>
+            <label class="field">
+                <span>Cluster Id</span>
+                <input @bind="GenerateForm.ClusterId" disabled="@(ProjectState.SelectedProject is null)" />
+            </label>
+            <label class="field wide-field">
+                <span>競合URL（改行区切り）</span>
+                <textarea @bind="GenerateForm.CompetitorUrls" disabled="@(ProjectState.SelectedProject is null)"></textarea>
+            </label>
+            <button type="button" class="primary-button" @onclick="GenerateAsync" disabled="@(!CanOperate)">生成ジョブ登録</button>
+        </div>
+    </section>
+
+    <section class="split-grid">
+        <div class="panel">
+            <div class="section-heading">
+                <h2>ブリーフ一覧</h2>
+                <div class="toolbar">
+                    <label class="field-inline">
+                        <span>検索</span>
+                        <input @bind="Query" @bind:event="oninput" disabled="@(ProjectState.SelectedProject is null)" />
+                    </label>
+                    <label class="field-inline">
+                        <span>review</span>
+                        <select @bind="ReviewStatusFilter" disabled="@(ProjectState.SelectedProject is null)">
+                            <option value="">all</option>
+                            <option value="pending">pending</option>
+                            <option value="reviewed">reviewed</option>
+                            <option value="rejected">rejected</option>
+                        </select>
+                    </label>
+                    <button type="button" class="secondary-button" @onclick="LoadAsync" disabled="@(ProjectState.SelectedProject is null)">検索</button>
+                </div>
+            </div>
+            <DataTable Items="@Briefs" Columns="@BriefColumns" IsLoading="@IsLoading" EmptyText="記事ブリーフはありません。">
+                <RowActions Context="brief">
+                    <button type="button" class="table-action" @onclick="() => SelectBriefAsync(brief.BriefId)">詳細</button>
+                </RowActions>
+            </DataTable>
+        </div>
+
+        <div class="panel">
+            <div class="section-heading">
+                <h2>詳細・編集</h2>
+                <div class="toolbar">
+                    <button type="button" class="secondary-button" @onclick="SaveAsync" disabled="@(SelectedBrief is null)">保存</button>
+                    <button type="button" class="secondary-button" @onclick="ExportMarkdownAsync" disabled="@(SelectedBrief is null)">Markdown出力</button>
+                    <button type="button" class="secondary-button" @onclick="ExportCsvAsync" disabled="@(SelectedBrief is null)">CSV出力</button>
+                </div>
+            </div>
+            @if (SelectedBrief is null)
+            {
+                <div class="state-row">ブリーフを選択してください。</div>
+            }
+            else
+            {
+                <div class="form-grid dense-form">
+                    <label class="field wide-field">
+                        <span>タイトル</span>
+                        <input @bind="EditForm.Title" />
+                    </label>
+                    <label class="field">
+                        <span>review_status</span>
+                        <select @bind="EditForm.ReviewStatus">
+                            <option value="pending">pending</option>
+                            <option value="reviewed">reviewed</option>
+                            <option value="rejected">rejected</option>
+                        </select>
+                    </label>
+                    <label class="field">
+                        <span>status</span>
+                        <select @bind="EditForm.Status">
+                            <option value="draft">draft</option>
+                            <option value="active">active</option>
+                            <option value="archived">archived</option>
+                        </select>
+                    </label>
+                    <label class="field wide-field">
+                        <span>変更メモ</span>
+                        <input @bind="EditForm.ChangeSummary" />
+                    </label>
+                    <label class="field wide-field json-field">
+                        <span>content JSON</span>
+                        <textarea @bind="EditForm.ContentJson"></textarea>
+                    </label>
+                </div>
+
+                <div class="detail-list">
+                    <div><span>target keyword</span><strong>@(SelectedBrief.TargetKeyword ?? "-")</strong></div>
+                    <div><span>version</span><strong>@SelectedBrief.CurrentVersion</strong></div>
+                    <div><span>updated</span><strong>@FormatDateTime(SelectedBrief.UpdatedAt)</strong></div>
+                </div>
+
+                <h3 class="subsection-title">版履歴</h3>
+                <DataTable Items="@Versions" Columns="@VersionColumns" IsLoading="@IsVersionLoading" EmptyText="版履歴はありません。" />
+            }
+        </div>
+    </section>
+</div>
+
+@code {
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        WriteIndented = true
+    };
+
+    private static readonly IReadOnlyList<DataTableColumn<ArticleBriefSummary>> BriefColumns =
+    [
+        new("title", row => row.Title),
+        new("keyword", row => row.TargetKeyword),
+        new("version", row => row.CurrentVersion.ToString(), "table-number"),
+        new("review", row => row.ReviewStatus),
+        new("status", row => row.Status),
+        new("updated", row => FormatDateTime(row.UpdatedAt))
+    ];
+
+    private static readonly IReadOnlyList<DataTableColumn<ArticleBriefVersionDetails>> VersionColumns =
+    [
+        new("version", row => row.VersionNo.ToString(), "table-number"),
+        new("review", row => row.ReviewStatus),
+        new("summary", row => row.ChangeSummary),
+        new("hash", row => row.ContentHash),
+        new("created", row => FormatDateTime(row.CreatedAt))
+    ];
+
+    private IReadOnlyList<ArticleBriefSummary> Briefs { get; set; } = [];
+
+    private ArticleBriefDetails? SelectedBrief { get; set; }
+
+    private IReadOnlyList<ArticleBriefVersionDetails> Versions { get; set; } = [];
+
+    private IReadOnlyList<ApiError> Errors { get; set; } = [];
+
+    private string? Message { get; set; }
+
+    private GenerateBriefFormModel GenerateForm { get; set; } = new();
+
+    private BriefEditFormModel EditForm { get; set; } = new();
+
+    private bool IsLoading { get; set; }
+
+    private bool IsVersionLoading { get; set; }
+
+    private bool IsGenerating { get; set; }
+
+    private string? Query { get; set; }
+
+    private string? ReviewStatusFilter { get; set; }
+
+    private bool CanOperate
+        => ProjectState.SelectedProject is not null && !IsGenerating;
+
+    protected override async Task OnInitializedAsync()
+    {
+        ProjectState.Changed += OnProjectStateChanged;
+        await ProjectState.LoadAsync();
+        await LoadAsync();
+    }
+
+    private async Task GenerateAsync()
+    {
+        if (ProjectState.SelectedProject is not { } project)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(GenerateForm.TargetKeyword))
+        {
+            Errors = [new ApiError("Validation.TargetKeyword.Required", "target keywordを入力してください。", "targetKeyword")];
+            return;
+        }
+
+        var clusterId = ParseNullableGuid(GenerateForm.ClusterId, "clusterId");
+        if (Errors.Count > 0)
+        {
+            return;
+        }
+
+        IsGenerating = true;
+        Errors = [];
+        Message = null;
+        var result = await ApiClient.GenerateBriefAsync(
+            project.ProjectId,
+            new GenerateBriefRequest(
+                TargetKeyword: GenerateForm.TargetKeyword.Trim(),
+                ClusterId: clusterId,
+                Title: Optional(GenerateForm.Title),
+                CompetitorUrls: ParseLines(GenerateForm.CompetitorUrls)));
+        if (result.IsSuccess && result.Data is { } job)
+        {
+            Message = $"記事ブリーフ生成ジョブを登録しました: {job.JobId:D}";
+            await LoadAsync();
+        }
+        else
+        {
+            Errors = result.Errors;
+        }
+
+        IsGenerating = false;
+    }
+
+    private async Task LoadAsync()
+    {
+        if (ProjectState.SelectedProject is not { } project)
+        {
+            Briefs = [];
+            SelectedBrief = null;
+            Versions = [];
+            return;
+        }
+
+        IsLoading = true;
+        Errors = [];
+        var result = await ApiClient.GetBriefsAsync(
+            project.ProjectId,
+            Query,
+            reviewStatus: ReviewStatusFilter,
+            pageSize: 100);
+        if (result.IsSuccess)
+        {
+            Briefs = result.Data ?? [];
+        }
+        else
+        {
+            Briefs = [];
+            Errors = result.Errors;
+        }
+
+        IsLoading = false;
+    }
+
+    private async Task SelectBriefAsync(Guid briefId)
+    {
+        if (ProjectState.SelectedProject is not { } project)
+        {
+            return;
+        }
+
+        Errors = [];
+        var result = await ApiClient.GetBriefAsync(project.ProjectId, briefId);
+        if (result.IsSuccess && result.Data is { } brief)
+        {
+            SelectedBrief = brief;
+            EditForm = new BriefEditFormModel
+            {
+                Title = brief.Title,
+                ReviewStatus = brief.ReviewStatus,
+                Status = brief.Status,
+                ContentJson = FormatJson(brief.Content)
+            };
+            await LoadVersionsAsync(brief.BriefId);
+        }
+        else
+        {
+            SelectedBrief = null;
+            Versions = [];
+            Errors = result.Errors;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (ProjectState.SelectedProject is not { } project || SelectedBrief is null)
+        {
+            return;
+        }
+
+        Errors = [];
+        var content = ParseJson(EditForm.ContentJson, "content");
+        if (Errors.Count > 0)
+        {
+            return;
+        }
+
+        Errors = [];
+        Message = null;
+        var result = await ApiClient.UpdateBriefAsync(
+            project.ProjectId,
+            SelectedBrief.BriefId,
+            new ArticleBriefUpdateRequest(
+                EditForm.Title,
+                content,
+                EditForm.ReviewStatus,
+                EditForm.Status,
+                EditForm.ChangeSummary));
+        if (result.IsSuccess && result.Data is { } updated)
+        {
+            Message = "保存しました。";
+            SelectedBrief = updated;
+            EditForm.ContentJson = FormatJson(updated.Content);
+            await LoadAsync();
+            await LoadVersionsAsync(updated.BriefId);
+        }
+        else
+        {
+            Errors = result.Errors;
+        }
+    }
+
+    private async Task ExportAsync(string format)
+    {
+        if (ProjectState.SelectedProject is not { } project || SelectedBrief is null)
+        {
+            return;
+        }
+
+        Errors = [];
+        Message = null;
+        var result = await ApiClient.ExportBriefAsync(
+            project.ProjectId,
+            SelectedBrief.BriefId,
+            new ArticleBriefExportRequest(format));
+        if (result.IsSuccess && result.Data is { } job)
+        {
+            Message = $"{format}出力ジョブを登録しました: {job.JobId:D}";
+        }
+        else
+        {
+            Errors = result.Errors;
+        }
+    }
+
+    private Task ExportMarkdownAsync()
+        => ExportAsync("markdown");
+
+    private Task ExportCsvAsync()
+        => ExportAsync("csv");
+
+    private async Task LoadVersionsAsync(Guid briefId)
+    {
+        if (ProjectState.SelectedProject is not { } project)
+        {
+            return;
+        }
+
+        IsVersionLoading = true;
+        var result = await ApiClient.GetBriefVersionsAsync(project.ProjectId, briefId, pageSize: 50);
+        if (result.IsSuccess)
+        {
+            Versions = result.Data ?? [];
+        }
+        else
+        {
+            Versions = [];
+            Errors = result.Errors;
+        }
+
+        IsVersionLoading = false;
+    }
+
+    private JsonElement? ParseJson(string? json, string target)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            return document.RootElement.Clone();
+        }
+        catch (JsonException exception)
+        {
+            Errors = [new ApiError("Validation.Json.Invalid", exception.Message, target)];
+            return null;
+        }
+    }
+
+    private Guid? ParseNullableGuid(string? value, string target)
+    {
+        Errors = [];
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        if (Guid.TryParse(value, out var parsed))
+        {
+            return parsed;
+        }
+
+        Errors = [new ApiError("Validation.Guid.Invalid", $"{target} must be a GUID.", target)];
+        return null;
+    }
+
+    private async void OnProjectStateChanged()
+    {
+        await InvokeAsync(async () =>
+        {
+            await LoadAsync();
+            StateHasChanged();
+        });
+    }
+
+    private static IReadOnlyList<string>? ParseLines(string? value)
+    {
+        var lines = string.IsNullOrWhiteSpace(value)
+            ? []
+            : value.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Where(line => !string.IsNullOrWhiteSpace(line))
+                .ToArray();
+        return lines.Length == 0 ? null : lines;
+    }
+
+    private static string FormatJson(JsonElement content)
+    {
+        if (content.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
+        {
+            return "{}";
+        }
+
+        return JsonSerializer.Serialize(content, JsonOptions);
+    }
+
+    private static string? Optional(string? value)
+        => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static string FormatDateTime(DateTime value)
+        => value.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
+
+    public void Dispose()
+        => ProjectState.Changed -= OnProjectStateChanged;
+
+    private sealed class GenerateBriefFormModel
+    {
+        public string? TargetKeyword { get; set; }
+
+        public string? Title { get; set; }
+
+        public string? ClusterId { get; set; }
+
+        public string? CompetitorUrls { get; set; }
+    }
+
+    private sealed class BriefEditFormModel
+    {
+        public string? Title { get; set; }
+
+        public string? ReviewStatus { get; set; } = "pending";
+
+        public string? Status { get; set; } = "draft";
+
+        public string? ContentJson { get; set; } = "{}";
+
+        public string? ChangeSummary { get; set; } = "Manual update.";
+    }
+}

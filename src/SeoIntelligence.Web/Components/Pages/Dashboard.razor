@@ -17,6 +17,8 @@
             <button type="button" class="secondary-button" @onclick="LoadAsync" disabled="@IsLoading">更新</button>
             <button type="button" class="secondary-button" @onclick="NavigateToKeywords">キーワード探索</button>
             <button type="button" class="secondary-button" @onclick="NavigateToSearchVolume">一括調査</button>
+            <button type="button" class="secondary-button" @onclick="NavigateToCompetitors">競合分析</button>
+            <button type="button" class="secondary-button" @onclick="NavigateToRankMonitoring">順位監視</button>
         </div>
     </header>
 
@@ -72,6 +74,55 @@
             <div class="metric">
                 <span>通知失敗</span>
                 <strong>@Snapshot.NotificationFailureCount</strong>
+            </div>
+        </section>
+
+        <section class="metric-strip dashboard-metrics" aria-label="Phase 2指標">
+            <div class="metric">
+                <span>競合サイト</span>
+                <strong>@(Snapshot.CompetitorSummary?.CompetitorCount ?? 0)</strong>
+            </div>
+            <div class="metric">
+                <span>獲得語</span>
+                <strong>@(Snapshot.InfluxSummary?.KeywordCount ?? 0)</strong>
+            </div>
+            <div class="metric">
+                <span>獲得ページ</span>
+                <strong>@(Snapshot.InfluxSummary?.PageCount ?? 0)</strong>
+            </div>
+            <div class="metric">
+                <span>コンテンツ分析</span>
+                <strong>@(Snapshot.ContentAnalysisSummary?.KeywordCount ?? 0)</strong>
+            </div>
+            <div class="metric">
+                <span>記事ブリーフ</span>
+                <strong>@(Snapshot.BriefSummary?.BriefCount ?? 0)</strong>
+            </div>
+            <div class="metric">
+                <span>順位チェック</span>
+                <strong>@(Snapshot.RankSummary?.RankCheckJobCount ?? 0)</strong>
+            </div>
+            <div class="metric">
+                <span>順位結果</span>
+                <strong>@(Snapshot.RankSummary?.RankResultCount ?? 0)</strong>
+            </div>
+            <div class="metric">
+                <span>未解決アラート</span>
+                <strong>@(Snapshot.RankAlertSummary?.UnresolvedEventCount ?? 0)</strong>
+            </div>
+        </section>
+
+        <section class="panel">
+            <div class="section-heading">
+                <h2>Phase 2導線</h2>
+            </div>
+            <div class="button-row">
+                <button type="button" class="secondary-button" @onclick="NavigateToClusters">クラスタ生成</button>
+                <button type="button" class="secondary-button" @onclick="NavigateToCompetitors">競合分析</button>
+                <button type="button" class="secondary-button" @onclick="NavigateToInflux">獲得語/ページ</button>
+                <button type="button" class="secondary-button" @onclick="NavigateToContentAnalysis">コンテンツ分析</button>
+                <button type="button" class="secondary-button" @onclick="NavigateToBriefs">記事ブリーフ</button>
+                <button type="button" class="secondary-button" @onclick="NavigateToRankMonitoring">順位監視</button>
             </div>
         </section>
 
@@ -131,7 +182,11 @@
         => Snapshot is not null &&
             Snapshot.KeywordDiscoveryCount == 0 &&
             Snapshot.SearchVolumeJobCount == 0 &&
-            Snapshot.OpportunityScoreCount == 0;
+            Snapshot.OpportunityScoreCount == 0 &&
+            (Snapshot.CompetitorSummary?.CompetitorCount ?? 0) == 0 &&
+            (Snapshot.ContentAnalysisSummary?.KeywordCount ?? 0) == 0 &&
+            (Snapshot.BriefSummary?.BriefCount ?? 0) == 0 &&
+            (Snapshot.RankSummary?.RankResultCount ?? 0) == 0;
 
     protected override async Task OnInitializedAsync()
     {
@@ -211,6 +266,24 @@
 
     private void NavigateToSearchVolume()
         => Navigation.NavigateTo("/search-volume");
+
+    private void NavigateToClusters()
+        => Navigation.NavigateTo("/clusters");
+
+    private void NavigateToCompetitors()
+        => Navigation.NavigateTo("/competitors");
+
+    private void NavigateToInflux()
+        => Navigation.NavigateTo("/influx");
+
+    private void NavigateToContentAnalysis()
+        => Navigation.NavigateTo("/content-analysis");
+
+    private void NavigateToBriefs()
+        => Navigation.NavigateTo("/briefs");
+
+    private void NavigateToRankMonitoring()
+        => Navigation.NavigateTo("/rank-monitoring");
 
     private static string FormatDateTime(DateTime value)
         => value.ToLocalTime().ToString("yyyy-MM-dd HH:mm");

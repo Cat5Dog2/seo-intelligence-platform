@@ -1,0 +1,612 @@
+@page "/rank-monitoring"
+@using System.Text.Json
+@implements IDisposable
+@inject ISeoIntelligenceApiClient ApiClient
+@inject ProjectSelectionState ProjectState
+
+<PageTitle>順位監視 - SEO Intelligence</PageTitle>
+
+<div class="page-stack">
+    <header class="page-header">
+        <div>
+            <h1>順位監視</h1>
+            <p>選択中プロジェクト: @(ProjectState.SelectedProject?.Name ?? "未選択")</p>
+        </div>
+        <div class="toolbar">
+            <button type="button" class="secondary-button" @onclick="RegisterRankCheckAsync" disabled="@(!CanOperate)">順位チェック登録</button>
+            <button type="button" class="secondary-button" @onclick="LoadAllAsync" disabled="@(ProjectState.SelectedProject is null)">更新</button>
+        </div>
+    </header>
+
+    <ErrorSummary Errors="@Errors" />
+    @if (!string.IsNullOrWhiteSpace(Message))
+    {
+        <div class="state-row">@Message</div>
+    }
+
+    <section class="split-grid">
+        <div class="panel">
+            <div class="section-heading">
+                <h2>順位チェック登録</h2>
+                <span class="muted">depth: 30-100</span>
+            </div>
+            <div class="form-grid dense-form">
+                <label class="field wide-field">
+                    <span>keywords（改行区切り）</span>
+                    <textarea @bind="RankForm.KeywordsText" disabled="@(ProjectState.SelectedProject is null)"></textarea>
+                </label>
+                <label class="field wide-field">
+                    <span>targets（改行区切り）</span>
+                    <textarea @bind="RankForm.TargetsText" disabled="@(ProjectState.SelectedProject is null)"></textarea>
+                </label>
+                <label class="field">
+                    <span>targetType</span>
+                    <select @bind="RankForm.TargetType" disabled="@(ProjectState.SelectedProject is null)">
+                        <option value="domain">domain</option>
+                        <option value="url">url</option>
+                    </select>
+                </label>
+                <label class="field">
+                    <span>matchType</span>
+                    <select @bind="RankForm.MatchType" disabled="@(ProjectState.SelectedProject is null)">
+                        <option value="domain">domain</option>
+                        <option value="url">url</option>
+                        <option value="exact">exact</option>
+                        <option value="prefix">prefix</option>
+                    </select>
+                </label>
+                <label class="field">
+                    <span>depth</span>
+                    <select @bind="RankForm.Depth" disabled="@(ProjectState.SelectedProject is null)">
+                        @foreach (var depth in AllowedDepths)
+                        {
+                            <option value="@depth">@depth</option>
+                        }
+                    </select>
+                </label>
+                <label class="check-option compact-check">
+                    <input type="checkbox" @bind="RankForm.WithMetrics" disabled="@(ProjectState.SelectedProject is null)" />
+                    <span>withMetrics</span>
+                </label>
+                <label class="check-option compact-check">
+                    <input type="checkbox" @bind="RankForm.Deduplicate" disabled="@(ProjectState.SelectedProject is null)" />
+                    <span>deduplicate</span>
+                </label>
+                <button type="button" class="primary-button" @onclick="RegisterRankCheckAsync" disabled="@(!CanOperate)">登録</button>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="section-heading">
+                <h2>順位分布</h2>
+                <span class="muted">@(RankTotalCount)件</span>
+            </div>
+            <div class="metric-strip rank-distribution">
+                <div class="metric"><span>Top 3</span><strong>@(RankList?.Distribution.Top3 ?? 0)</strong></div>
+                <div class="metric"><span>4-10</span><strong>@(RankList?.Distribution.Top10 ?? 0)</strong></div>
+                <div class="metric"><span>11-20</span><strong>@(RankList?.Distribution.Top20 ?? 0)</strong></div>
+                <div class="metric"><span>21-50</span><strong>@(RankList?.Distribution.Top50 ?? 0)</strong></div>
+                <div class="metric"><span>51-100</span><strong>@(RankList?.Distribution.Top100 ?? 0)</strong></div>
+                <div class="metric"><span>圏外</span><strong>@(RankList?.Distribution.OutOfRange ?? 0)</strong></div>
+            </div>
+        </div>
+    </section>
+
+    <section class="panel">
+        <div class="section-heading">
+            <h2>順位履歴</h2>
+            <div class="toolbar">
+                <label class="field-inline">
+                    <span>Job Id</span>
+                    <input @bind="RankQuery.JobId" />
+                </label>
+                <label class="field-inline">
+                    <span>target</span>
+                    <input @bind="RankQuery.Target" />
+                </label>
+                <label class="field-inline">
+                    <span>検索</span>
+                    <input @bind="RankQuery.Q" @bind:event="oninput" />
+                </label>
+                <button type="button" class="secondary-button" @onclick="LoadRankResultsAsync" disabled="@(ProjectState.SelectedProject is null)">検索</button>
+            </div>
+        </div>
+        <DataTable Items="@RankRows" Columns="@RankColumns" IsLoading="@IsRankLoading" EmptyText="順位結果はありません。">
+            <RowActions Context="row">
+                <AuditLink ResourceType="rank_result" ResourceId="@row.RankResultId.ToString("D")" />
+            </RowActions>
+        </DataTable>
+    </section>
+
+    <section class="split-grid">
+        <div class="panel">
+            <div class="section-heading">
+                <h2>アラート条件</h2>
+                <button type="button" class="secondary-button" @onclick="LoadAlertsAsync" disabled="@(ProjectState.SelectedProject is null)">更新</button>
+            </div>
+            <div class="form-grid dense-form">
+                <label class="field">
+                    <span>alertType</span>
+                    <select @bind="AlertForm.AlertType" disabled="@(ProjectState.SelectedProject is null)">
+                        <option value="rank_drop">rank_drop</option>
+                        <option value="out_of_range">out_of_range</option>
+                        <option value="competitor_passed">competitor_passed</option>
+                        <option value="top_entry">top_entry</option>
+                        <option value="four_to_ten">four_to_ten</option>
+                    </select>
+                </label>
+                <label class="field">
+                    <span>Notification Channel Id</span>
+                    <input @bind="AlertForm.NotificationChannelId" disabled="@(ProjectState.SelectedProject is null)" />
+                </label>
+                <label class="field wide-field json-field">
+                    <span>condition JSON</span>
+                    <textarea @bind="AlertForm.ConditionJson" disabled="@(ProjectState.SelectedProject is null)"></textarea>
+                </label>
+                <button type="button" class="primary-button" @onclick="SaveAlertAsync" disabled="@(ProjectState.SelectedProject is null)">保存</button>
+                @if (EditingAlertId.HasValue)
+                {
+                    <button type="button" class="text-button" @onclick="ClearAlertForm">新規</button>
+                }
+            </div>
+            <DataTable Items="@Alerts" Columns="@AlertColumns" IsLoading="@IsAlertLoading" EmptyText="アラート条件はありません。">
+                <RowActions Context="alert">
+                    <div class="row-actions">
+                        <button type="button" class="table-action" @onclick="() => EditAlert(alert)">編集</button>
+                        @if (alert.Status == "disabled")
+                        {
+                            <button type="button" class="table-action" @onclick="() => EnableAlertAsync(alert.AlertId)">有効化</button>
+                        }
+                        else
+                        {
+                            <button type="button" class="table-action danger-button" @onclick="() => DisableAlertAsync(alert.AlertId)">無効化</button>
+                        }
+                        <AuditLink ResourceType="alert" ResourceId="@alert.AlertId.ToString("D")" />
+                    </div>
+                </RowActions>
+            </DataTable>
+        </div>
+
+        <div class="panel">
+            <div class="section-heading">
+                <h2>アラート履歴</h2>
+                <div class="toolbar">
+                    <label class="field-inline">
+                        <span>eventType</span>
+                        <input @bind="AlertEventType" />
+                    </label>
+                    <button type="button" class="secondary-button" @onclick="LoadAlertEventsAsync" disabled="@(ProjectState.SelectedProject is null)">検索</button>
+                </div>
+            </div>
+            <DataTable Items="@AlertEvents" Columns="@AlertEventColumns" IsLoading="@IsAlertEventLoading" EmptyText="アラート履歴はありません。">
+                <RowActions Context="alertEvent">
+                    <div class="row-actions">
+                        @if (alertEvent.NotificationDeliveryId.HasValue)
+                        {
+                            <AuditLink ResourceType="notification_delivery" ResourceId="@alertEvent.NotificationDeliveryId.Value.ToString("D")" />
+                        }
+                        <AuditLink ResourceType="alert_event" ResourceId="@alertEvent.AlertEventId.ToString("D")" />
+                    </div>
+                </RowActions>
+            </DataTable>
+        </div>
+    </section>
+</div>
+
+@code {
+    private static readonly int[] AllowedDepths = [30, 40, 50, 60, 70, 80, 90, 100];
+
+    private static readonly IReadOnlyList<DataTableColumn<RankResultRow>> RankColumns =
+    [
+        new("keyword", row => row.Keyword),
+        new("target", row => row.Target),
+        new("position", row => row.Position.ToString(), "table-number"),
+        new("prev", row => row.PreviousPosition?.ToString() ?? "-", "table-number"),
+        new("delta", row => row.PositionDelta?.ToString() ?? "-", "table-number"),
+        new("ranked url", row => row.RankedUrl),
+        new("traffic", row => row.EstimatedTraffic.ToString("0.##"), "table-number"),
+        new("checked", row => FormatDateTime(row.CheckedAt))
+    ];
+
+    private static readonly IReadOnlyList<DataTableColumn<RankAlertDetails>> AlertColumns =
+    [
+        new("type", row => row.AlertType),
+        new("status", row => row.Status),
+        new("channel", row => row.NotificationChannelId?.ToString("D")),
+        new("last", row => row.LastTriggeredAt.HasValue ? FormatDateTime(row.LastTriggeredAt.Value) : "-"),
+        new("updated", row => FormatDateTime(row.UpdatedAt))
+    ];
+
+    private static readonly IReadOnlyList<DataTableColumn<RankAlertEventDetails>> AlertEventColumns =
+    [
+        new("event", row => row.EventType),
+        new("keyword", row => row.Keyword),
+        new("job", row => row.JobId?.ToString("D")),
+        new("triggered", row => FormatDateTime(row.TriggeredAt)),
+        new("resolved", row => row.ResolvedAt.HasValue ? FormatDateTime(row.ResolvedAt.Value) : "-")
+    ];
+
+    private RankCheckFormModel RankForm { get; set; } = new();
+
+    private RankSearchFormModel RankQuery { get; set; } = new();
+
+    private RankAlertFormModel AlertForm { get; set; } = new();
+
+    private IReadOnlyList<RankResultRow> RankRows { get; set; } = [];
+
+    private RankResultList? RankList { get; set; }
+
+    private IReadOnlyList<RankAlertDetails> Alerts { get; set; } = [];
+
+    private IReadOnlyList<RankAlertEventDetails> AlertEvents { get; set; } = [];
+
+    private IReadOnlyList<ApiError> Errors { get; set; } = [];
+
+    private string? Message { get; set; }
+
+    private bool IsRegistering { get; set; }
+
+    private bool IsRankLoading { get; set; }
+
+    private bool IsAlertLoading { get; set; }
+
+    private bool IsAlertEventLoading { get; set; }
+
+    private Guid? EditingAlertId { get; set; }
+
+    private string? AlertEventType { get; set; }
+
+    private long RankTotalCount => RankList?.TotalCount ?? 0;
+
+    private bool CanOperate
+        => ProjectState.SelectedProject is not null && !IsRegistering;
+
+    protected override async Task OnInitializedAsync()
+    {
+        ProjectState.Changed += OnProjectStateChanged;
+        await ProjectState.LoadAsync();
+        await LoadAllAsync();
+    }
+
+    private async Task LoadAllAsync()
+    {
+        await LoadRankResultsAsync();
+        await LoadAlertsAsync();
+        await LoadAlertEventsAsync();
+    }
+
+    private async Task RegisterRankCheckAsync()
+    {
+        if (ProjectState.SelectedProject is not { } project)
+        {
+            return;
+        }
+
+        var keywords = ParseLines(RankForm.KeywordsText);
+        var targets = ParseLines(RankForm.TargetsText);
+        var errors = new List<ApiError>();
+        if (keywords.Count == 0)
+        {
+            errors.Add(new ApiError("Validation.Keywords.Required", "keywordsを1件以上入力してください。", "keywords"));
+        }
+
+        if (targets.Count == 0)
+        {
+            errors.Add(new ApiError("Validation.Targets.Required", "targetsを1件以上入力してください。", "targets"));
+        }
+        else if (targets.Count > 50)
+        {
+            errors.Add(new ApiError("Validation.Targets.Max", "targetsは50件までです。", "targets"));
+        }
+
+        if (!AllowedDepths.Contains(RankForm.Depth))
+        {
+            errors.Add(new ApiError("Validation.Depth.Range", "depthは30/40/50/60/70/80/90/100で指定してください。", "depth"));
+        }
+
+        if (errors.Count > 0)
+        {
+            Errors = errors;
+            return;
+        }
+
+        IsRegistering = true;
+        Errors = [];
+        Message = null;
+        var request = new RankCheckJobRequest(
+            keywords,
+            targets.Select(target => new RankCheckTargetRequest(target, RankForm.TargetType)).ToArray(),
+            RankForm.MatchType,
+            RankForm.Depth,
+            RankForm.WithMetrics,
+            RankForm.Deduplicate);
+        var result = await ApiClient.RegisterRankCheckAsync(project.ProjectId, request);
+        if (result.IsSuccess && result.Data is { } job)
+        {
+            RankQuery.JobId = job.JobId.ToString("D");
+            Message = $"順位チェックジョブを登録しました: {job.JobId:D}";
+        }
+        else
+        {
+            Errors = result.Errors;
+        }
+
+        IsRegistering = false;
+    }
+
+    private async Task LoadRankResultsAsync()
+    {
+        if (ProjectState.SelectedProject is not { } project)
+        {
+            RankRows = [];
+            RankList = null;
+            return;
+        }
+
+        Errors = [];
+        var jobId = ParseNullableGuid(RankQuery.JobId, "jobId");
+        if (Errors.Count > 0)
+        {
+            return;
+        }
+
+        IsRankLoading = true;
+        Errors = [];
+        var result = await ApiClient.SearchRankResultsAsync(
+            project.ProjectId,
+            RankQuery.Q,
+            jobId,
+            target: RankQuery.Target,
+            pageSize: 100);
+        if (result.IsSuccess && result.Data is { } list)
+        {
+            RankList = list;
+            RankRows = list.Items;
+        }
+        else
+        {
+            RankRows = [];
+            RankList = null;
+            Errors = result.Errors;
+        }
+
+        IsRankLoading = false;
+    }
+
+    private async Task SaveAlertAsync()
+    {
+        if (ProjectState.SelectedProject is not { } project)
+        {
+            return;
+        }
+
+        Errors = [];
+        var condition = ParseJson(AlertForm.ConditionJson, "condition");
+        var channelId = ParseNullableGuid(AlertForm.NotificationChannelId, "notificationChannelId");
+        if (Errors.Count > 0)
+        {
+            return;
+        }
+
+        ApiClientResult<RankAlertDetails> result = EditingAlertId.HasValue
+            ? await ApiClient.UpdateRankAlertAsync(
+                project.ProjectId,
+                EditingAlertId.Value,
+                new RankAlertUpdateRequest(AlertForm.AlertType, condition, channelId))
+            : await ApiClient.CreateRankAlertAsync(
+                project.ProjectId,
+                new RankAlertCreateRequest(AlertForm.AlertType, condition, channelId));
+        if (result.IsSuccess)
+        {
+            ClearAlertForm();
+            await LoadAlertsAsync();
+        }
+        else
+        {
+            Errors = result.Errors;
+        }
+    }
+
+    private async Task LoadAlertsAsync()
+    {
+        if (ProjectState.SelectedProject is not { } project)
+        {
+            Alerts = [];
+            return;
+        }
+
+        IsAlertLoading = true;
+        var result = await ApiClient.SearchRankAlertsAsync(project.ProjectId, status: "all", pageSize: 100);
+        if (result.IsSuccess)
+        {
+            Alerts = result.Data ?? [];
+        }
+        else
+        {
+            Alerts = [];
+            Errors = result.Errors;
+        }
+
+        IsAlertLoading = false;
+    }
+
+    private async Task LoadAlertEventsAsync()
+    {
+        if (ProjectState.SelectedProject is not { } project)
+        {
+            AlertEvents = [];
+            return;
+        }
+
+        IsAlertEventLoading = true;
+        var result = await ApiClient.SearchRankAlertEventsAsync(project.ProjectId, eventType: AlertEventType, pageSize: 100);
+        if (result.IsSuccess)
+        {
+            AlertEvents = result.Data ?? [];
+        }
+        else
+        {
+            AlertEvents = [];
+            Errors = result.Errors;
+        }
+
+        IsAlertEventLoading = false;
+    }
+
+    private void EditAlert(RankAlertDetails alert)
+    {
+        EditingAlertId = alert.AlertId;
+        AlertForm = new RankAlertFormModel
+        {
+            AlertType = alert.AlertType,
+            NotificationChannelId = alert.NotificationChannelId?.ToString("D"),
+            ConditionJson = FormatJson(alert.Condition)
+        };
+    }
+
+    private async Task DisableAlertAsync(Guid alertId)
+    {
+        if (ProjectState.SelectedProject is not { } project)
+        {
+            return;
+        }
+
+        var result = await ApiClient.DisableRankAlertAsync(project.ProjectId, alertId);
+        await CompleteAlertActionAsync(result);
+    }
+
+    private async Task EnableAlertAsync(Guid alertId)
+    {
+        if (ProjectState.SelectedProject is not { } project)
+        {
+            return;
+        }
+
+        var result = await ApiClient.EnableRankAlertAsync(project.ProjectId, alertId);
+        await CompleteAlertActionAsync(result);
+    }
+
+    private async Task CompleteAlertActionAsync(ApiClientResult<RankAlertDetails> result)
+    {
+        if (result.IsSuccess)
+        {
+            await LoadAlertsAsync();
+        }
+        else
+        {
+            Errors = result.Errors;
+        }
+    }
+
+    private void ClearAlertForm()
+    {
+        EditingAlertId = null;
+        AlertForm = new RankAlertFormModel();
+    }
+
+    private JsonElement? ParseJson(string? json, string target)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            return document.RootElement.Clone();
+        }
+        catch (JsonException exception)
+        {
+            Errors = [new ApiError("Validation.Json.Invalid", exception.Message, target)];
+            return null;
+        }
+    }
+
+    private Guid? ParseNullableGuid(string? value, string target)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        if (Guid.TryParse(value, out var parsed))
+        {
+            return parsed;
+        }
+
+        Errors = [new ApiError("Validation.Guid.Invalid", $"{target} must be a GUID.", target)];
+        return null;
+    }
+
+    private async void OnProjectStateChanged()
+    {
+        await InvokeAsync(async () =>
+        {
+            await LoadAllAsync();
+            StateHasChanged();
+        });
+    }
+
+    private static IReadOnlyList<string> ParseLines(string? value)
+        => string.IsNullOrWhiteSpace(value)
+            ? []
+            : value.Split(['\r', '\n', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Where(line => !string.IsNullOrWhiteSpace(line))
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+
+    private static string FormatJson(JsonElement content)
+    {
+        if (content.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
+        {
+            return "{}";
+        }
+
+        return JsonSerializer.Serialize(content, new JsonSerializerOptions(JsonSerializerDefaults.Web)
+        {
+            WriteIndented = true
+        });
+    }
+
+    private static string FormatDateTime(DateTime value)
+        => value.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
+
+    public void Dispose()
+        => ProjectState.Changed -= OnProjectStateChanged;
+
+    private sealed class RankCheckFormModel
+    {
+        public string? KeywordsText { get; set; }
+
+        public string? TargetsText { get; set; }
+
+        public string TargetType { get; set; } = "domain";
+
+        public string MatchType { get; set; } = "domain";
+
+        public int Depth { get; set; } = 100;
+
+        public bool WithMetrics { get; set; } = true;
+
+        public bool Deduplicate { get; set; } = true;
+    }
+
+    private sealed class RankSearchFormModel
+    {
+        public string? JobId { get; set; }
+
+        public string? Target { get; set; }
+
+        public string? Q { get; set; }
+    }
+
+    private sealed class RankAlertFormModel
+    {
+        public string? AlertType { get; set; } = "rank_drop";
+
+        public string? NotificationChannelId { get; set; }
+
+        public string? ConditionJson { get; set; } = """{"minDrop":3}""";
+    }
+}

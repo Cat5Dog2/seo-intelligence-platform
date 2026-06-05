@@ -200,6 +200,330 @@ public sealed class SeoIntelligenceApiClient : ISeoIntelligenceApiClient
     public Task<ApiClientResult<DashboardSnapshot>> GetDashboardAsync(Guid projectId, CancellationToken cancellationToken = default)
         => SendAsync<DashboardSnapshot>(HttpMethod.Get, $"/api/projects/{projectId:D}/dashboard", cancellationToken: cancellationToken);
 
+    public Task<ApiClientResult<JobReference>> GenerateTopicClustersAsync(
+        Guid projectId,
+        TopicClusterGenerateRequest request,
+        CancellationToken cancellationToken = default)
+        => SendAsync<JobReference>(HttpMethod.Post, $"/api/projects/{projectId:D}/clusters/generate", request, cancellationToken);
+
+    public Task<ApiClientResult<IReadOnlyList<TopicClusterSummary>>> GetTopicClustersAsync(
+        Guid projectId,
+        string? q = null,
+        string sortBy = "score",
+        string orderBy = "desc",
+        int page = 1,
+        int pageSize = 100,
+        string? intentLabel = null,
+        Guid? parentId = null,
+        CancellationToken cancellationToken = default)
+        => SendAsync<IReadOnlyList<TopicClusterSummary>>(
+            HttpMethod.Get,
+            WithQuery(
+                $"/api/projects/{projectId:D}/clusters",
+                ("q", q),
+                ("sortBy", sortBy),
+                ("orderBy", orderBy),
+                ("page", page),
+                ("pageSize", pageSize),
+                ("intentLabel", intentLabel),
+                ("parentId", parentId)),
+            cancellationToken: cancellationToken);
+
+    public Task<ApiClientResult<TopicClusterDetails>> GetTopicClusterAsync(
+        Guid projectId,
+        Guid clusterId,
+        CancellationToken cancellationToken = default)
+        => SendAsync<TopicClusterDetails>(HttpMethod.Get, $"/api/projects/{projectId:D}/clusters/{clusterId:D}", cancellationToken: cancellationToken);
+
+    public Task<ApiClientResult<JobReference>> AnalyzeCompetitorsAsync(
+        Guid projectId,
+        CompetitorAnalyzeRequest request,
+        CancellationToken cancellationToken = default)
+        => SendAsync<JobReference>(HttpMethod.Post, $"/api/projects/{projectId:D}/competitors/analyze", request, cancellationToken);
+
+    public Task<ApiClientResult<IReadOnlyList<CompetitorResultRow>>> GetCompetitorsAsync(
+        Guid projectId,
+        string? q = null,
+        string? domain = null,
+        string sortBy = "duplicateRate",
+        string orderBy = "desc",
+        int page = 1,
+        int pageSize = 100,
+        CancellationToken cancellationToken = default)
+        => SendAsync<IReadOnlyList<CompetitorResultRow>>(
+            HttpMethod.Get,
+            WithQuery(
+                $"/api/projects/{projectId:D}/competitors",
+                ("q", q),
+                ("domain", domain),
+                ("sortBy", sortBy),
+                ("orderBy", orderBy),
+                ("page", page),
+                ("pageSize", pageSize)),
+            cancellationToken: cancellationToken);
+
+    public Task<ApiClientResult<IReadOnlyList<InfluxKeywordResultRow>>> GetInfluxKeywordsAsync(
+        Guid projectId,
+        string? q = null,
+        string? target = null,
+        int? minRank = null,
+        int? maxRank = null,
+        string sortBy = "rank",
+        string orderBy = "asc",
+        int page = 1,
+        int pageSize = 100,
+        CancellationToken cancellationToken = default)
+        => SendAsync<IReadOnlyList<InfluxKeywordResultRow>>(
+            HttpMethod.Get,
+            WithQuery(
+                $"/api/projects/{projectId:D}/influx-keywords",
+                ("q", q),
+                ("target", target),
+                ("minRank", minRank),
+                ("maxRank", maxRank),
+                ("sortBy", sortBy),
+                ("orderBy", orderBy),
+                ("page", page),
+                ("pageSize", pageSize)),
+            cancellationToken: cancellationToken);
+
+    public Task<ApiClientResult<IReadOnlyList<InfluxPageResultRow>>> GetInfluxPagesAsync(
+        Guid projectId,
+        string? q = null,
+        string? target = null,
+        string sortBy = "estimatedTraffic",
+        string orderBy = "desc",
+        int page = 1,
+        int pageSize = 100,
+        CancellationToken cancellationToken = default)
+        => SendAsync<IReadOnlyList<InfluxPageResultRow>>(
+            HttpMethod.Get,
+            WithQuery(
+                $"/api/projects/{projectId:D}/influx-pages",
+                ("q", q),
+                ("target", target),
+                ("sortBy", sortBy),
+                ("orderBy", orderBy),
+                ("page", page),
+                ("pageSize", pageSize)),
+            cancellationToken: cancellationToken);
+
+    public Task<ApiClientResult<JobReference>> AnalyzeContentAsync(
+        Guid projectId,
+        ContentAnalyzeRequest request,
+        CancellationToken cancellationToken = default)
+        => SendAsync<JobReference>(HttpMethod.Post, $"/api/projects/{projectId:D}/content/analyze", request, cancellationToken);
+
+    public Task<ApiClientResult<IReadOnlyList<ContentAnalysisResultRow>>> GetContentAnalysesAsync(
+        Guid projectId,
+        string? q = null,
+        Guid? keywordId = null,
+        string sortBy = "lastAnalyzedAt",
+        string orderBy = "desc",
+        int page = 1,
+        int pageSize = 50,
+        CancellationToken cancellationToken = default)
+        => SendAsync<IReadOnlyList<ContentAnalysisResultRow>>(
+            HttpMethod.Get,
+            WithQuery(
+                $"/api/projects/{projectId:D}/content-analyses",
+                ("q", q),
+                ("keywordId", keywordId),
+                ("sortBy", sortBy),
+                ("orderBy", orderBy),
+                ("page", page),
+                ("pageSize", pageSize)),
+            cancellationToken: cancellationToken);
+
+    public Task<ApiClientResult<JobReference>> GenerateBriefAsync(
+        Guid projectId,
+        GenerateBriefRequest request,
+        CancellationToken cancellationToken = default)
+        => SendAsync<JobReference>(HttpMethod.Post, $"/api/projects/{projectId:D}/briefs/generate", request, cancellationToken);
+
+    public Task<ApiClientResult<IReadOnlyList<ArticleBriefSummary>>> GetBriefsAsync(
+        Guid projectId,
+        string? q = null,
+        Guid? targetKeywordId = null,
+        Guid? clusterId = null,
+        string? reviewStatus = null,
+        string status = "all",
+        string sortBy = "updatedAt",
+        string orderBy = "desc",
+        int page = 1,
+        int pageSize = 100,
+        CancellationToken cancellationToken = default)
+        => SendAsync<IReadOnlyList<ArticleBriefSummary>>(
+            HttpMethod.Get,
+            WithQuery(
+                $"/api/projects/{projectId:D}/briefs",
+                ("q", q),
+                ("targetKeywordId", targetKeywordId),
+                ("clusterId", clusterId),
+                ("reviewStatus", reviewStatus),
+                ("status", status),
+                ("sortBy", sortBy),
+                ("orderBy", orderBy),
+                ("page", page),
+                ("pageSize", pageSize)),
+            cancellationToken: cancellationToken);
+
+    public Task<ApiClientResult<ArticleBriefDetails>> GetBriefAsync(
+        Guid projectId,
+        Guid briefId,
+        CancellationToken cancellationToken = default)
+        => SendAsync<ArticleBriefDetails>(HttpMethod.Get, $"/api/projects/{projectId:D}/briefs/{briefId:D}", cancellationToken: cancellationToken);
+
+    public Task<ApiClientResult<ArticleBriefDetails>> UpdateBriefAsync(
+        Guid projectId,
+        Guid briefId,
+        ArticleBriefUpdateRequest request,
+        CancellationToken cancellationToken = default)
+        => SendAsync<ArticleBriefDetails>(HttpMethod.Put, $"/api/projects/{projectId:D}/briefs/{briefId:D}", request, cancellationToken);
+
+    public Task<ApiClientResult<IReadOnlyList<ArticleBriefVersionDetails>>> GetBriefVersionsAsync(
+        Guid projectId,
+        Guid briefId,
+        int page = 1,
+        int pageSize = 50,
+        CancellationToken cancellationToken = default)
+        => SendAsync<IReadOnlyList<ArticleBriefVersionDetails>>(
+            HttpMethod.Get,
+            WithQuery(
+                $"/api/projects/{projectId:D}/briefs/{briefId:D}/versions",
+                ("page", page),
+                ("pageSize", pageSize)),
+            cancellationToken: cancellationToken);
+
+    public Task<ApiClientResult<JobReference>> ExportBriefAsync(
+        Guid projectId,
+        Guid briefId,
+        ArticleBriefExportRequest request,
+        CancellationToken cancellationToken = default)
+        => SendAsync<JobReference>(HttpMethod.Post, $"/api/projects/{projectId:D}/briefs/{briefId:D}/export", request, cancellationToken);
+
+    public Task<ApiClientResult<JobReference>> RegisterRankCheckAsync(
+        Guid projectId,
+        RankCheckJobRequest request,
+        CancellationToken cancellationToken = default)
+        => SendAsync<JobReference>(HttpMethod.Post, $"/api/projects/{projectId:D}/rank-check/jobs", request, cancellationToken);
+
+    public Task<ApiClientResult<IReadOnlyList<RankResultRow>>> GetRankCheckJobResultsAsync(
+        Guid projectId,
+        Guid jobId,
+        string? q = null,
+        string sortBy = "checkedAt",
+        string orderBy = "desc",
+        int page = 1,
+        int pageSize = 100,
+        CancellationToken cancellationToken = default)
+        => SendAsync<IReadOnlyList<RankResultRow>>(
+            HttpMethod.Get,
+            WithQuery(
+                $"/api/projects/{projectId:D}/rank-check/jobs/{jobId:D}/results",
+                ("q", q),
+                ("sortBy", sortBy),
+                ("orderBy", orderBy),
+                ("page", page),
+                ("pageSize", pageSize)),
+            cancellationToken: cancellationToken);
+
+    public Task<ApiClientResult<RankResultList>> SearchRankResultsAsync(
+        Guid projectId,
+        string? q = null,
+        Guid? jobId = null,
+        Guid? keywordId = null,
+        string? target = null,
+        int? minPosition = null,
+        int? maxPosition = null,
+        string sortBy = "checkedAt",
+        string orderBy = "desc",
+        int page = 1,
+        int pageSize = 100,
+        CancellationToken cancellationToken = default)
+        => SendAsync<RankResultList>(
+            HttpMethod.Get,
+            WithQuery(
+                $"/api/projects/{projectId:D}/rank-results",
+                ("q", q),
+                ("jobId", jobId),
+                ("keywordId", keywordId),
+                ("target", target),
+                ("minPosition", minPosition),
+                ("maxPosition", maxPosition),
+                ("sortBy", sortBy),
+                ("orderBy", orderBy),
+                ("page", page),
+                ("pageSize", pageSize)),
+            cancellationToken: cancellationToken);
+
+    public Task<ApiClientResult<IReadOnlyList<RankAlertDetails>>> SearchRankAlertsAsync(
+        Guid projectId,
+        string status = "active",
+        string? alertType = null,
+        string? q = null,
+        int page = 1,
+        int pageSize = 100,
+        CancellationToken cancellationToken = default)
+        => SendAsync<IReadOnlyList<RankAlertDetails>>(
+            HttpMethod.Get,
+            WithQuery(
+                $"/api/projects/{projectId:D}/alerts",
+                ("status", status),
+                ("alertType", alertType),
+                ("q", q),
+                ("page", page),
+                ("pageSize", pageSize)),
+            cancellationToken: cancellationToken);
+
+    public Task<ApiClientResult<RankAlertDetails>> CreateRankAlertAsync(
+        Guid projectId,
+        RankAlertCreateRequest request,
+        CancellationToken cancellationToken = default)
+        => SendAsync<RankAlertDetails>(HttpMethod.Post, $"/api/projects/{projectId:D}/alerts", request, cancellationToken);
+
+    public Task<ApiClientResult<RankAlertDetails>> UpdateRankAlertAsync(
+        Guid projectId,
+        Guid alertId,
+        RankAlertUpdateRequest request,
+        CancellationToken cancellationToken = default)
+        => SendAsync<RankAlertDetails>(HttpMethod.Put, $"/api/projects/{projectId:D}/alerts/{alertId:D}", request, cancellationToken);
+
+    public Task<ApiClientResult<RankAlertDetails>> DisableRankAlertAsync(
+        Guid projectId,
+        Guid alertId,
+        CancellationToken cancellationToken = default)
+        => SendAsync<RankAlertDetails>(HttpMethod.Delete, $"/api/projects/{projectId:D}/alerts/{alertId:D}", cancellationToken: cancellationToken);
+
+    public Task<ApiClientResult<RankAlertDetails>> EnableRankAlertAsync(
+        Guid projectId,
+        Guid alertId,
+        CancellationToken cancellationToken = default)
+        => SendAsync<RankAlertDetails>(HttpMethod.Post, $"/api/projects/{projectId:D}/alerts/{alertId:D}/enable", cancellationToken: cancellationToken);
+
+    public Task<ApiClientResult<IReadOnlyList<RankAlertEventDetails>>> SearchRankAlertEventsAsync(
+        Guid projectId,
+        string? eventType = null,
+        Guid? alertId = null,
+        string? q = null,
+        DateTimeOffset? from = null,
+        DateTimeOffset? to = null,
+        int page = 1,
+        int pageSize = 100,
+        CancellationToken cancellationToken = default)
+        => SendAsync<IReadOnlyList<RankAlertEventDetails>>(
+            HttpMethod.Get,
+            WithQuery(
+                $"/api/projects/{projectId:D}/alert-events",
+                ("eventType", eventType),
+                ("alertId", alertId),
+                ("q", q),
+                ("from", from),
+                ("to", to),
+                ("page", page),
+                ("pageSize", pageSize)),
+            cancellationToken: cancellationToken);
+
     public Task<ApiClientResult<KeywordDiscoveryResult>> DiscoverKeywordsAsync(
         Guid projectId,
         KeywordDiscoveryRequest request,

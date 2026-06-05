@@ -44,11 +44,20 @@
     [Parameter]
     public bool ProjectScoped { get; set; } = true;
 
+    [Parameter]
+    public string? JobType { get; set; }
+
     private IReadOnlyList<JobDetails> Jobs { get; set; } = [];
 
     private IReadOnlyList<ApiError> Errors { get; set; } = [];
 
     private bool IsLoading { get; set; }
+
+    private string? LoadedJobType { get; set; }
+
+    private string? LoadedStatus { get; set; }
+
+    private bool? LoadedProjectScoped { get; set; }
 
     protected override async Task OnInitializedAsync()
     {
@@ -56,12 +65,22 @@
         await LoadAsync();
     }
 
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!string.Equals(LoadedJobType, JobType, StringComparison.Ordinal) ||
+            !string.Equals(LoadedStatus, Status, StringComparison.Ordinal) ||
+            LoadedProjectScoped != ProjectScoped)
+        {
+            await LoadAsync();
+        }
+    }
+
     private async Task LoadAsync()
     {
         IsLoading = true;
         Errors = [];
         var projectId = ProjectScoped ? ProjectState.SelectedProject?.ProjectId : null;
-        var result = await ApiClient.SearchJobsAsync(status: Status, projectId: projectId, pageSize: 25);
+        var result = await ApiClient.SearchJobsAsync(status: Status, jobType: JobType, projectId: projectId, pageSize: 25);
         if (result.IsSuccess)
         {
             Jobs = result.Data ?? [];
@@ -73,6 +92,9 @@
         }
 
         IsLoading = false;
+        LoadedJobType = JobType;
+        LoadedStatus = Status;
+        LoadedProjectScoped = ProjectScoped;
     }
 
     private async Task RetryAsync(Guid jobId)

@@ -1,0 +1,260 @@
+@page "/influx"
+@implements IDisposable
+@inject ISeoIntelligenceApiClient ApiClient
+@inject ProjectSelectionState ProjectState
+
+<PageTitle>獲得キーワード/ページ - SEO Intelligence</PageTitle>
+
+<div class="page-stack">
+    <header class="page-header">
+        <div>
+            <h1>獲得キーワード/ページ</h1>
+            <p>選択中プロジェクト: @(ProjectState.SelectedProject?.Name ?? "未選択")</p>
+        </div>
+        <div class="toolbar">
+            <button type="button" class="secondary-button" @onclick="AnalyzeAsync" disabled="@(!CanOperate)">分析ジョブ登録</button>
+            <button type="button" class="secondary-button" @onclick="LoadAsync" disabled="@(ProjectState.SelectedProject is null)">更新</button>
+        </div>
+    </header>
+
+    <ErrorSummary Errors="@Errors" />
+    @if (!string.IsNullOrWhiteSpace(Message))
+    {
+        <div class="state-row">@Message</div>
+    }
+
+    <section class="panel">
+        <div class="section-heading">
+            <h2>条件</h2>
+            <span class="muted">@(KeywordResults.Count)語 / @(PageResults.Count)ページ</span>
+        </div>
+        <div class="form-grid dense-form">
+            <label class="field wide-field">
+                <span>target domain/url</span>
+                <input @bind="Target" @bind:event="oninput" disabled="@(ProjectState.SelectedProject is null)" />
+            </label>
+            <label class="field">
+                <span>検索</span>
+                <input @bind="Query" @bind:event="oninput" disabled="@(ProjectState.SelectedProject is null)" />
+            </label>
+            <label class="field">
+                <span>min rank</span>
+                <input type="number" min="1" @bind="MinRank" disabled="@(ProjectState.SelectedProject is null)" />
+            </label>
+            <label class="field">
+                <span>max rank</span>
+                <input type="number" min="1" @bind="MaxRank" disabled="@(ProjectState.SelectedProject is null)" />
+            </label>
+            <label class="field">
+                <span>keyword sort</span>
+                <select @bind="KeywordSortBy" disabled="@(ProjectState.SelectedProject is null)">
+                    <option value="rank">rank</option>
+                    <option value="estimatedTraffic">estimatedTraffic</option>
+                    <option value="keyword">keyword</option>
+                    <option value="target">target</option>
+                    <option value="createdAt">createdAt</option>
+                </select>
+            </label>
+            <button type="button" class="primary-button" @onclick="LoadAsync" disabled="@(ProjectState.SelectedProject is null)">検索</button>
+        </div>
+    </section>
+
+    <section class="panel">
+        <div class="section-heading">
+            <h2>獲得キーワード</h2>
+        </div>
+        <DataTable Items="@KeywordResults" Columns="@KeywordColumns" IsLoading="@IsKeywordLoading" EmptyText="獲得キーワードはありません。">
+            <RowActions Context="row">
+                <AuditLink ResourceType="influx_keyword_result" ResourceId="@row.InfluxKeywordResultId.ToString("D")" />
+            </RowActions>
+        </DataTable>
+    </section>
+
+    <section class="panel">
+        <div class="section-heading">
+            <h2>獲得ページ</h2>
+        </div>
+        <DataTable Items="@PageResults" Columns="@PageColumns" IsLoading="@IsPageLoading" EmptyText="獲得ページはありません。">
+            <RowActions Context="row">
+                <AuditLink ResourceType="influx_page_result" ResourceId="@row.InfluxPageResultId.ToString("D")" />
+            </RowActions>
+        </DataTable>
+    </section>
+</div>
+
+@code {
+    private static readonly IReadOnlyList<DataTableColumn<InfluxKeywordResultRow>> KeywordColumns =
+    [
+        new("target", row => row.Target),
+        new("keyword", row => row.Keyword),
+        new("rank", row => row.Rank.ToString(), "table-number"),
+        new("ranked url", row => row.RankedUrl),
+        new("traffic", row => row.EstimatedTraffic.ToString("0.##"), "table-number"),
+        new("gap", row => row.IsGap ? row.GapType : "owned"),
+        new("created", row => FormatDateTime(row.CreatedAt))
+    ];
+
+    private static readonly IReadOnlyList<DataTableColumn<InfluxPageResultRow>> PageColumns =
+    [
+        new("target", row => row.Target),
+        new("page url", row => row.PageUrl),
+        new("title", row => row.Title),
+        new("keywords", row => row.KeywordCount.ToString(), "table-number"),
+        new("traffic", row => row.EstimatedTraffic.ToString("0.##"), "table-number"),
+        new("value", row => row.TrafficValue.ToString("0.##"), "table-number"),
+        new("top keyword", row => row.TopKeyword),
+        new("created", row => FormatDateTime(row.CreatedAt))
+    ];
+
+    private IReadOnlyList<InfluxKeywordResultRow> KeywordResults { get; set; } = [];
+
+    private IReadOnlyList<InfluxPageResultRow> PageResults { get; set; } = [];
+
+    private IReadOnlyList<ApiError> Errors { get; set; } = [];
+
+    private string? Message { get; set; }
+
+    private bool IsKeywordLoading { get; set; }
+
+    private bool IsPageLoading { get; set; }
+
+    private bool IsAnalyzing { get; set; }
+
+    [SupplyParameterFromQuery(Name = "target")]
+    public string? QueryTarget { get; set; }
+
+    private string? Target { get; set; }
+
+    private string? Query { get; set; }
+
+    private int? MinRank { get; set; }
+
+    private int? MaxRank { get; set; }
+
+    private string KeywordSortBy { get; set; } = "rank";
+
+    private bool CanOperate
+        => ProjectState.SelectedProject is not null && !IsAnalyzing;
+
+    protected override async Task OnInitializedAsync()
+    {
+        ProjectState.Changed += OnProjectStateChanged;
+        await ProjectState.LoadAsync();
+        await LoadAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!string.IsNullOrWhiteSpace(QueryTarget) &&
+            !string.Equals(Target, QueryTarget, StringComparison.Ordinal))
+        {
+            Target = QueryTarget;
+            await LoadAsync();
+        }
+    }
+
+    private async Task AnalyzeAsync()
+    {
+        if (ProjectState.SelectedProject is not { } project)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(Target))
+        {
+            Errors = [new ApiError("Validation.Target.Required", "targetを入力してください。", "target")];
+            return;
+        }
+
+        IsAnalyzing = true;
+        Errors = [];
+        Message = null;
+        var result = await ApiClient.AnalyzeCompetitorsAsync(project.ProjectId, new CompetitorAnalyzeRequest(Target.Trim()));
+        if (result.IsSuccess && result.Data is { } job)
+        {
+            Message = $"獲得語/ページ分析ジョブを登録しました: {job.JobId:D}";
+        }
+        else
+        {
+            Errors = result.Errors;
+        }
+
+        IsAnalyzing = false;
+    }
+
+    private async Task LoadAsync()
+    {
+        if (ProjectState.SelectedProject is not { } project)
+        {
+            KeywordResults = [];
+            PageResults = [];
+            return;
+        }
+
+        if (MinRank.HasValue && MaxRank.HasValue && MinRank.Value > MaxRank.Value)
+        {
+            Errors = [new ApiError("Validation.Rank.Range", "max rankはmin rank以上で指定してください。", "maxRank")];
+            return;
+        }
+
+        Errors = [];
+        await LoadKeywordsAsync(project.ProjectId);
+        await LoadPagesAsync(project.ProjectId);
+    }
+
+    private async Task LoadKeywordsAsync(Guid projectId)
+    {
+        IsKeywordLoading = true;
+        var result = await ApiClient.GetInfluxKeywordsAsync(
+            projectId,
+            Query,
+            Target,
+            MinRank,
+            MaxRank,
+            KeywordSortBy,
+            pageSize: 100);
+        if (result.IsSuccess)
+        {
+            KeywordResults = result.Data ?? [];
+        }
+        else
+        {
+            KeywordResults = [];
+            Errors = result.Errors;
+        }
+
+        IsKeywordLoading = false;
+    }
+
+    private async Task LoadPagesAsync(Guid projectId)
+    {
+        IsPageLoading = true;
+        var result = await ApiClient.GetInfluxPagesAsync(projectId, Query, Target, pageSize: 100);
+        if (result.IsSuccess)
+        {
+            PageResults = result.Data ?? [];
+        }
+        else
+        {
+            PageResults = [];
+            Errors = result.Errors;
+        }
+
+        IsPageLoading = false;
+    }
+
+    private async void OnProjectStateChanged()
+    {
+        await InvokeAsync(async () =>
+        {
+            await LoadAsync();
+            StateHasChanged();
+        });
+    }
+
+    private static string FormatDateTime(DateTime value)
+        => value.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
+
+    public void Dispose()
+        => ProjectState.Changed -= OnProjectStateChanged;
+}
