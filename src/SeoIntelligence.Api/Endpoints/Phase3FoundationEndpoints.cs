@@ -51,12 +51,19 @@ internal static class Phase3FoundationEndpoints
         cannibalization.MapGet("/candidates", GetCannibalizationCandidatesAsync);
         cannibalization.MapPost("/refresh", RefreshCannibalizationAsync);
 
-        _ = project.MapGroup(Phase3EndpointRoutes.Reports);
+        var reports = project.MapGroup(Phase3EndpointRoutes.Reports);
+        reports.MapPost("", CreateReportAsync);
+        reports.MapGet("/{reportId:guid}", GetReportAsync);
+        reports.MapGet("/{reportId:guid}/download", CreateReportDownloadUrlAsync);
+        reports.MapPost("/{reportId:guid}/share", ShareReportAsync);
+        reports.MapDelete("/{reportId:guid}/share", RevokeReportShareAsync);
+
         _ = project.MapGroup(Phase3EndpointRoutes.Exports);
         _ = project.MapGroup(Phase3EndpointRoutes.Imports);
         _ = project.MapGroup(Phase3EndpointRoutes.Connectors);
         _ = project.MapGroup(Phase3EndpointRoutes.Ai);
-        _ = app.MapGroup(Phase3EndpointRoutes.ReportShares);
+        var reportShares = app.MapGroup(Phase3EndpointRoutes.ReportShares);
+        reportShares.MapGet("/{token}", GetSharedReportAsync);
 
         return app;
     }
@@ -179,6 +186,98 @@ internal static class Phase3FoundationEndpoints
             : ApiResponseResults.FromError(httpContext, result.Error!);
     }
 
+    private static async Task<IResult> CreateReportAsync(
+        Guid projectId,
+        [FromBody] ReportRequest request,
+        [FromServices] IReportService service,
+        [FromServices] IProjectContextService contextService,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        var result = await service.CreateReportAsync(
+            CreateContext(contextService, httpContext, projectId),
+            request,
+            cancellationToken);
+
+        return result.IsSuccess
+            ? ApiResponseResults.Accepted(
+                httpContext,
+                result.Value!,
+                new ApiResponseMeta(JobId: result.Value!.JobId))
+            : ApiResponseResults.FromError(httpContext, result.Error!);
+    }
+
+    private static async Task<IResult> GetReportAsync(
+        Guid projectId,
+        Guid reportId,
+        [FromServices] IReportService service,
+        [FromServices] IProjectContextService contextService,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+        => ApiResponseResults.FromResult(
+            httpContext,
+            await service.GetReportAsync(
+                CreateContext(contextService, httpContext, projectId),
+                reportId,
+                cancellationToken));
+
+    private static async Task<IResult> CreateReportDownloadUrlAsync(
+        Guid projectId,
+        Guid reportId,
+        [FromServices] IReportService service,
+        [FromServices] IProjectContextService contextService,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+        => ApiResponseResults.FromResult(
+            httpContext,
+            await service.CreateDownloadUrlAsync(
+                CreateContext(contextService, httpContext, projectId),
+                reportId,
+                cancellationToken));
+
+    private static async Task<IResult> ShareReportAsync(
+        Guid projectId,
+        Guid reportId,
+        [FromBody] ReportShareRequest request,
+        [FromServices] IReportService service,
+        [FromServices] IProjectContextService contextService,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+        => ApiResponseResults.FromResult(
+            httpContext,
+            await service.ShareReportAsync(
+                CreateContext(contextService, httpContext, projectId),
+                reportId,
+                request,
+                cancellationToken));
+
+    private static async Task<IResult> RevokeReportShareAsync(
+        Guid projectId,
+        Guid reportId,
+        [FromServices] IReportService service,
+        [FromServices] IProjectContextService contextService,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+        => ApiResponseResults.FromResult(
+            httpContext,
+            await service.RevokeShareAsync(
+                CreateContext(contextService, httpContext, projectId),
+                reportId,
+                cancellationToken));
+
+    private static async Task<IResult> GetSharedReportAsync(
+        string token,
+        [FromServices] IReportService service,
+        [FromServices] IProjectContextService contextService,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+        => ApiResponseResults.FromResult(
+            httpContext,
+            await service.GetSharedReportAsync(
+                CreateSharedContext(contextService, httpContext),
+                token,
+                cancellationToken));
+
     private static IReadOnlyDictionary<string, string[]> ValidateListQuery(
         int page,
         int pageSize,
@@ -226,6 +325,13 @@ internal static class Phase3FoundationEndpoints
             SeoIntelligenceSeedData.DefaultWorkspaceId,
             projectId,
             httpContext.GetCorrelationId());
+
+    private static ProjectContext CreateSharedContext(
+        IProjectContextService contextService,
+        HttpContext httpContext)
+        => contextService.Create(
+            SeoIntelligenceSeedData.DefaultWorkspaceId,
+            correlationId: httpContext.GetCorrelationId());
 }
 
 internal static class Phase3EndpointRoutes

@@ -9,6 +9,7 @@ using Hangfire.States;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using SeoIntelligence.Application.Auditing;
 using SeoIntelligence.Application.Diagnostics;
 using SeoIntelligence.Application.Common;
 using SeoIntelligence.Application.ProjectContext;
@@ -31,6 +32,7 @@ internal sealed class NotificationService(
     public const string JobFailedEventType = "job_failed";
     public const string CreditLowEventType = "credit_low";
     public const string RankAlertEventType = "rank_alert";
+    public const string ReportCompletedEventType = "report_completed";
     public const string TestEventType = "test";
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -80,7 +82,7 @@ internal sealed class NotificationService(
                 "Validation failed.",
                 new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
                 {
-                    ["eventType"] = ["eventType must be job_failed, credit_low, or rank_alert."]
+                    ["eventType"] = ["eventType must be job_failed, credit_low, rank_alert, or report_completed."]
                 }));
         }
 
@@ -244,7 +246,8 @@ internal sealed class NotificationService(
     private static bool IsSupportedEventType(string eventType)
         => string.Equals(eventType, JobFailedEventType, StringComparison.Ordinal)
             || string.Equals(eventType, CreditLowEventType, StringComparison.Ordinal)
-            || string.Equals(eventType, RankAlertEventType, StringComparison.Ordinal);
+            || string.Equals(eventType, RankAlertEventType, StringComparison.Ordinal)
+            || string.Equals(eventType, ReportCompletedEventType, StringComparison.Ordinal);
 
     private static string? NormalizeEventType(string? value)
         => OptionalText(value)?.ToLowerInvariant();
@@ -414,6 +417,7 @@ internal sealed class NotificationDeliveryJob(
             NotificationService.CreditLowEventType => BuildCreditLowContent(delivery, job),
             NotificationService.JobFailedEventType => BuildJobFailedContent(delivery, job),
             NotificationService.RankAlertEventType => await BuildRankAlertContentAsync(delivery, job, cancellationToken),
+            NotificationService.ReportCompletedEventType => await BuildReportCompletedContentAsync(delivery, job, cancellationToken),
             NotificationService.TestEventType => "SEO Intelligence test notification.",
             _ => $"SEO Intelligence notification: {delivery.EventType}"
         };
@@ -474,6 +478,30 @@ internal sealed class NotificationDeliveryJob(
                 GetJsonInt(current, "position") is { } position ? $"Position: {position.ToString(CultureInfo.InvariantCulture)}" : null,
                 GetJsonInt(previous, "position") is { } previousPosition ? $"Previous: {previousPosition.ToString(CultureInfo.InvariantCulture)}" : null,
                 GetJsonString(current, "rankedUrl") is { } rankedUrl ? $"Ranked URL: {rankedUrl}" : null,
+                job is null ? null : $"Job: {job.JobType} ({job.Id:D})",
+                BuildResourceLine(delivery)));
+    }
+
+    private async Task<string> BuildReportCompletedContentAsync(
+        NotificationDeliveryEntity delivery,
+        JobEntity? job,
+        CancellationToken cancellationToken)
+    {
+        ReportEntity? report = null;
+        if (string.Equals(delivery.ResourceType, AuditLogResourceTypes.Report, StringComparison.Ordinal) &&
+            Guid.TryParse(delivery.ResourceId, out var reportId))
+        {
+            report = await dbContext.Reports
+                .AsNoTracking()
+                .FirstOrDefaultAsync(entity => entity.Id == reportId, cancellationToken);
+        }
+
+        return string.Join(
+            Environment.NewLine,
+            NonEmptyLines(
+                "[report_completed] SEO report generation completed.",
+                report is null ? null : $"Report: {report.ReportType} {report.Period} ({report.Format})",
+                report?.FileUri is null ? null : $"File: {report.FileUri}",
                 job is null ? null : $"Job: {job.JobType} ({job.Id:D})",
                 BuildResourceLine(delivery)));
     }

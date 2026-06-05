@@ -936,21 +936,21 @@ ISSUE-MVP-00X の続きから再開してください。
 
 範囲:
 
-- [ ] `MonthlyReportJob` を実装する。
-- [ ] PDF/Excelレポート生成を実装する。
-- [ ] `POST /api/projects/{projectId}/reports`
-- [ ] `GET /api/projects/{projectId}/reports/{reportId}`
-- [ ] `GET /api/projects/{projectId}/reports/{reportId}/download`
-- [ ] `POST /api/projects/{projectId}/reports/{reportId}/share`
-- [ ] `DELETE /api/projects/{projectId}/reports/{reportId}/share`
-- [ ] `GET /api/report-shares/{token}`
-- [ ] 共有URLの発行、検証、期限切れ、失効、改ざん拒否はP3-001の共通処理を使う。
-- [ ] レポート完了通知 `report_completed` を実装する。
+- [x] `MonthlyReportJob` を実装する。
+- [x] PDF/Excelレポート生成を実装する。
+- [x] `POST /api/projects/{projectId}/reports`
+- [x] `GET /api/projects/{projectId}/reports/{reportId}`
+- [x] `GET /api/projects/{projectId}/reports/{reportId}/download`
+- [x] `POST /api/projects/{projectId}/reports/{reportId}/share`
+- [x] `DELETE /api/projects/{projectId}/reports/{reportId}/share`
+- [x] `GET /api/report-shares/{token}`
+- [x] 共有URLの発行、検証、期限切れ、失効、改ざん拒否はP3-001の共通処理を使う。
+- [x] レポート完了通知 `report_completed` を実装する。
 
 受入条件:
 
-- [ ] 月次レポートをPDF/Excelまたは共有URLとして出力できる。
-- [ ] ダウンロード、共有URL発行/失効/期限切れが監査される。
+- [x] 月次レポートをPDF/Excelまたは共有URLとして出力できる。
+- [x] ダウンロード、共有URL発行/失効/期限切れが監査される。
 
 ### ISSUE-P3-004 CSV/ExcelインポートとExcelエクスポートを実装する
 

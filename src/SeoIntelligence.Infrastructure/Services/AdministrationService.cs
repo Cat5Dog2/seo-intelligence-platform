@@ -41,6 +41,8 @@ public static class AdministrationServiceCollectionExtensions
         services.TryAddScoped<ITopicClusterService>(serviceProvider => serviceProvider.GetRequiredService<TopicClusterService>());
         services.TryAddScoped<RewriteManagementService>();
         services.TryAddScoped<IRewriteManagementService>(serviceProvider => serviceProvider.GetRequiredService<RewriteManagementService>());
+        services.TryAddScoped<ReportService>();
+        services.TryAddScoped<IReportService>(serviceProvider => serviceProvider.GetRequiredService<ReportService>());
         services.TryAddScoped<IScoringService, ScoringService>();
         services.TryAddScoped<DataTransferService>();
         services.TryAddScoped<IDataTransferService>(serviceProvider => serviceProvider.GetRequiredService<DataTransferService>());
@@ -73,6 +75,7 @@ public static class AdministrationServiceCollectionExtensions
         services.TryAddScoped<TopicClusterGenerateJob>();
         services.TryAddScoped<RewriteScoringJob>();
         services.TryAddScoped<CannibalizationDetectionJob>();
+        services.TryAddScoped<MonthlyReportJob>();
         services.TryAddScoped<ArticleBriefExportJob>();
         services.TryAddScoped<OpportunityScoringJob>();
         services.TryAddScoped<DataExportJob>();

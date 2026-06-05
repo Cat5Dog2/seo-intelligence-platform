@@ -65,6 +65,7 @@ internal static class ApiResponseResults
             ErrorCode.Forbidden => StatusCodes.Status403Forbidden,
             ErrorCode.NotFound => StatusCodes.Status404NotFound,
             ErrorCode.Conflict => StatusCodes.Status409Conflict,
+            ErrorCode.Gone => StatusCodes.Status410Gone,
             ErrorCode.RateLimited => StatusCodes.Status429TooManyRequests,
             ErrorCode.ExternalTemporaryFailure => StatusCodes.Status503ServiceUnavailable,
             _ => StatusCodes.Status500InternalServerError
@@ -97,6 +98,7 @@ internal static class ApiResponseResults
             ErrorCode.ValidationFailed => "Validation.Failed",
             ErrorCode.NotFound => "Resource.NotFound",
             ErrorCode.Conflict => "Resource.Conflict",
+            ErrorCode.Gone => "Resource.Gone",
             ErrorCode.Forbidden => "Scope.Forbidden",
             ErrorCode.RateLimited => "RateLimit.Exceeded",
             ErrorCode.CreditInsufficient => "External.CreditInsufficient",

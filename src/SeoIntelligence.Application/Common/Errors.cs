@@ -5,6 +5,7 @@ public enum ErrorCode
     ValidationFailed,
     NotFound,
     Conflict,
+    Gone,
     Forbidden,
     RateLimited,
     CreditInsufficient,

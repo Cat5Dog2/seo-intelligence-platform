@@ -62,6 +62,11 @@ internal static class OpenApiDocumentEndpoint
         new("/api/projects/{projectId}/rewrite/tasks/{taskId}", Get: "Get rewrite task", Put: "Update rewrite task"),
         new("/api/projects/{projectId}/cannibalization/candidates", Get: "List cannibalization candidates"),
         new("/api/projects/{projectId}/cannibalization/refresh", Post: "Register cannibalization refresh job", PostSuccessCode: "202"),
+        new("/api/projects/{projectId}/reports", Post: "Register monthly report generation job", PostSuccessCode: "202"),
+        new("/api/projects/{projectId}/reports/{reportId}", Get: "Get report state and file metadata"),
+        new("/api/projects/{projectId}/reports/{reportId}/download", Get: "Issue a short-lived report download URL"),
+        new("/api/projects/{projectId}/reports/{reportId}/share", Post: "Issue report share URL", Delete: "Revoke report share URL"),
+        new("/api/report-shares/{token}", Get: "Access shared report"),
         new("/api/projects/{projectId}/exports/csv", Post: "Register Phase 1 CSV export job", PostSuccessCode: "202"),
         new("/api/projects/{projectId}/exports/{exportId}", Get: "Get export state and file metadata"),
         new("/api/projects/{projectId}/exports/{exportId}/download", Get: "Issue a short-lived export download URL")

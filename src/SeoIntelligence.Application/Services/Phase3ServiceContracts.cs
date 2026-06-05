@@ -28,6 +28,8 @@ public interface IReportService
     Task<Result<ReportShareDetails>> ShareReportAsync(ProjectExecutionContext context, Guid reportId, ReportShareRequest request, CancellationToken cancellationToken = default);
 
     Task<Result<ReportShareDetails>> RevokeShareAsync(ProjectExecutionContext context, Guid reportId, CancellationToken cancellationToken = default);
+
+    Task<Result<ReportShareAccessDetails>> GetSharedReportAsync(ProjectExecutionContext context, string token, CancellationToken cancellationToken = default);
 }
 
 public interface IDataImportService
@@ -127,6 +129,14 @@ public sealed record ReportShareDetails(
     DateTimeOffset? ShareExpiresAt,
     DateTimeOffset? ShareRevokedAt,
     string Status);
+
+public sealed record ReportShareAccessDetails(
+    Guid ReportId,
+    string ReportType,
+    string Period,
+    string Format,
+    string DownloadUrl,
+    DateTimeOffset DownloadExpiresAt);
 
 public sealed record ImportUploadUrlRequest(
     string? ImportType,
