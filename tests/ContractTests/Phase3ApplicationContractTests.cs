@@ -23,6 +23,19 @@ public sealed class Phase3ApplicationContractTests
         Assert.Equal("rankings", report.RootElement.GetProperty("sections")[1].GetString());
         Assert.True(report.RootElement.TryGetProperty("shareExpiresAt", out _));
 
+        using var sharedReport = JsonDocument.Parse(JsonSerializer.Serialize(
+            new ReportShareAccessDetails(
+                ReportId: Guid.Parse("018f4dd8-0101-7000-8000-000000000101"),
+                ReportType: "monthly",
+                Period: "2026-06",
+                Format: "pdf",
+                DownloadUrl: "storage://local/reports/report.pdf?expiresAt=2026-06-05T00%3A15%3A00Z",
+                DownloadExpiresAt: DateTimeOffset.Parse("2026-06-05T00:15:00Z")),
+            JsonOptions));
+        Assert.Equal("monthly", sharedReport.RootElement.GetProperty("reportType").GetString());
+        Assert.Equal("pdf", sharedReport.RootElement.GetProperty("format").GetString());
+        Assert.True(sharedReport.RootElement.TryGetProperty("downloadUrl", out _));
+
         using var connector = JsonDocument.Parse(JsonSerializer.Serialize(
             new ConnectorSettingsRequest(
                 ConnectorType: "gsc",

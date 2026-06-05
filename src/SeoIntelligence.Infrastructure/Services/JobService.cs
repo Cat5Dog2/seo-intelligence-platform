@@ -945,6 +945,7 @@ internal sealed class JobDispatcher(
     TopicClusterGenerateJob topicClusterGenerateJob,
     RewriteScoringJob rewriteScoringJob,
     CannibalizationDetectionJob cannibalizationDetectionJob,
+    MonthlyReportJob monthlyReportJob,
     OpportunityScoringJob opportunityScoringJob,
     DataExportJob dataExportJob,
     ArticleBriefExportJob articleBriefExportJob,
@@ -1047,6 +1048,12 @@ internal sealed class JobDispatcher(
         if (string.Equals(job.JobType, CannibalizationDetectionJob.JobType, StringComparison.Ordinal))
         {
             await cannibalizationDetectionJob.ExecuteAsync(jobId);
+            return;
+        }
+
+        if (string.Equals(job.JobType, MonthlyReportJob.JobType, StringComparison.Ordinal))
+        {
+            await monthlyReportJob.ExecuteAsync(jobId);
             return;
         }
 
