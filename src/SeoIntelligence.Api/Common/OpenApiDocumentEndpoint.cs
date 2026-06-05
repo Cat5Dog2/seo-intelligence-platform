@@ -58,6 +58,10 @@ internal static class OpenApiDocumentEndpoint
         new("/api/projects/{projectId}/alerts/{alertId}", Put: "Update rank alert", Delete: "Disable rank alert"),
         new("/api/projects/{projectId}/alerts/{alertId}/enable", Post: "Enable rank alert"),
         new("/api/projects/{projectId}/alert-events", Get: "List rank alert events"),
+        new("/api/projects/{projectId}/rewrite/tasks", Get: "List rewrite tasks"),
+        new("/api/projects/{projectId}/rewrite/tasks/{taskId}", Get: "Get rewrite task", Put: "Update rewrite task"),
+        new("/api/projects/{projectId}/cannibalization/candidates", Get: "List cannibalization candidates"),
+        new("/api/projects/{projectId}/cannibalization/refresh", Post: "Register cannibalization refresh job", PostSuccessCode: "202"),
         new("/api/projects/{projectId}/exports/csv", Post: "Register Phase 1 CSV export job", PostSuccessCode: "202"),
         new("/api/projects/{projectId}/exports/{exportId}", Get: "Get export state and file metadata"),
         new("/api/projects/{projectId}/exports/{exportId}/download", Get: "Issue a short-lived export download URL")
