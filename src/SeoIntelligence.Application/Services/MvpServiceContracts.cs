@@ -852,7 +852,13 @@ public sealed record DashboardSnapshot(
     int SearchVolumeResultCount = 0,
     int OpportunityScoreCount = 0,
     IReadOnlyList<DashboardOpportunityScoreRow>? TopOpportunityScores = null,
-    int NotificationFailureCount = 0);
+    int NotificationFailureCount = 0,
+    DashboardCompetitorSummary? CompetitorSummary = null,
+    DashboardInfluxSummary? InfluxSummary = null,
+    DashboardContentAnalysisSummary? ContentAnalysisSummary = null,
+    DashboardBriefSummary? BriefSummary = null,
+    DashboardRankSummary? RankSummary = null,
+    DashboardRankAlertSummary? RankAlertSummary = null);
 
 public sealed record DashboardOpportunityScoreRow(
     Guid KeywordId,
@@ -861,5 +867,41 @@ public sealed record DashboardOpportunityScoreRow(
     string Location,
     string Language,
     DateTime ScoredAt);
+
+public sealed record DashboardCompetitorSummary(
+    int CompetitorCount,
+    int SavedCompetitorCount,
+    decimal AverageDuplicateRate,
+    decimal EstimatedTraffic,
+    decimal TrafficValue);
+
+public sealed record DashboardInfluxSummary(
+    int KeywordCount,
+    int GapKeywordCount,
+    int PageCount,
+    decimal EstimatedTraffic,
+    decimal TrafficValue);
+
+public sealed record DashboardContentAnalysisSummary(
+    int KeywordCount,
+    int ContentResultCount,
+    int HeadlinePageCount,
+    int CoOccurrenceWordCount);
+
+public sealed record DashboardBriefSummary(
+    int BriefCount,
+    int DraftCount,
+    int PendingReviewCount,
+    int ReviewedCount);
+
+public sealed record DashboardRankSummary(
+    int RankCheckJobCount,
+    int RankResultCount,
+    RankDistribution Distribution);
+
+public sealed record DashboardRankAlertSummary(
+    int ActiveAlertCount,
+    int UnresolvedEventCount,
+    int RankAlertNotificationCount);
 
 public sealed record JobReference(Guid JobId, string Status);

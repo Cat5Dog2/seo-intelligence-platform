@@ -1,0 +1,194 @@
+@page "/competitors"
+@implements IDisposable
+@inject ISeoIntelligenceApiClient ApiClient
+@inject ProjectSelectionState ProjectState
+@inject NavigationManager Navigation
+
+<PageTitle>競合分析 - SEO Intelligence</PageTitle>
+
+<div class="page-stack">
+    <header class="page-header">
+        <div>
+            <h1>競合分析</h1>
+            <p>選択中プロジェクト: @(ProjectState.SelectedProject?.Name ?? "未選択")</p>
+        </div>
+        <div class="toolbar">
+            <button type="button" class="secondary-button" @onclick="AnalyzeAsync" disabled="@(!CanOperate)">競合抽出</button>
+            <button type="button" class="secondary-button" @onclick="LoadAsync" disabled="@(ProjectState.SelectedProject is null)">更新</button>
+        </div>
+    </header>
+
+    <ErrorSummary Errors="@Errors" />
+    @if (!string.IsNullOrWhiteSpace(Message))
+    {
+        <div class="state-row">@Message</div>
+    }
+
+    <section class="panel">
+        <div class="section-heading">
+            <h2>分析条件</h2>
+            <span class="muted">@(CompetitorRows.Count)件表示</span>
+        </div>
+        <div class="form-grid dense-form">
+            <label class="field wide-field">
+                <span>対象サイト</span>
+                <input @bind="Target" @bind:event="oninput" disabled="@(ProjectState.SelectedProject is null)" />
+            </label>
+            <label class="field">
+                <span>検索</span>
+                <input @bind="Query" @bind:event="oninput" disabled="@(ProjectState.SelectedProject is null)" />
+            </label>
+            <label class="field">
+                <span>sortBy</span>
+                <select @bind="SortBy" disabled="@(ProjectState.SelectedProject is null)">
+                    <option value="duplicateRate">duplicateRate</option>
+                    <option value="estimatedTraffic">estimatedTraffic</option>
+                    <option value="trafficValue">trafficValue</option>
+                    <option value="keywordCount">keywordCount</option>
+                    <option value="gapKeywordCount">gapKeywordCount</option>
+                    <option value="createdAt">createdAt</option>
+                    <option value="domain">domain</option>
+                </select>
+            </label>
+            <label class="field">
+                <span>orderBy</span>
+                <select @bind="OrderBy" disabled="@(ProjectState.SelectedProject is null)">
+                    <option value="desc">desc</option>
+                    <option value="asc">asc</option>
+                </select>
+            </label>
+            <button type="button" class="primary-button" @onclick="AnalyzeAsync" disabled="@(!CanOperate)">登録</button>
+            <button type="button" class="secondary-button" @onclick="LoadAsync" disabled="@(ProjectState.SelectedProject is null)">検索</button>
+        </div>
+    </section>
+
+    <section class="panel">
+        <div class="section-heading">
+            <h2>競合サイト</h2>
+        </div>
+        <DataTable Items="@CompetitorRows" Columns="@CompetitorColumns" IsLoading="@IsLoading" EmptyText="競合分析結果はありません。">
+            <RowActions Context="competitor">
+                <div class="row-actions">
+                    <button type="button" class="table-action" @onclick="() => NavigateToInflux(competitor.Domain)">獲得語/ページ</button>
+                    <AuditLink ResourceType="competitive_result" ResourceId="@competitor.CompetitorResultId.ToString("D")" />
+                </div>
+            </RowActions>
+        </DataTable>
+    </section>
+</div>
+
+@code {
+    private static readonly IReadOnlyList<DataTableColumn<CompetitorResultRow>> CompetitorColumns =
+    [
+        new("domain", row => row.Domain),
+        new("duplicate", row => row.DuplicateRate.ToString("0.####"), "table-number"),
+        new("traffic", row => row.EstimatedTraffic.ToString("0.##"), "table-number"),
+        new("value", row => row.TrafficValue.ToString("0.##"), "table-number"),
+        new("keywords", row => row.KeywordCount.ToString(), "table-number"),
+        new("重複語", row => row.DuplicateKeywordCount.ToString(), "table-number"),
+        new("競合独自", row => row.CompetitorUniqueKeywordCount.ToString(), "table-number"),
+        new("自社独自", row => row.TargetUniqueKeywordCount.ToString(), "table-number"),
+        new("保存", row => row.Saved ? "saved" : "-")
+    ];
+
+    private IReadOnlyList<CompetitorResultRow> CompetitorRows { get; set; } = [];
+
+    private IReadOnlyList<ApiError> Errors { get; set; } = [];
+
+    private string? Message { get; set; }
+
+    private bool IsLoading { get; set; }
+
+    private bool IsAnalyzing { get; set; }
+
+    private string? Target { get; set; }
+
+    private string? Query { get; set; }
+
+    private string SortBy { get; set; } = "duplicateRate";
+
+    private string OrderBy { get; set; } = "desc";
+
+    private bool CanOperate
+        => ProjectState.SelectedProject is not null && !IsAnalyzing;
+
+    protected override async Task OnInitializedAsync()
+    {
+        ProjectState.Changed += OnProjectStateChanged;
+        await ProjectState.LoadAsync();
+        await LoadAsync();
+    }
+
+    private async Task AnalyzeAsync()
+    {
+        if (ProjectState.SelectedProject is not { } project)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(Target))
+        {
+            Errors = [new ApiError("Validation.Target.Required", "対象サイトを入力してください。", "target")];
+            return;
+        }
+
+        IsAnalyzing = true;
+        Errors = [];
+        Message = null;
+        var result = await ApiClient.AnalyzeCompetitorsAsync(project.ProjectId, new CompetitorAnalyzeRequest(Target.Trim()));
+        if (result.IsSuccess && result.Data is { } job)
+        {
+            Message = $"競合分析ジョブを登録しました: {job.JobId:D}";
+        }
+        else
+        {
+            Errors = result.Errors;
+        }
+
+        IsAnalyzing = false;
+    }
+
+    private async Task LoadAsync()
+    {
+        if (ProjectState.SelectedProject is not { } project)
+        {
+            CompetitorRows = [];
+            return;
+        }
+
+        IsLoading = true;
+        Errors = [];
+        var result = await ApiClient.GetCompetitorsAsync(
+            project.ProjectId,
+            Query,
+            sortBy: SortBy,
+            orderBy: OrderBy,
+            pageSize: 100);
+        if (result.IsSuccess)
+        {
+            CompetitorRows = result.Data ?? [];
+        }
+        else
+        {
+            CompetitorRows = [];
+            Errors = result.Errors;
+        }
+
+        IsLoading = false;
+    }
+
+    private void NavigateToInflux(string target)
+        => Navigation.NavigateTo($"/influx?target={Uri.EscapeDataString(target)}");
+
+    private async void OnProjectStateChanged()
+    {
+        await InvokeAsync(async () =>
+        {
+            await LoadAsync();
+            StateHasChanged();
+        });
+    }
+
+    public void Dispose()
+        => ProjectState.Changed -= OnProjectStateChanged;
+}

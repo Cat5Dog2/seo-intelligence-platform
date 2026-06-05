@@ -402,6 +402,46 @@ legend {
     width: 100%;
 }
 
+.detail-list {
+    display: grid;
+    gap: 0.6rem;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    margin-bottom: 1rem;
+}
+
+.detail-list div {
+    border: 1px solid #e2e6ed;
+    border-radius: 6px;
+    padding: 0.65rem;
+}
+
+.detail-list span {
+    color: #5a6575;
+    display: block;
+    font-size: 0.78rem;
+    font-weight: 700;
+}
+
+.detail-list strong {
+    display: block;
+    margin-top: 0.2rem;
+    overflow-wrap: anywhere;
+}
+
+.subsection-title {
+    font-size: 0.95rem;
+    margin: 1rem 0 0.5rem;
+}
+
+.json-field textarea {
+    font-family: Consolas, "Courier New", monospace;
+    min-height: 220px;
+}
+
+.rank-distribution {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .table-number {
     text-align: right;
     white-space: nowrap;

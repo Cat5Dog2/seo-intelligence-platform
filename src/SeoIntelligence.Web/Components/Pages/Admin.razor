@@ -1,7 +1,9 @@
 @page "/admin"
 @page "/admin/audit"
 @using System.Text.Json
+@implements IDisposable
 @inject ISeoIntelligenceApiClient ApiClient
+@inject ProjectSelectionState ProjectState
 
 <PageTitle>管理 - SEO Intelligence</PageTitle>
 
@@ -22,6 +24,7 @@
         <button type="button" class="@TabClass(CreditTab)" @onclick="@(() => SetTab(CreditTab))">クレジット</button>
         <button type="button" class="@TabClass(NotificationTab)" @onclick="@(() => SetTab(NotificationTab))">Discord通知</button>
         <button type="button" class="@TabClass(JobTab)" @onclick="@(() => SetTab(JobTab))">ジョブ</button>
+        <button type="button" class="@TabClass(Phase2Tab)" @onclick="@(() => SetTab(Phase2Tab))">Phase 2運用</button>
         <button type="button" class="@TabClass(AuditTab)" @onclick="@(() => SetTab(AuditTab))">監査ログ</button>
     </nav>
 
@@ -244,6 +247,70 @@
             <JobProgressPanel Title="ジョブ一覧" ProjectScoped="false" />
         </section>
     }
+    else if (ActiveTab == Phase2Tab)
+    {
+        <section class="page-stack">
+            <section class="panel">
+                <div class="section-heading">
+                    <h2>Phase 2ジョブ</h2>
+                    <span class="muted">選択中プロジェクト: @(ProjectState.SelectedProject?.Name ?? "未選択")</span>
+                </div>
+                <div class="form-grid dense-form">
+                    <label class="field">
+                        <span>job_type</span>
+                        <select @bind="Phase2JobType">
+                            @foreach (var option in Phase2JobTypeOptions)
+                            {
+                                <option value="@option">@option</option>
+                            }
+                        </select>
+                    </label>
+                    <button type="button" class="secondary-button" @onclick="LoadPhase2OperationsAsync">再読み込み</button>
+                </div>
+                <JobProgressPanel Title="@Phase2JobTitle" ProjectScoped="true" JobType="@Phase2JobType" />
+            </section>
+
+            <section class="panel">
+                <div class="section-heading">
+                    <h2>順位アラート</h2>
+                    <button type="button" class="secondary-button" @onclick="LoadPhase2OperationsAsync">更新</button>
+                </div>
+                <DataTable Items="@Phase2Alerts" Columns="@Phase2AlertColumns" IsLoading="@IsPhase2Loading" EmptyText="順位アラートはありません。">
+                    <RowActions Context="alert">
+                        <AuditLink ResourceType="alert" ResourceId="@alert.AlertId.ToString("D")" />
+                    </RowActions>
+                </DataTable>
+            </section>
+
+            <section class="panel">
+                <div class="section-heading">
+                    <h2>alert_events</h2>
+                </div>
+                <DataTable Items="@Phase2AlertEvents" Columns="@Phase2AlertEventColumns" IsLoading="@IsPhase2Loading" EmptyText="alert_eventsはありません。">
+                    <RowActions Context="alertEvent">
+                        <div class="row-actions">
+                            @if (alertEvent.NotificationDeliveryId.HasValue)
+                            {
+                                <AuditLink ResourceType="notification_delivery" ResourceId="@alertEvent.NotificationDeliveryId.Value.ToString("D")" />
+                            }
+                            <AuditLink ResourceType="alert_event" ResourceId="@alertEvent.AlertEventId.ToString("D")" />
+                        </div>
+                    </RowActions>
+                </DataTable>
+            </section>
+
+            <section class="panel">
+                <div class="section-heading">
+                    <h2>rank_alert通知履歴</h2>
+                </div>
+                <DataTable Items="@Phase2RankAlertDeliveries" Columns="@DeliveryColumns" IsLoading="@IsPhase2Loading" EmptyText="rank_alert通知履歴はありません。">
+                    <RowActions Context="delivery">
+                        <AuditLink ResourceType="notification_delivery" ResourceId="@delivery.DeliveryId.ToString("D")" />
+                    </RowActions>
+                </DataTable>
+            </section>
+        </section>
+    }
     else if (ActiveTab == AuditTab)
     {
         <section class="panel">
@@ -292,6 +359,7 @@
     private const string CreditTab = "credit";
     private const string NotificationTab = "notification";
     private const string JobTab = "job";
+    private const string Phase2Tab = "phase2";
     private const string AuditTab = "audit";
 
     private static readonly IReadOnlyList<StatusFilterOption> EnabledStatuses =
@@ -308,6 +376,19 @@
         new("retrying", "retrying"),
         new("succeeded", "succeeded"),
         new("failed", "failed")
+    ];
+
+    private static readonly IReadOnlyList<string> Phase2JobTypeOptions =
+    [
+        "TopicClusterGenerateJob",
+        "CompetitorRefreshJob",
+        "ContentAnalyzeJob",
+        "GenerateBriefJob",
+        "ArticleBriefExportJob",
+        "RegisterRankCheckJob",
+        "PollRankStatusJob",
+        "FetchRankResultsJob",
+        "RankAlertEvaluateJob"
     ];
 
     private static readonly IReadOnlyList<DataTableColumn<ApiCredentialDetails>> CredentialColumns =
@@ -355,6 +436,24 @@
         new("Created", audit => FormatDateTime(audit.CreatedAt))
     ];
 
+    private static readonly IReadOnlyList<DataTableColumn<RankAlertDetails>> Phase2AlertColumns =
+    [
+        new("Type", alert => alert.AlertType),
+        new("Status", alert => alert.Status),
+        new("Channel", alert => alert.NotificationChannelId?.ToString("D")),
+        new("Last Triggered", alert => alert.LastTriggeredAt.HasValue ? FormatDateTime(alert.LastTriggeredAt.Value) : "-"),
+        new("Updated", alert => FormatDateTime(alert.UpdatedAt))
+    ];
+
+    private static readonly IReadOnlyList<DataTableColumn<RankAlertEventDetails>> Phase2AlertEventColumns =
+    [
+        new("Event", alertEvent => alertEvent.EventType),
+        new("Keyword", alertEvent => alertEvent.Keyword),
+        new("Job", alertEvent => alertEvent.JobId?.ToString("D")),
+        new("Delivery", alertEvent => alertEvent.NotificationDeliveryId?.ToString("D")),
+        new("Triggered", alertEvent => FormatDateTime(alertEvent.TriggeredAt))
+    ];
+
     private string ActiveTab { get; set; } = WorkspaceTab;
 
     private WorkspaceFormModel WorkspaceForm { get; set; } = new();
@@ -371,6 +470,12 @@
 
     private IReadOnlyList<AuditLogDetails> AuditLogs { get; set; } = [];
 
+    private IReadOnlyList<RankAlertDetails> Phase2Alerts { get; set; } = [];
+
+    private IReadOnlyList<RankAlertEventDetails> Phase2AlertEvents { get; set; } = [];
+
+    private IReadOnlyList<NotificationDeliveryDetails> Phase2RankAlertDeliveries { get; set; } = [];
+
     private IReadOnlyList<ApiError> Errors { get; set; } = [];
 
     private string? Message { get; set; }
@@ -385,11 +490,17 @@
 
     private bool IsAuditLoading { get; set; }
 
+    private bool IsPhase2Loading { get; set; }
+
     private string CredentialStatus { get; set; } = "active";
 
     private string ChannelStatus { get; set; } = "active";
 
     private string DeliveryStatus { get; set; } = "all";
+
+    private string Phase2JobType { get; set; } = "RegisterRankCheckJob";
+
+    private string Phase2JobTitle => $"Phase 2ジョブ: {Phase2JobType}";
 
     private Guid? EditingCredentialId { get; set; }
 
@@ -412,7 +523,11 @@
     public string? QueryResourceId { get; set; }
 
     protected override async Task OnInitializedAsync()
-        => await LoadAllAsync();
+    {
+        ProjectState.Changed += OnProjectStateChanged;
+        await ProjectState.LoadAsync();
+        await LoadAllAsync();
+    }
 
     protected override async Task OnParametersSetAsync()
     {
@@ -432,6 +547,7 @@
         await LoadCredentialsAsync();
         await LoadExternalCallsAsync();
         await LoadNotificationsAsync();
+        await LoadPhase2OperationsAsync();
         await LoadAuditLogsAsync();
     }
 
@@ -758,6 +874,56 @@
         IsAuditLoading = false;
     }
 
+    private async Task LoadPhase2OperationsAsync()
+    {
+        IsPhase2Loading = true;
+        if (ProjectState.SelectedProject is not { } project)
+        {
+            Phase2Alerts = [];
+            Phase2AlertEvents = [];
+            Phase2RankAlertDeliveries = [];
+            IsPhase2Loading = false;
+            return;
+        }
+
+        var alerts = await ApiClient.SearchRankAlertsAsync(project.ProjectId, status: "all", pageSize: 50);
+        if (alerts.IsSuccess)
+        {
+            Phase2Alerts = alerts.Data ?? [];
+        }
+        else
+        {
+            Phase2Alerts = [];
+            Errors = alerts.Errors;
+        }
+
+        var alertEvents = await ApiClient.SearchRankAlertEventsAsync(project.ProjectId, pageSize: 50);
+        if (alertEvents.IsSuccess)
+        {
+            Phase2AlertEvents = alertEvents.Data ?? [];
+        }
+        else
+        {
+            Phase2AlertEvents = [];
+            Errors = alertEvents.Errors;
+        }
+
+        var deliveries = await ApiClient.SearchNotificationDeliveriesAsync("all", q: "rank_alert", pageSize: 50);
+        if (deliveries.IsSuccess)
+        {
+            Phase2RankAlertDeliveries = (deliveries.Data ?? [])
+                .Where(delivery => string.Equals(delivery.EventType, "rank_alert", StringComparison.Ordinal))
+                .ToArray();
+        }
+        else
+        {
+            Phase2RankAlertDeliveries = [];
+            Errors = deliveries.Errors;
+        }
+
+        IsPhase2Loading = false;
+    }
+
     private async Task OnCredentialStatusChanged(string status)
     {
         CredentialStatus = status;
@@ -864,6 +1030,18 @@
 
     private static string FormatDateTime(DateTime value)
         => value.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
+
+    private async void OnProjectStateChanged()
+    {
+        await InvokeAsync(async () =>
+        {
+            await LoadPhase2OperationsAsync();
+            StateHasChanged();
+        });
+    }
+
+    public void Dispose()
+        => ProjectState.Changed -= OnProjectStateChanged;
 
     private sealed class WorkspaceFormModel
     {

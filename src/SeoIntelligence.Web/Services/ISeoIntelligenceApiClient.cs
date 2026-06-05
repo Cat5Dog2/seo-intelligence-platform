@@ -115,6 +115,191 @@ public interface ISeoIntelligenceApiClient
 
     Task<ApiClientResult<DashboardSnapshot>> GetDashboardAsync(Guid projectId, CancellationToken cancellationToken = default);
 
+    Task<ApiClientResult<JobReference>> GenerateTopicClustersAsync(
+        Guid projectId,
+        TopicClusterGenerateRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<ApiClientResult<IReadOnlyList<TopicClusterSummary>>> GetTopicClustersAsync(
+        Guid projectId,
+        string? q = null,
+        string sortBy = "score",
+        string orderBy = "desc",
+        int page = 1,
+        int pageSize = 100,
+        string? intentLabel = null,
+        Guid? parentId = null,
+        CancellationToken cancellationToken = default);
+
+    Task<ApiClientResult<TopicClusterDetails>> GetTopicClusterAsync(
+        Guid projectId,
+        Guid clusterId,
+        CancellationToken cancellationToken = default);
+
+    Task<ApiClientResult<JobReference>> AnalyzeCompetitorsAsync(
+        Guid projectId,
+        CompetitorAnalyzeRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<ApiClientResult<IReadOnlyList<CompetitorResultRow>>> GetCompetitorsAsync(
+        Guid projectId,
+        string? q = null,
+        string? domain = null,
+        string sortBy = "duplicateRate",
+        string orderBy = "desc",
+        int page = 1,
+        int pageSize = 100,
+        CancellationToken cancellationToken = default);
+
+    Task<ApiClientResult<IReadOnlyList<InfluxKeywordResultRow>>> GetInfluxKeywordsAsync(
+        Guid projectId,
+        string? q = null,
+        string? target = null,
+        int? minRank = null,
+        int? maxRank = null,
+        string sortBy = "rank",
+        string orderBy = "asc",
+        int page = 1,
+        int pageSize = 100,
+        CancellationToken cancellationToken = default);
+
+    Task<ApiClientResult<IReadOnlyList<InfluxPageResultRow>>> GetInfluxPagesAsync(
+        Guid projectId,
+        string? q = null,
+        string? target = null,
+        string sortBy = "estimatedTraffic",
+        string orderBy = "desc",
+        int page = 1,
+        int pageSize = 100,
+        CancellationToken cancellationToken = default);
+
+    Task<ApiClientResult<JobReference>> AnalyzeContentAsync(
+        Guid projectId,
+        ContentAnalyzeRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<ApiClientResult<IReadOnlyList<ContentAnalysisResultRow>>> GetContentAnalysesAsync(
+        Guid projectId,
+        string? q = null,
+        Guid? keywordId = null,
+        string sortBy = "lastAnalyzedAt",
+        string orderBy = "desc",
+        int page = 1,
+        int pageSize = 50,
+        CancellationToken cancellationToken = default);
+
+    Task<ApiClientResult<JobReference>> GenerateBriefAsync(
+        Guid projectId,
+        GenerateBriefRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<ApiClientResult<IReadOnlyList<ArticleBriefSummary>>> GetBriefsAsync(
+        Guid projectId,
+        string? q = null,
+        Guid? targetKeywordId = null,
+        Guid? clusterId = null,
+        string? reviewStatus = null,
+        string status = "all",
+        string sortBy = "updatedAt",
+        string orderBy = "desc",
+        int page = 1,
+        int pageSize = 100,
+        CancellationToken cancellationToken = default);
+
+    Task<ApiClientResult<ArticleBriefDetails>> GetBriefAsync(
+        Guid projectId,
+        Guid briefId,
+        CancellationToken cancellationToken = default);
+
+    Task<ApiClientResult<ArticleBriefDetails>> UpdateBriefAsync(
+        Guid projectId,
+        Guid briefId,
+        ArticleBriefUpdateRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<ApiClientResult<IReadOnlyList<ArticleBriefVersionDetails>>> GetBriefVersionsAsync(
+        Guid projectId,
+        Guid briefId,
+        int page = 1,
+        int pageSize = 50,
+        CancellationToken cancellationToken = default);
+
+    Task<ApiClientResult<JobReference>> ExportBriefAsync(
+        Guid projectId,
+        Guid briefId,
+        ArticleBriefExportRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<ApiClientResult<JobReference>> RegisterRankCheckAsync(
+        Guid projectId,
+        RankCheckJobRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<ApiClientResult<IReadOnlyList<RankResultRow>>> GetRankCheckJobResultsAsync(
+        Guid projectId,
+        Guid jobId,
+        string? q = null,
+        string sortBy = "checkedAt",
+        string orderBy = "desc",
+        int page = 1,
+        int pageSize = 100,
+        CancellationToken cancellationToken = default);
+
+    Task<ApiClientResult<RankResultList>> SearchRankResultsAsync(
+        Guid projectId,
+        string? q = null,
+        Guid? jobId = null,
+        Guid? keywordId = null,
+        string? target = null,
+        int? minPosition = null,
+        int? maxPosition = null,
+        string sortBy = "checkedAt",
+        string orderBy = "desc",
+        int page = 1,
+        int pageSize = 100,
+        CancellationToken cancellationToken = default);
+
+    Task<ApiClientResult<IReadOnlyList<RankAlertDetails>>> SearchRankAlertsAsync(
+        Guid projectId,
+        string status = "active",
+        string? alertType = null,
+        string? q = null,
+        int page = 1,
+        int pageSize = 100,
+        CancellationToken cancellationToken = default);
+
+    Task<ApiClientResult<RankAlertDetails>> CreateRankAlertAsync(
+        Guid projectId,
+        RankAlertCreateRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<ApiClientResult<RankAlertDetails>> UpdateRankAlertAsync(
+        Guid projectId,
+        Guid alertId,
+        RankAlertUpdateRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<ApiClientResult<RankAlertDetails>> DisableRankAlertAsync(
+        Guid projectId,
+        Guid alertId,
+        CancellationToken cancellationToken = default);
+
+    Task<ApiClientResult<RankAlertDetails>> EnableRankAlertAsync(
+        Guid projectId,
+        Guid alertId,
+        CancellationToken cancellationToken = default);
+
+    Task<ApiClientResult<IReadOnlyList<RankAlertEventDetails>>> SearchRankAlertEventsAsync(
+        Guid projectId,
+        string? eventType = null,
+        Guid? alertId = null,
+        string? q = null,
+        DateTimeOffset? from = null,
+        DateTimeOffset? to = null,
+        int page = 1,
+        int pageSize = 100,
+        CancellationToken cancellationToken = default);
+
     Task<ApiClientResult<KeywordDiscoveryResult>> DiscoverKeywordsAsync(
         Guid projectId,
         KeywordDiscoveryRequest request,

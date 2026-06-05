@@ -121,6 +121,7 @@ public sealed class SearchVolumeIntegrationTests
             Assert.True(rows[0].GetProperty("monthlySearchVolume").TryGetProperty("2026-05", out _));
 
             await SeedDashboardFailureAndCreditAsync(factory, projectId);
+            await SeedDashboardPhase2DataAsync(factory, projectId);
 
             using var dashboardResponse = await client.GetAsync($"/api/projects/{projectId}/dashboard");
             using var dashboardDocument = await ReadJsonAsync(dashboardResponse);
@@ -137,6 +138,40 @@ public sealed class SearchVolumeIntegrationTests
             Assert.Equal(10, topOpportunityScores.Length);
             Assert.False(string.IsNullOrWhiteSpace(topOpportunityScores[0].GetProperty("keyword").GetString()));
             Assert.True(topOpportunityScores[0].GetProperty("opportunityScore").GetDecimal() > 0m);
+
+            var competitorSummary = dashboard.GetProperty("competitorSummary");
+            Assert.Equal(1, competitorSummary.GetProperty("competitorCount").GetInt32());
+            Assert.Equal(1, competitorSummary.GetProperty("savedCompetitorCount").GetInt32());
+            Assert.Equal(0.5m, competitorSummary.GetProperty("averageDuplicateRate").GetDecimal());
+            Assert.Equal(300m, competitorSummary.GetProperty("trafficValue").GetDecimal());
+
+            var influxSummary = dashboard.GetProperty("influxSummary");
+            Assert.Equal(2, influxSummary.GetProperty("keywordCount").GetInt32());
+            Assert.Equal(1, influxSummary.GetProperty("gapKeywordCount").GetInt32());
+            Assert.Equal(1, influxSummary.GetProperty("pageCount").GetInt32());
+
+            var contentSummary = dashboard.GetProperty("contentAnalysisSummary");
+            Assert.Equal(1, contentSummary.GetProperty("keywordCount").GetInt32());
+            Assert.Equal(1, contentSummary.GetProperty("contentResultCount").GetInt32());
+            Assert.Equal(1, contentSummary.GetProperty("headlinePageCount").GetInt32());
+            Assert.Equal(1, contentSummary.GetProperty("coOccurrenceWordCount").GetInt32());
+
+            var briefSummary = dashboard.GetProperty("briefSummary");
+            Assert.Equal(2, briefSummary.GetProperty("briefCount").GetInt32());
+            Assert.Equal(1, briefSummary.GetProperty("draftCount").GetInt32());
+            Assert.Equal(1, briefSummary.GetProperty("pendingReviewCount").GetInt32());
+            Assert.Equal(1, briefSummary.GetProperty("reviewedCount").GetInt32());
+
+            var rankSummary = dashboard.GetProperty("rankSummary");
+            Assert.Equal(1, rankSummary.GetProperty("rankCheckJobCount").GetInt32());
+            Assert.Equal(2, rankSummary.GetProperty("rankResultCount").GetInt32());
+            Assert.Equal(1, rankSummary.GetProperty("distribution").GetProperty("top3").GetInt32());
+            Assert.Equal(1, rankSummary.GetProperty("distribution").GetProperty("top20").GetInt32());
+
+            var rankAlertSummary = dashboard.GetProperty("rankAlertSummary");
+            Assert.Equal(1, rankAlertSummary.GetProperty("activeAlertCount").GetInt32());
+            Assert.Equal(1, rankAlertSummary.GetProperty("unresolvedEventCount").GetInt32());
+            Assert.Equal(1, rankAlertSummary.GetProperty("rankAlertNotificationCount").GetInt32());
         }
         finally
         {
@@ -285,6 +320,254 @@ public sealed class SearchVolumeIntegrationTests
             CreatedAt = now,
             UpdatedAt = now,
             CompletedAt = now
+        });
+        await dbContext.SaveChangesAsync();
+    }
+
+    private static async Task SeedDashboardPhase2DataAsync(SearchVolumeApiFactory factory, Guid projectId)
+    {
+        await using var scope = factory.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<SeoIntelligenceDbContext>();
+        var now = DateTime.UtcNow;
+        var keywordId = Guid.NewGuid();
+        var gapKeywordId = Guid.NewGuid();
+        var rankJobId = Guid.NewGuid();
+        var alertId = Guid.NewGuid();
+        var channelId = Guid.NewGuid();
+        dbContext.Sites.Add(new SiteEntity
+        {
+            Id = Guid.NewGuid(),
+            ProjectId = projectId,
+            Domain = "own.example",
+            CanonicalUrl = "https://own.example/",
+            Type = "own",
+            Status = StatusValues.Active,
+            CreatedAt = now,
+            UpdatedAt = now
+        });
+        dbContext.CompetitiveResults.Add(new CompetitiveResultEntity
+        {
+            Id = Guid.NewGuid(),
+            ProjectId = projectId,
+            SiteDomain = "competitor.example",
+            DuplicateRate = 0.5m,
+            EstimatedTraffic = 120m,
+            TrafficValue = 300m,
+            KeywordCount = 40,
+            UniqueCountsJson = "{}",
+            CreatedAt = now
+        });
+        dbContext.CompetitorSites.Add(new CompetitorSiteEntity
+        {
+            Id = Guid.NewGuid(),
+            ProjectId = projectId,
+            Domain = "competitor.example",
+            Source = "competitive",
+            DuplicateRate = 0.5m,
+            EstimatedTraffic = 120m,
+            CreatedAt = now
+        });
+        dbContext.InfluxKeywordResults.AddRange(
+            new InfluxKeywordResultEntity
+            {
+                Id = Guid.NewGuid(),
+                ProjectId = projectId,
+                Target = "own.example",
+                KeywordId = keywordId,
+                Rank = 2,
+                RankedUrl = "https://own.example/seo",
+                EstimatedTraffic = 10m,
+                MetricsSnapshotJson = "{}",
+                CreatedAt = now
+            },
+            new InfluxKeywordResultEntity
+            {
+                Id = Guid.NewGuid(),
+                ProjectId = projectId,
+                Target = "competitor.example",
+                KeywordId = gapKeywordId,
+                Rank = 4,
+                RankedUrl = "https://competitor.example/seo",
+                EstimatedTraffic = 20m,
+                MetricsSnapshotJson = "{}",
+                CreatedAt = now
+            });
+        dbContext.InfluxPageResults.Add(new InfluxPageResultEntity
+        {
+            Id = Guid.NewGuid(),
+            ProjectId = projectId,
+            Target = "competitor.example",
+            PageUrl = "https://competitor.example/seo",
+            Title = "Competitor SEO",
+            KeywordCount = 12,
+            EstimatedTraffic = 30m,
+            TrafficValue = 80m,
+            TopKeywordId = gapKeywordId,
+            CreatedAt = now
+        });
+        dbContext.ContentSearchResults.Add(new ContentSearchResultEntity
+        {
+            Id = Guid.NewGuid(),
+            ProjectId = projectId,
+            KeywordId = keywordId,
+            Url = "https://content.example/seo",
+            Domain = "content.example",
+            Title = "SEO content",
+            Description = "SEO description",
+            EstimatedTraffic = 15m,
+            TrafficValue = 25m,
+            CreatedAt = now
+        });
+        dbContext.SerpHeadlinePages.Add(new SerpHeadlinePageEntity
+        {
+            Id = Guid.NewGuid(),
+            ProjectId = projectId,
+            KeywordId = keywordId,
+            Rank = 1,
+            Url = "https://content.example/seo",
+            Title = "SEO content",
+            Description = "SEO description",
+            HeadlineCount = 3,
+            WordCount = 1200,
+            CreatedAt = now
+        });
+        dbContext.CoOccurrenceWords.Add(new CoOccurrenceWordEntity
+        {
+            Id = Guid.NewGuid(),
+            ProjectId = projectId,
+            KeywordId = keywordId,
+            Word = "search intent",
+            OccurrenceCountsJson = "{}",
+            SiteCountsJson = "{}",
+            CreatedAt = now
+        });
+        dbContext.ArticleBriefs.AddRange(
+            new ArticleBriefEntity
+            {
+                Id = Guid.NewGuid(),
+                ProjectId = projectId,
+                Title = "Draft brief",
+                TargetKeywordId = keywordId,
+                CurrentVersion = 1,
+                ContentJson = "{}",
+                ReviewStatus = StatusValues.Pending,
+                Status = "draft",
+                CreatedAt = now,
+                UpdatedAt = now
+            },
+            new ArticleBriefEntity
+            {
+                Id = Guid.NewGuid(),
+                ProjectId = projectId,
+                Title = "Reviewed brief",
+                TargetKeywordId = gapKeywordId,
+                CurrentVersion = 1,
+                ContentJson = "{}",
+                ReviewStatus = "reviewed",
+                Status = "active",
+                CreatedAt = now,
+                UpdatedAt = now
+            });
+        dbContext.Jobs.Add(new JobEntity
+        {
+            Id = rankJobId,
+            WorkspaceId = SeoIntelligenceSeedData.DefaultWorkspaceId,
+            ProjectId = projectId,
+            JobType = "RegisterRankCheckJob",
+            Status = StatusValues.Succeeded,
+            Progress = 100,
+            RetryCount = 0,
+            ResultResourceType = "rank_check_job",
+            ResultResourceId = rankJobId,
+            RequestedBy = "developer",
+            CreatedAt = now,
+            UpdatedAt = now,
+            CompletedAt = now
+        });
+        dbContext.RankResults.AddRange(
+            new RankResultEntity
+            {
+                Id = Guid.NewGuid(),
+                JobId = rankJobId,
+                ProjectId = projectId,
+                KeywordId = keywordId,
+                Target = "own.example",
+                Position = 2,
+                RankedUrl = "https://own.example/seo",
+                EstimatedTraffic = 10m,
+                MetricsSnapshotJson = "{}",
+                ContractScopeKey = SeoIntelligenceSeedData.RakkoKeywordScopeKey,
+                CheckedAt = now
+            },
+            new RankResultEntity
+            {
+                Id = Guid.NewGuid(),
+                JobId = rankJobId,
+                ProjectId = projectId,
+                KeywordId = gapKeywordId,
+                Target = "competitor.example",
+                Position = 12,
+                RankedUrl = "https://competitor.example/seo",
+                EstimatedTraffic = 20m,
+                MetricsSnapshotJson = "{}",
+                ContractScopeKey = SeoIntelligenceSeedData.RakkoKeywordScopeKey,
+                CheckedAt = now
+            });
+        dbContext.NotificationChannels.Add(new NotificationChannelEntity
+        {
+            Id = channelId,
+            WorkspaceId = SeoIntelligenceSeedData.DefaultWorkspaceId,
+            ProjectId = projectId,
+            ChannelType = "discord",
+            Name = "Rank alert channel",
+            WebhookSecretRef = "secret/rank-alert",
+            EventTypesJson = """["rank_alert"]""",
+            Status = StatusValues.Active,
+            CreatedAt = now,
+            UpdatedAt = now
+        });
+        dbContext.Alerts.Add(new AlertEntity
+        {
+            Id = alertId,
+            ProjectId = projectId,
+            AlertType = "rank_drop",
+            ConditionJson = """{"minDrop":3}""",
+            NotificationChannelId = channelId,
+            Status = StatusValues.Active,
+            CreatedAt = now,
+            UpdatedAt = now
+        });
+        var deliveryId = Guid.NewGuid();
+        dbContext.AlertEvents.Add(new AlertEventEntity
+        {
+            Id = Guid.NewGuid(),
+            AlertId = alertId,
+            ProjectId = projectId,
+            JobId = rankJobId,
+            KeywordId = keywordId,
+            EventType = "rank_drop",
+            PreviousValueJson = """{"position":2}""",
+            CurrentValueJson = """{"position":8}""",
+            EvidenceJson = "{}",
+            NotificationDeliveryId = deliveryId,
+            TriggeredAt = now
+        });
+        dbContext.NotificationDeliveries.Add(new NotificationDeliveryEntity
+        {
+            Id = deliveryId,
+            WorkspaceId = SeoIntelligenceSeedData.DefaultWorkspaceId,
+            ProjectId = projectId,
+            ChannelId = channelId,
+            JobId = rankJobId,
+            ResourceType = "alert_event",
+            ResourceId = alertId.ToString("D"),
+            EventType = "rank_alert",
+            PayloadHash = "rank-alert-payload",
+            Status = StatusValues.Succeeded,
+            RetryCount = 0,
+            SentAt = now,
+            DeliveredAt = now,
+            CreatedAt = now
         });
         await dbContext.SaveChangesAsync();
     }

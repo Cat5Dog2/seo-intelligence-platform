@@ -1,0 +1,298 @@
+@page "/content-analysis"
+@implements IDisposable
+@inject ISeoIntelligenceApiClient ApiClient
+@inject ProjectSelectionState ProjectState
+@inject NavigationManager Navigation
+
+<PageTitle>コンテンツ分析 - SEO Intelligence</PageTitle>
+
+<div class="page-stack">
+    <header class="page-header">
+        <div>
+            <h1>コンテンツ分析</h1>
+            <p>選択中プロジェクト: @(ProjectState.SelectedProject?.Name ?? "未選択")</p>
+        </div>
+        <div class="toolbar">
+            <button type="button" class="secondary-button" @onclick="AnalyzeAsync" disabled="@(!CanOperate)">分析ジョブ登録</button>
+            <button type="button" class="secondary-button" @onclick="LoadAsync" disabled="@(ProjectState.SelectedProject is null)">更新</button>
+        </div>
+    </header>
+
+    <ErrorSummary Errors="@Errors" />
+    @if (!string.IsNullOrWhiteSpace(Message))
+    {
+        <div class="state-row">@Message</div>
+    }
+
+    <section class="panel">
+        <div class="section-heading">
+            <h2>分析条件</h2>
+            <span class="muted">@(Analyses.Count)件表示</span>
+        </div>
+        <div class="form-grid dense-form">
+            <label class="field wide-field">
+                <span>キーワード</span>
+                <input @bind="Form.Keyword" @bind:event="oninput" disabled="@(ProjectState.SelectedProject is null)" />
+            </label>
+            <label class="field">
+                <span>limit</span>
+                <input type="number" min="1" max="100" @bind="Form.Limit" disabled="@(ProjectState.SelectedProject is null)" />
+            </label>
+            <label class="check-option compact-check">
+                <input type="checkbox" @bind="Form.IncludeContentSearch" disabled="@(ProjectState.SelectedProject is null)" />
+                <span>集客コンテンツ</span>
+            </label>
+            <label class="check-option compact-check">
+                <input type="checkbox" @bind="Form.IncludeHeadline" disabled="@(ProjectState.SelectedProject is null)" />
+                <span>見出し</span>
+            </label>
+            <label class="check-option compact-check">
+                <input type="checkbox" @bind="Form.IncludeCoOccurrence" disabled="@(ProjectState.SelectedProject is null)" />
+                <span>共起語</span>
+            </label>
+            <button type="button" class="primary-button" @onclick="AnalyzeAsync" disabled="@(!CanOperate)">登録</button>
+        </div>
+        <div class="form-grid dense-form">
+            <label class="field wide-field">
+                <span>結果検索</span>
+                <input @bind="Query" @bind:event="oninput" disabled="@(ProjectState.SelectedProject is null)" />
+            </label>
+            <button type="button" class="secondary-button" @onclick="LoadAsync" disabled="@(ProjectState.SelectedProject is null)">検索</button>
+        </div>
+    </section>
+
+    <section class="split-grid">
+        <div class="panel">
+            <div class="section-heading">
+                <h2>分析結果</h2>
+            </div>
+            <DataTable Items="@Analyses" Columns="@AnalysisColumns" IsLoading="@IsLoading" EmptyText="コンテンツ分析結果はありません。">
+                <RowActions Context="analysis">
+                    <div class="row-actions">
+                        <button type="button" class="table-action" @onclick="() => SelectAnalysis(analysis)">詳細</button>
+                        <button type="button" class="table-action" @onclick="() => GenerateBriefAsync(analysis)">ブリーフ生成</button>
+                    </div>
+                </RowActions>
+            </DataTable>
+        </div>
+
+        <div class="panel">
+            <div class="section-heading">
+                <h2>詳細</h2>
+                <button type="button" class="secondary-button" @onclick="NavigateToBriefs">記事ブリーフ</button>
+            </div>
+            @if (SelectedAnalysis is null)
+            {
+                <div class="state-row">分析結果を選択してください。</div>
+            }
+            else
+            {
+                <div class="detail-list">
+                    <div><span>キーワード</span><strong>@SelectedAnalysis.Keyword</strong></div>
+                    <div><span>集客コンテンツ</span><strong>@SelectedAnalysis.ContentResults.Count</strong></div>
+                    <div><span>見出しページ</span><strong>@SelectedAnalysis.HeadlinePages.Count</strong></div>
+                    <div><span>共起語</span><strong>@SelectedAnalysis.CoOccurrences.Count</strong></div>
+                </div>
+
+                <h3 class="subsection-title">集客コンテンツ</h3>
+                <DataTable Items="@SelectedAnalysis.ContentResults" Columns="@ContentColumns" EmptyText="集客コンテンツはありません。" />
+
+                <h3 class="subsection-title">SERP見出し</h3>
+                <DataTable Items="@SelectedAnalysis.HeadlinePages" Columns="@HeadlinePageColumns" EmptyText="見出しページはありません。" />
+
+                <h3 class="subsection-title">共起語</h3>
+                <DataTable Items="@SelectedAnalysis.CoOccurrences" Columns="@CoOccurrenceColumns" EmptyText="共起語はありません。" />
+            }
+        </div>
+    </section>
+</div>
+
+@code {
+    private static readonly IReadOnlyList<DataTableColumn<ContentAnalysisResultRow>> AnalysisColumns =
+    [
+        new("keyword", row => row.Keyword),
+        new("content", row => row.ContentResults.Count.ToString(), "table-number"),
+        new("headlines", row => row.HeadlinePages.Count.ToString(), "table-number"),
+        new("co-occurrence", row => row.CoOccurrences.Count.ToString(), "table-number"),
+        new("last analyzed", row => FormatDateTime(row.LastAnalyzedAt))
+    ];
+
+    private static readonly IReadOnlyList<DataTableColumn<ContentSearchResultRow>> ContentColumns =
+    [
+        new("url", row => row.Url),
+        new("title", row => row.Title),
+        new("traffic", row => row.EstimatedTraffic.ToString("0.##"), "table-number"),
+        new("value", row => row.TrafficValue.ToString("0.##"), "table-number"),
+        new("top keyword", row => row.TopKeyword)
+    ];
+
+    private static readonly IReadOnlyList<DataTableColumn<SerpHeadlinePageResultRow>> HeadlinePageColumns =
+    [
+        new("rank", row => row.Rank.ToString(), "table-number"),
+        new("url", row => row.Url),
+        new("title", row => row.Title),
+        new("headlines", row => row.HeadlineCount.ToString(), "table-number"),
+        new("words", row => row.WordCount.ToString(), "table-number"),
+        new("sample", row => string.Join(" / ", row.Headlines.Take(3).Select(headline => $"H{headline.Level} {headline.Text}")))
+    ];
+
+    private static readonly IReadOnlyList<DataTableColumn<CoOccurrenceWordResultRow>> CoOccurrenceColumns =
+    [
+        new("word", row => row.Word),
+        new("pages", row => row.PageDetails.Count.ToString(), "table-number"),
+        new("top urls", row => string.Join(" / ", row.PageDetails.Take(3).Select(detail => $"{detail.Rank}:{detail.Url}")))
+    ];
+
+    private ContentAnalyzeFormModel Form { get; set; } = new();
+
+    private IReadOnlyList<ContentAnalysisResultRow> Analyses { get; set; } = [];
+
+    private ContentAnalysisResultRow? SelectedAnalysis { get; set; }
+
+    private IReadOnlyList<ApiError> Errors { get; set; } = [];
+
+    private string? Message { get; set; }
+
+    private bool IsLoading { get; set; }
+
+    private bool IsAnalyzing { get; set; }
+
+    private string? Query { get; set; }
+
+    private bool CanOperate
+        => ProjectState.SelectedProject is not null && !IsAnalyzing;
+
+    protected override async Task OnInitializedAsync()
+    {
+        ProjectState.Changed += OnProjectStateChanged;
+        await ProjectState.LoadAsync();
+        await LoadAsync();
+    }
+
+    private async Task AnalyzeAsync()
+    {
+        if (ProjectState.SelectedProject is not { } project)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(Form.Keyword))
+        {
+            Errors = [new ApiError("Validation.Keyword.Required", "キーワードを入力してください。", "keyword")];
+            return;
+        }
+
+        if (Form.Limit is < 1 or > 100)
+        {
+            Errors = [new ApiError("Validation.Limit.Range", "limitは1から100で指定してください。", "limit")];
+            return;
+        }
+
+        IsAnalyzing = true;
+        Errors = [];
+        Message = null;
+        var result = await ApiClient.AnalyzeContentAsync(
+            project.ProjectId,
+            new ContentAnalyzeRequest(
+                Form.Keyword.Trim(),
+                Form.IncludeContentSearch,
+                Form.IncludeHeadline,
+                Form.IncludeCoOccurrence,
+                Form.Limit));
+        if (result.IsSuccess && result.Data is { } job)
+        {
+            Message = $"コンテンツ分析ジョブを登録しました: {job.JobId:D}";
+        }
+        else
+        {
+            Errors = result.Errors;
+        }
+
+        IsAnalyzing = false;
+    }
+
+    private async Task LoadAsync()
+    {
+        if (ProjectState.SelectedProject is not { } project)
+        {
+            Analyses = [];
+            SelectedAnalysis = null;
+            return;
+        }
+
+        IsLoading = true;
+        Errors = [];
+        var result = await ApiClient.GetContentAnalysesAsync(project.ProjectId, Query, pageSize: 50);
+        if (result.IsSuccess)
+        {
+            Analyses = result.Data ?? [];
+        }
+        else
+        {
+            Analyses = [];
+            Errors = result.Errors;
+        }
+
+        IsLoading = false;
+    }
+
+    private void SelectAnalysis(ContentAnalysisResultRow analysis)
+        => SelectedAnalysis = analysis;
+
+    private async Task GenerateBriefAsync(ContentAnalysisResultRow analysis)
+    {
+        if (ProjectState.SelectedProject is not { } project)
+        {
+            return;
+        }
+
+        Errors = [];
+        Message = null;
+        var competitorUrls = analysis.ContentResults.Select(row => row.Url).Take(5).ToArray();
+        var result = await ApiClient.GenerateBriefAsync(
+            project.ProjectId,
+            new GenerateBriefRequest(
+                TargetKeyword: analysis.Keyword,
+                TargetKeywordId: analysis.KeywordId,
+                CompetitorUrls: competitorUrls));
+        if (result.IsSuccess && result.Data is { } job)
+        {
+            Message = $"記事ブリーフ生成ジョブを登録しました: {job.JobId:D}";
+        }
+        else
+        {
+            Errors = result.Errors;
+        }
+    }
+
+    private void NavigateToBriefs()
+        => Navigation.NavigateTo("/briefs");
+
+    private async void OnProjectStateChanged()
+    {
+        await InvokeAsync(async () =>
+        {
+            await LoadAsync();
+            StateHasChanged();
+        });
+    }
+
+    private static string FormatDateTime(DateTime value)
+        => value.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
+
+    public void Dispose()
+        => ProjectState.Changed -= OnProjectStateChanged;
+
+    private sealed class ContentAnalyzeFormModel
+    {
+        public string? Keyword { get; set; }
+
+        public bool IncludeContentSearch { get; set; } = true;
+
+        public bool IncludeHeadline { get; set; } = true;
+
+        public bool IncludeCoOccurrence { get; set; } = true;
+
+        public int Limit { get; set; } = 10;
+    }
+}
