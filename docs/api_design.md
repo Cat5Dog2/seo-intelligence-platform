@@ -325,8 +325,8 @@ ISSUE-P3-001では、上記Phase 3 APIのContracts/DTO、ルートグループ�
 | `ContentAnalyzeRequest` | コンテンツ分析 | `keyword`、`includeContentSearch`、`includeHeadline`、`includeCoOccurrence`、`limit` |
 | `RankCheckJobRequest` | 順位チェック | `keywords`、`targets`、`matchType`、`depth`、`withMetrics`、`deduplicate` |
 | `ReportRequest` | レポート生成 | `reportType`、`period`、`format`（pdf/excel）、`sections`、`shareExpiresAt`。生成完了後は`reports.file_uri`を保持し、ダウンロードは専用APIで短時間URLを返す。 |
-| `ExportRequest` | エクスポート | `exportType`、`format`、`filter`、`columns` |
-| `ImportRequest` | インポート | `importType`、`format`、`sourceFileUri`、`validationMode` |
+| `ExportRequest` | エクスポート | `exportType`、`format`（csv/excel）、`filter`、`columns` |
+| `ImportRequest` | インポート | `importType`（keywords/rankings/competitors/briefs/tasks）、`format`（csv/excel）、`sourceFileUri`、`validationMode`（初期実装はstrict） |
 | `ConnectorSettingsRequest` | 外部連携スタブ設定 | `connectorType`、`name`、`authRef`、`settings`、`status`。Secret/OAuth実値はSecret Store参照のみ |
 | `AiChatRequest` | AIアシスタント | `message`、`conversationId`、`allowedTools`、`referenceScope` |
 
@@ -341,7 +341,7 @@ ISSUE-P3-001では、上記Phase 3 APIのContracts/DTO、ルートグループ�
 | ページング | `pageSize`は1から200。外部API結果の大容量取得はジョブまたはエクスポートに寄せる。 |
 | 共有URL | `shareExpiresAt`は未来日時のみ。共有トークンは十分なランダム値をレスポンスへ一度だけ返し、DBにはハッシュのみ保存する。未知または改ざんトークンは404、期限切れまたは明示失効済みトークンは410を返す。 |
 | レポート | `format`はpdfまたはexcel。`period`は月次レポートでは`YYYY-MM`を基本とし、生成済みファイルのダウンロードはスコープ確認後に短時間URLを発行する。 |
-| CSV/Excel | インポートはPhase 3。ファイルはStorageへ直接アップロードし、APIサーバーはファイル本体を保持しない。 |
+| CSV/Excel | インポートはPhase 3。ファイルはStorageへ直接アップロードし、APIサーバーはファイル本体を保持しない。`keywords`は`keyword`、`rankings`は`keyword,target,position`、`competitors`は`domain`、`briefs`は`title`、`tasks`は`targetUrl`を必須列とする。 |
 
 MVPの一括検索ボリューム画面でCSVファイルを選択した場合、ファイル本体はAPIへアップロードしない。Blazor UIがブラウザ内でCSVをパースし、空行除外・重複除外・上限検証後に`SearchVolumeJobRequest.keywords`へJSON配列として設定する。
 

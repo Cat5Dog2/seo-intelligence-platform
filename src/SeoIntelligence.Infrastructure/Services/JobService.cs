@@ -948,6 +948,7 @@ internal sealed class JobDispatcher(
     MonthlyReportJob monthlyReportJob,
     OpportunityScoringJob opportunityScoringJob,
     DataExportJob dataExportJob,
+    DataImportJob dataImportJob,
     ArticleBriefExportJob articleBriefExportJob,
     RankAlertEvaluateJob rankAlertEvaluateJob,
     ILogger<JobDispatcher> logger)
@@ -1066,6 +1067,12 @@ internal sealed class JobDispatcher(
         if (string.Equals(job.JobType, DataExportJob.JobType, StringComparison.Ordinal))
         {
             await dataExportJob.ExecuteAsync(jobId);
+            return;
+        }
+
+        if (string.Equals(job.JobType, DataImportJob.JobType, StringComparison.Ordinal))
+        {
+            await dataImportJob.ExecuteAsync(jobId);
             return;
         }
 

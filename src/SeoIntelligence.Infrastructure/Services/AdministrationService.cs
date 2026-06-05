@@ -46,6 +46,7 @@ public static class AdministrationServiceCollectionExtensions
         services.TryAddScoped<IScoringService, ScoringService>();
         services.TryAddScoped<DataTransferService>();
         services.TryAddScoped<IDataTransferService>(serviceProvider => serviceProvider.GetRequiredService<DataTransferService>());
+        services.TryAddScoped<IDataImportService>(serviceProvider => serviceProvider.GetRequiredService<DataTransferService>());
         services.TryAddScoped<IDashboardService, DashboardService>();
         services.TryAddScoped<INotificationService, NotificationService>();
         services.TryAddScoped<NotificationDeliveryJob>();
@@ -79,6 +80,7 @@ public static class AdministrationServiceCollectionExtensions
         services.TryAddScoped<ArticleBriefExportJob>();
         services.TryAddScoped<OpportunityScoringJob>();
         services.TryAddScoped<DataExportJob>();
+        services.TryAddScoped<DataImportJob>();
         return services;
     }
 }

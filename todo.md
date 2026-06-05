@@ -960,18 +960,18 @@ ISSUE-MVP-00X の続きから再開してください。
 
 範囲:
 
-- [ ] `DataImportJob` を実装する。
-- [ ] `POST /api/projects/{projectId}/exports` をCSV/Excel対応で実装する。
-- [ ] `POST /api/projects/{projectId}/imports/upload-url`
-- [ ] `POST /api/projects/{projectId}/imports`
-- [ ] `GET /api/projects/{projectId}/imports/{importId}`
-- [ ] `GET /api/projects/{projectId}/imports/{importId}/errors`
-- [ ] 検証エラーと取込履歴を保存する。
-- [ ] P3-001で追加したContracts/DTO、ルートグループ、projectIdスコープ検証を使う。
+- [x] `DataImportJob` を実装する。
+- [x] `POST /api/projects/{projectId}/exports` をCSV/Excel対応で実装する。
+- [x] `POST /api/projects/{projectId}/imports/upload-url`
+- [x] `POST /api/projects/{projectId}/imports`
+- [x] `GET /api/projects/{projectId}/imports/{importId}`
+- [x] `GET /api/projects/{projectId}/imports/{importId}/errors`
+- [x] 検証エラーと取込履歴を保存する。
+- [x] P3-001で追加したContracts/DTO、ルートグループ、projectIdスコープ検証を使う。
 
 受入条件:
 
-- [ ] キーワード、順位、競合、ブリーフ、タスクをCSV/Excelで検証付き取込できる。
+- [x] キーワード、順位、競合、ブリーフ、タスクをCSV/Excelで検証付き取込できる。
 
 ### ISSUE-P3-005 AIアシスタントを実装する
 
