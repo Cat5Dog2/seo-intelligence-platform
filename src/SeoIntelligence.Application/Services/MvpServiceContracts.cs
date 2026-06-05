@@ -858,7 +858,11 @@ public sealed record DashboardSnapshot(
     DashboardContentAnalysisSummary? ContentAnalysisSummary = null,
     DashboardBriefSummary? BriefSummary = null,
     DashboardRankSummary? RankSummary = null,
-    DashboardRankAlertSummary? RankAlertSummary = null);
+    DashboardRankAlertSummary? RankAlertSummary = null,
+    DashboardRewriteSummary? RewriteSummary = null,
+    DashboardCannibalizationSummary? CannibalizationSummary = null,
+    DashboardReportSummary? ReportSummary = null,
+    DashboardAiSummary? AiSummary = null);
 
 public sealed record DashboardOpportunityScoreRow(
     Guid KeywordId,

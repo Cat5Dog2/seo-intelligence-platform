@@ -50,6 +50,14 @@ public sealed class SeoIntelligenceDbContext(DbContextOptions<SeoIntelligenceDbC
     public DbSet<RankResultEntity> RankResults => Set<RankResultEntity>();
     public DbSet<AlertEntity> Alerts => Set<AlertEntity>();
     public DbSet<AlertEventEntity> AlertEvents => Set<AlertEventEntity>();
+    public DbSet<RewriteTaskEntity> RewriteTasks => Set<RewriteTaskEntity>();
+    public DbSet<CannibalizationCandidateEntity> CannibalizationCandidates => Set<CannibalizationCandidateEntity>();
+    public DbSet<ReportEntity> Reports => Set<ReportEntity>();
+    public DbSet<DataImportEntity> DataImports => Set<DataImportEntity>();
+    public DbSet<ExternalConnectorSettingEntity> ExternalConnectorSettings => Set<ExternalConnectorSettingEntity>();
+    public DbSet<ExternalConnectorRunEntity> ExternalConnectorRuns => Set<ExternalConnectorRunEntity>();
+    public DbSet<AiSessionEntity> AiSessions => Set<AiSessionEntity>();
+    public DbSet<AiMessageEntity> AiMessages => Set<AiMessageEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -99,6 +107,14 @@ public sealed class SeoIntelligenceDbContext(DbContextOptions<SeoIntelligenceDbC
         ConfigureRankResults(modelBuilder);
         ConfigureAlerts(modelBuilder);
         ConfigureAlertEvents(modelBuilder);
+        ConfigureRewriteTasks(modelBuilder);
+        ConfigureCannibalizationCandidates(modelBuilder);
+        ConfigureReports(modelBuilder);
+        ConfigureDataImports(modelBuilder);
+        ConfigureExternalConnectorSettings(modelBuilder);
+        ConfigureExternalConnectorRuns(modelBuilder);
+        ConfigureAiSessions(modelBuilder);
+        ConfigureAiMessages(modelBuilder);
     }
 
     private static void ConfigureWorkspaces(ModelBuilder modelBuilder)
@@ -1188,6 +1204,224 @@ public sealed class SeoIntelligenceDbContext(DbContextOptions<SeoIntelligenceDbC
             entity.HasOne<JobEntity>().WithMany().HasForeignKey(e => e.JobId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<KeywordEntity>().WithMany().HasForeignKey(e => e.KeywordId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<NotificationDeliveryEntity>().WithMany().HasForeignKey(e => e.NotificationDeliveryId).OnDelete(DeleteBehavior.Restrict);
+        });
+    }
+
+    private static void ConfigureRewriteTasks(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<RewriteTaskEntity>(entity =>
+        {
+            entity.ToTable("rewrite_tasks", table =>
+                table.HasCheckConstraint("ck_rewrite_tasks_status", "status IN ('draft', 'active', 'archived', 'completed')"));
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasColumnName("id").ValueGeneratedNever();
+            entity.Property(e => e.ProjectId).HasColumnName("project_id");
+            entity.Property(e => e.TargetUrl).HasColumnName("target_url").IsRequired();
+            entity.Property(e => e.PriorityScore).HasColumnName("priority_score").HasPrecision(8, 4);
+            entity.Property(e => e.ReasonJson).HasColumnName("reason_json").HasColumnType("jsonb").IsRequired();
+            entity.Property(e => e.Status).HasColumnName("status").IsRequired();
+            entity.Property(e => e.AssigneeActor).HasColumnName("assignee_actor").IsRequired();
+            entity.Property(e => e.Memo).HasColumnName("memo");
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at").HasColumnType("timestamptz");
+            entity.Property(e => e.UpdatedAt).HasColumnName("updated_at").HasColumnType("timestamptz");
+
+            entity.HasIndex(e => new { e.ProjectId, e.Status, e.PriorityScore })
+                .IsDescending(false, false, true)
+                .HasDatabaseName("ix_rewrite_tasks_project_id_status_priority_score");
+            entity.HasOne<ProjectEntity>().WithMany().HasForeignKey(e => e.ProjectId).OnDelete(DeleteBehavior.Restrict);
+        });
+    }
+
+    private static void ConfigureCannibalizationCandidates(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<CannibalizationCandidateEntity>(entity =>
+        {
+            entity.ToTable("cannibalization_candidates", table =>
+                table.HasCheckConstraint("ck_cannibalization_candidates_status", "status IN ('draft', 'active', 'archived', 'completed')"));
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasColumnName("id").ValueGeneratedNever();
+            entity.Property(e => e.ProjectId).HasColumnName("project_id");
+            entity.Property(e => e.KeywordId).HasColumnName("keyword_id");
+            entity.Property(e => e.PrimaryUrl).HasColumnName("primary_url").IsRequired();
+            entity.Property(e => e.CompetingUrlsJson).HasColumnName("competing_urls_json").HasColumnType("jsonb").IsRequired();
+            entity.Property(e => e.SeverityScore).HasColumnName("severity_score").HasPrecision(8, 4);
+            entity.Property(e => e.EvidenceJson).HasColumnName("evidence_json").HasColumnType("jsonb").IsRequired();
+            entity.Property(e => e.RecommendationJson).HasColumnName("recommendation_json").HasColumnType("jsonb").IsRequired();
+            entity.Property(e => e.Status).HasColumnName("status").IsRequired();
+            entity.Property(e => e.DetectedAt).HasColumnName("detected_at").HasColumnType("timestamptz");
+
+            entity.HasIndex(e => new { e.ProjectId, e.KeywordId, e.DetectedAt })
+                .IsDescending(false, false, true)
+                .HasDatabaseName("ix_cannibalization_candidates_project_id_keyword_id_detected_at");
+            entity.HasIndex(e => new { e.ProjectId, e.Status, e.SeverityScore })
+                .IsDescending(false, false, true)
+                .HasDatabaseName("ix_cannibalization_candidates_project_id_status_severity_score");
+            entity.HasOne<ProjectEntity>().WithMany().HasForeignKey(e => e.ProjectId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<KeywordEntity>().WithMany().HasForeignKey(e => e.KeywordId).OnDelete(DeleteBehavior.Restrict);
+        });
+    }
+
+    private static void ConfigureReports(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<ReportEntity>(entity =>
+        {
+            entity.ToTable("reports", table =>
+            {
+                table.HasCheckConstraint("ck_reports_status", "status IN ('draft', 'active', 'archived', 'completed')");
+                table.HasCheckConstraint("ck_reports_format", "format IN ('pdf', 'excel')");
+            });
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasColumnName("id").ValueGeneratedNever();
+            entity.Property(e => e.ProjectId).HasColumnName("project_id");
+            entity.Property(e => e.ReportType).HasColumnName("report_type").IsRequired();
+            entity.Property(e => e.Period).HasColumnName("period").IsRequired();
+            entity.Property(e => e.Format).HasColumnName("format").IsRequired();
+            entity.Property(e => e.CurrentVersion).HasColumnName("current_version");
+            entity.Property(e => e.FileUri).HasColumnName("file_uri");
+            entity.Property(e => e.ShareTokenHash).HasColumnName("share_token_hash");
+            entity.Property(e => e.ShareExpiresAt).HasColumnName("share_expires_at").HasColumnType("timestamptz");
+            entity.Property(e => e.ShareRevokedAt).HasColumnName("share_revoked_at").HasColumnType("timestamptz");
+            entity.Property(e => e.Status).HasColumnName("status").IsRequired();
+            entity.Property(e => e.GeneratedBy).HasColumnName("generated_by").IsRequired();
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at").HasColumnType("timestamptz");
+            entity.Property(e => e.UpdatedAt).HasColumnName("updated_at").HasColumnType("timestamptz");
+
+            entity.HasIndex(e => new { e.ProjectId, e.ReportType, e.Period, e.Format }).HasDatabaseName("ix_reports_project_id_report_type_period_format");
+            entity.HasIndex(e => e.ShareExpiresAt).HasDatabaseName("ix_reports_share_expires_at");
+            entity.HasIndex(e => e.ShareRevokedAt).HasDatabaseName("ix_reports_share_revoked_at");
+            entity.HasIndex(e => e.ShareTokenHash)
+                .IsUnique()
+                .HasFilter("share_token_hash IS NOT NULL")
+                .HasDatabaseName("ux_reports_share_token_hash");
+            entity.HasOne<ProjectEntity>().WithMany().HasForeignKey(e => e.ProjectId).OnDelete(DeleteBehavior.Restrict);
+        });
+    }
+
+    private static void ConfigureDataImports(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<DataImportEntity>(entity =>
+        {
+            entity.ToTable("data_imports", table =>
+                table.HasCheckConstraint(
+                    "ck_data_imports_status",
+                    "status IN ('queued', 'running', 'waiting_external', 'succeeded', 'failed_retryable', 'failed_fatal', 'canceled')"));
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasColumnName("id").ValueGeneratedNever();
+            entity.Property(e => e.WorkspaceId).HasColumnName("workspace_id");
+            entity.Property(e => e.ProjectId).HasColumnName("project_id");
+            entity.Property(e => e.ImportType).HasColumnName("import_type").IsRequired();
+            entity.Property(e => e.Format).HasColumnName("format").IsRequired();
+            entity.Property(e => e.SourceFileUri).HasColumnName("source_file_uri").IsRequired();
+            entity.Property(e => e.Status).HasColumnName("status").IsRequired();
+            entity.Property(e => e.ValidationErrorsJson).HasColumnName("validation_errors_json").HasColumnType("jsonb").IsRequired();
+            entity.Property(e => e.RequestedBy).HasColumnName("requested_by").IsRequired();
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at").HasColumnType("timestamptz");
+            entity.Property(e => e.CompletedAt).HasColumnName("completed_at").HasColumnType("timestamptz");
+
+            entity.HasIndex(e => new { e.WorkspaceId, e.ProjectId, e.CreatedAt }).HasDatabaseName("ix_data_imports_workspace_id_project_id_created_at");
+            entity.HasIndex(e => new { e.Status, e.CreatedAt }).HasDatabaseName("ix_data_imports_status_created_at");
+            entity.HasOne<WorkspaceEntity>().WithMany().HasForeignKey(e => e.WorkspaceId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<ProjectEntity>().WithMany().HasForeignKey(e => e.ProjectId).OnDelete(DeleteBehavior.Restrict);
+        });
+    }
+
+    private static void ConfigureExternalConnectorSettings(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<ExternalConnectorSettingEntity>(entity =>
+        {
+            entity.ToTable("external_connector_settings", table =>
+                table.HasCheckConstraint("ck_external_connector_settings_status", "status IN ('active', 'disabled')"));
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasColumnName("id").ValueGeneratedNever();
+            entity.Property(e => e.WorkspaceId).HasColumnName("workspace_id");
+            entity.Property(e => e.ProjectId).HasColumnName("project_id");
+            entity.Property(e => e.ConnectorType).HasColumnName("connector_type").IsRequired();
+            entity.Property(e => e.Name).HasColumnName("name").IsRequired();
+            entity.Property(e => e.AuthRef).HasColumnName("auth_ref");
+            entity.Property(e => e.SettingsJson).HasColumnName("settings_json").HasColumnType("jsonb").IsRequired();
+            entity.Property(e => e.Status).HasColumnName("status").IsRequired();
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at").HasColumnType("timestamptz");
+            entity.Property(e => e.UpdatedAt).HasColumnName("updated_at").HasColumnType("timestamptz");
+            entity.Property(e => e.DisabledAt).HasColumnName("disabled_at").HasColumnType("timestamptz");
+
+            entity.HasIndex(e => new { e.WorkspaceId, e.ProjectId, e.ConnectorType, e.Status })
+                .HasDatabaseName("ix_external_connector_settings_workspace_id_project_id_connector_type_status");
+            entity.HasOne<WorkspaceEntity>().WithMany().HasForeignKey(e => e.WorkspaceId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<ProjectEntity>().WithMany().HasForeignKey(e => e.ProjectId).OnDelete(DeleteBehavior.Restrict);
+        });
+    }
+
+    private static void ConfigureExternalConnectorRuns(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<ExternalConnectorRunEntity>(entity =>
+        {
+            entity.ToTable("external_connector_runs", table =>
+                table.HasCheckConstraint(
+                    "ck_external_connector_runs_status",
+                    "status IN ('queued', 'running', 'waiting_external', 'succeeded', 'failed_retryable', 'failed_fatal', 'canceled')"));
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasColumnName("id").ValueGeneratedNever();
+            entity.Property(e => e.ConnectorSettingId).HasColumnName("connector_setting_id");
+            entity.Property(e => e.WorkspaceId).HasColumnName("workspace_id");
+            entity.Property(e => e.ProjectId).HasColumnName("project_id");
+            entity.Property(e => e.RunType).HasColumnName("run_type").IsRequired();
+            entity.Property(e => e.Status).HasColumnName("status").IsRequired();
+            entity.Property(e => e.RequestJson).HasColumnName("request_json").HasColumnType("jsonb").IsRequired();
+            entity.Property(e => e.ResultSummaryJson).HasColumnName("result_summary_json").HasColumnType("jsonb").IsRequired();
+            entity.Property(e => e.ErrorJson).HasColumnName("error_json").HasColumnType("jsonb");
+            entity.Property(e => e.StartedAt).HasColumnName("started_at").HasColumnType("timestamptz");
+            entity.Property(e => e.CompletedAt).HasColumnName("completed_at").HasColumnType("timestamptz");
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at").HasColumnType("timestamptz");
+
+            entity.HasIndex(e => new { e.ConnectorSettingId, e.CreatedAt }).HasDatabaseName("ix_external_connector_runs_connector_setting_id_created_at");
+            entity.HasIndex(e => new { e.WorkspaceId, e.ProjectId, e.Status }).HasDatabaseName("ix_external_connector_runs_workspace_id_project_id_status");
+            entity.HasOne<ExternalConnectorSettingEntity>().WithMany().HasForeignKey(e => e.ConnectorSettingId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<WorkspaceEntity>().WithMany().HasForeignKey(e => e.WorkspaceId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<ProjectEntity>().WithMany().HasForeignKey(e => e.ProjectId).OnDelete(DeleteBehavior.Restrict);
+        });
+    }
+
+    private static void ConfigureAiSessions(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<AiSessionEntity>(entity =>
+        {
+            entity.ToTable("ai_sessions");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasColumnName("id").ValueGeneratedNever();
+            entity.Property(e => e.WorkspaceId).HasColumnName("workspace_id");
+            entity.Property(e => e.ProjectId).HasColumnName("project_id");
+            entity.Property(e => e.Actor).HasColumnName("actor").IsRequired();
+            entity.Property(e => e.Title).HasColumnName("title").IsRequired();
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at").HasColumnType("timestamptz");
+            entity.Property(e => e.UpdatedAt).HasColumnName("updated_at").HasColumnType("timestamptz");
+
+            entity.HasIndex(e => new { e.WorkspaceId, e.ProjectId, e.CreatedAt }).HasDatabaseName("ix_ai_sessions_workspace_id_project_id_created_at");
+            entity.HasIndex(e => e.Actor).HasDatabaseName("ix_ai_sessions_actor");
+            entity.HasOne<WorkspaceEntity>().WithMany().HasForeignKey(e => e.WorkspaceId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<ProjectEntity>().WithMany().HasForeignKey(e => e.ProjectId).OnDelete(DeleteBehavior.Restrict);
+        });
+    }
+
+    private static void ConfigureAiMessages(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<AiMessageEntity>(entity =>
+        {
+            entity.ToTable("ai_messages");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasColumnName("id").ValueGeneratedNever();
+            entity.Property(e => e.SessionId).HasColumnName("session_id");
+            entity.Property(e => e.MessageRole).HasColumnName("message_role").IsRequired();
+            entity.Property(e => e.Prompt).HasColumnName("prompt").IsRequired();
+            entity.Property(e => e.Response).HasColumnName("response").IsRequired();
+            entity.Property(e => e.ToolCallsJson).HasColumnName("tool_calls_json").HasColumnType("jsonb").IsRequired();
+            entity.Property(e => e.ReferenceDataJson).HasColumnName("reference_data_json").HasColumnType("jsonb").IsRequired();
+            entity.Property(e => e.RedactionStatus).HasColumnName("redaction_status").IsRequired();
+            entity.Property(e => e.ReviewStatus).HasColumnName("review_status").IsRequired();
+            entity.Property(e => e.TokenUsage).HasColumnName("token_usage").HasColumnType("jsonb").IsRequired();
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at").HasColumnType("timestamptz");
+
+            entity.HasIndex(e => new { e.SessionId, e.CreatedAt }).HasDatabaseName("ix_ai_messages_session_id_created_at");
+            entity.HasOne<AiSessionEntity>().WithMany().HasForeignKey(e => e.SessionId).OnDelete(DeleteBehavior.Restrict);
         });
     }
 }

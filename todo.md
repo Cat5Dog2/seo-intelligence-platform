@@ -122,7 +122,7 @@ ISSUE-MVP-00X の続きから再開してください。
 - [x] ISSUE-P2-005 順位監視と順位アラートを実装する
 - [x] ISSUE-P2-006 Phase 2 UIを実装する
 - [x] ISSUE-P2-007 Phase 2受入テストを整備する
-- [ ] ISSUE-P3-001 Phase 3 DB/API基盤を追加する
+- [x] ISSUE-P3-001 Phase 3 DB/API基盤を追加する
 - [ ] ISSUE-P3-002 リライト優先度とカニバリ検出を実装する
 - [ ] ISSUE-P3-003 レポート生成、共有URL、監査を実装する
 - [ ] ISSUE-P3-004 CSV/ExcelインポートとExcelエクスポートを実装する
@@ -884,19 +884,27 @@ ISSUE-MVP-00X の続きから再開してください。
 
 範囲:
 
-- [ ] Phase 3テーブルを追加する: `rewrite_tasks`, `cannibalization_candidates`, `reports`, `data_imports`, `external_connector_settings`, `external_connector_runs`, `ai_sessions`, `ai_messages`。
-- [ ] Phase 3 APIのContracts/DTO、ルートグループ、projectIdスコープ検証の土台を追加する。個別エンドポイント本体はISSUE-P3-002からISSUE-P3-006で実装する。
-- [ ] `IAiContentService` を定義する。
-- [ ] AIプロンプトからAPIキー、Webhook、認証情報、個人情報を除去する共通処理を実装する。
-- [ ] 共有URLのトークン生成、ハッシュ化、期限、失効、期限切れ、改ざん拒否の共通処理を実装する。
+- [x] Phase 3テーブルを追加する: `rewrite_tasks`, `cannibalization_candidates`, `reports`, `data_imports`, `external_connector_settings`, `external_connector_runs`, `ai_sessions`, `ai_messages`。
+- [x] Phase 3 APIのContracts/DTO、ルートグループ、projectIdスコープ検証の土台を追加する。個別エンドポイント本体はISSUE-P3-002からISSUE-P3-006で実装する。
+- [x] `IAiContentService` を定義する。
+- [x] AIプロンプトからAPIキー、Webhook、認証情報、個人情報を除去する共通処理を実装する。
+- [x] 共有URLのトークン生成、ハッシュ化、期限、失効、期限切れ、改ざん拒否の共通処理を実装する。
 
 受入条件:
 
-- [ ] Phase 3 migrationが通る。
-- [ ] Phase 3 API土台がbuildで確認できる。
-- [ ] AIプロンプト秘匿処理のUnit/Security testが通る。
-- [ ] 共有URLトークンの有効、期限切れ、失効、改ざんケースを検証できる。
-- [ ] Secret実値を返さない設計が保たれる。
+- [x] Phase 3 migrationが通る。
+- [x] Phase 3 API土台がbuildで確認できる。
+- [x] AIプロンプト秘匿処理のUnit/Security testが通る。
+- [x] 共有URLトークンの有効、期限切れ、失効、改ざんケースを検証できる。
+- [x] Secret実値を返さない設計が保たれる。
+
+検証:
+
+- [x] `dotnet build`
+- [x] `dotnet test --filter Category=Unit`
+- [x] `dotnet test --filter Category=Contract`
+- [x] `dotnet test --filter Category=Integration`
+- [x] `dotnet test --filter Category=Security`
 
 ### ISSUE-P3-002 リライト優先度とカニバリ検出を実装する
 
