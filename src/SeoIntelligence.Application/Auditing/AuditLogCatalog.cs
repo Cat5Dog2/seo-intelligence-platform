@@ -12,6 +12,12 @@ public static class AuditLogActionNames
     public const string CsvExportCreated = "csv_export.created";
     public const string CsvDownloadUrlIssued = "csv_export.download_url_issued";
     public const string CsvDownloaded = "csv_export.downloaded";
+    public const string DataExportCreated = "data_export.created";
+    public const string DataExportDownloadUrlIssued = "data_export.download_url_issued";
+    public const string DataExportDownloaded = "data_export.downloaded";
+    public const string DataImportRegistered = "data_import.registered";
+    public const string DataImportCompleted = "data_import.completed";
+    public const string DataImportFailed = "data_import.failed";
     public const string ReportGenerationQueued = "report.generation_queued";
     public const string ReportCreated = "report.created";
     public const string ReportDownloadUrlIssued = "report.download_url_issued";
@@ -33,6 +39,8 @@ public static class AuditLogResourceTypes
     public const string ApiCredential = "api_credential";
     public const string ExternalApiCall = "external_api_call";
     public const string CsvExport = "csv_export";
+    public const string DataExport = "data_export";
+    public const string DataImport = "data_import";
     public const string Report = "report";
     public const string ReportShare = "report_share";
     public const string Job = "job";

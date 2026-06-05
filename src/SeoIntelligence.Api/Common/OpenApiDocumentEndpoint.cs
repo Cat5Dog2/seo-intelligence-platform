@@ -67,9 +67,14 @@ internal static class OpenApiDocumentEndpoint
         new("/api/projects/{projectId}/reports/{reportId}/download", Get: "Issue a short-lived report download URL"),
         new("/api/projects/{projectId}/reports/{reportId}/share", Post: "Issue report share URL", Delete: "Revoke report share URL"),
         new("/api/report-shares/{token}", Get: "Access shared report"),
+        new("/api/projects/{projectId}/exports", Post: "Register CSV or Excel export job", PostSuccessCode: "202"),
         new("/api/projects/{projectId}/exports/csv", Post: "Register Phase 1 CSV export job", PostSuccessCode: "202"),
         new("/api/projects/{projectId}/exports/{exportId}", Get: "Get export state and file metadata"),
-        new("/api/projects/{projectId}/exports/{exportId}/download", Get: "Issue a short-lived export download URL")
+        new("/api/projects/{projectId}/exports/{exportId}/download", Get: "Issue a short-lived export download URL"),
+        new("/api/projects/{projectId}/imports/upload-url", Post: "Issue a short-lived import source upload URL"),
+        new("/api/projects/{projectId}/imports", Post: "Register CSV or Excel import job", PostSuccessCode: "202"),
+        new("/api/projects/{projectId}/imports/{importId}", Get: "Get import state and validation summary"),
+        new("/api/projects/{projectId}/imports/{importId}/errors", Get: "List import validation errors")
     ];
 
     public static IResult GetV1(HttpContext context)

@@ -169,6 +169,8 @@ public interface IDataTransferService
 {
     Task<Result<JobReference>> CreateCsvExportAsync(ProjectExecutionContext context, DataExportRequest request, CancellationToken cancellationToken = default);
 
+    Task<Result<JobReference>> CreateExportAsync(ProjectExecutionContext context, DataExportRequest request, CancellationToken cancellationToken = default);
+
     Task<Result<DataExportDetails>> GetExportAsync(ProjectExecutionContext context, Guid exportId, CancellationToken cancellationToken = default);
 
     Task<Result<DataExportDownload>> CreateDownloadUrlAsync(ProjectExecutionContext context, Guid exportId, CancellationToken cancellationToken = default);
@@ -811,7 +813,8 @@ public sealed record OpportunityScoreRow(Guid KeywordId, decimal Score, IReadOnl
 public sealed record DataExportRequest(
     string? ExportType,
     JsonElement? Filter = null,
-    IReadOnlyList<string>? Columns = null);
+    IReadOnlyList<string>? Columns = null,
+    string? Format = null);
 
 public sealed record DataExportDetails(
     Guid ExportId,

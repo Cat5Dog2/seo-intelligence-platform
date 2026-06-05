@@ -1,6 +1,8 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
+using System.IO.Compression;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
@@ -180,6 +182,197 @@ public sealed class DataExportIntegrationTests
         }
     }
 
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task ExcelExportAndExcelKeywordImportUseGenericPhase3Endpoints()
+    {
+        await using var factory = new DataExportApiFactory();
+        using var client = CreateClient(factory);
+        var projectId = await SeedProjectWithKeywordMetricsAsync(factory);
+
+        try
+        {
+            using var registerResponse = await client.PostAsJsonAsync(
+                $"/api/projects/{projectId}/exports",
+                new
+                {
+                    exportType = "keyword_metrics",
+                    format = "excel",
+                    columns = new[] { "keyword", "searchVolume", "opportunityScore" }
+                });
+            using var registerDocument = await ReadJsonAsync(registerResponse);
+
+            Assert.Equal(HttpStatusCode.Accepted, registerResponse.StatusCode);
+            var exportJobId = registerDocument.RootElement.GetProperty("data").GetProperty("jobId").GetGuid();
+
+            Guid exportId;
+            await using (var scope = factory.Services.CreateAsyncScope())
+            {
+                var dbContext = scope.ServiceProvider.GetRequiredService<SeoIntelligenceDbContext>();
+                exportId = (await dbContext.Jobs.AsNoTracking().SingleAsync(entity => entity.Id == exportJobId)).ResultResourceId!.Value;
+            }
+
+            await DispatchAsync(factory, exportJobId);
+
+            string fileUri;
+            await using (var scope = factory.Services.CreateAsyncScope())
+            {
+                var dbContext = scope.ServiceProvider.GetRequiredService<SeoIntelligenceDbContext>();
+                var export = await dbContext.DataExports.AsNoTracking().SingleAsync(entity => entity.Id == exportId);
+                Assert.Equal(StatusValues.Succeeded, export.Status);
+                Assert.Equal("excel", export.Format);
+                Assert.EndsWith(".xlsx", export.FileUri, StringComparison.OrdinalIgnoreCase);
+                fileUri = export.FileUri!;
+            }
+
+            await AssertXlsxContainsAsync(factory, fileUri, "content marketing");
+
+            using var importResponse = await client.PostAsJsonAsync(
+                $"/api/projects/{projectId}/imports",
+                new
+                {
+                    importType = "keywords",
+                    format = "excel",
+                    sourceFileUri = fileUri,
+                    validationMode = "strict"
+                });
+            using var importDocument = await ReadJsonAsync(importResponse);
+
+            Assert.Equal(HttpStatusCode.Accepted, importResponse.StatusCode);
+            var importJobId = importDocument.RootElement.GetProperty("data").GetProperty("jobId").GetGuid();
+            await DispatchAsync(factory, importJobId);
+
+            await using (var scope = factory.Services.CreateAsyncScope())
+            {
+                var dbContext = scope.ServiceProvider.GetRequiredService<SeoIntelligenceDbContext>();
+                var import = await dbContext.DataImports.AsNoTracking().SingleAsync(entity => entity.SourceFileUri == fileUri);
+                Assert.Equal(StatusValues.Succeeded, import.Status);
+                Assert.Equal("excel", import.Format);
+                Assert.Equal("[]", import.ValidationErrorsJson);
+                Assert.True(await dbContext.KeywordSeeds.AnyAsync(entity =>
+                    entity.ProjectId == projectId &&
+                    entity.Seed == "content marketing"));
+
+                var actions = await dbContext.AuditLogs
+                    .AsNoTracking()
+                    .Select(entity => entity.Action)
+                    .ToArrayAsync();
+                Assert.Contains(AuditLogActionNames.DataExportCreated, actions);
+                Assert.Contains(AuditLogActionNames.DataImportCompleted, actions);
+            }
+        }
+        finally
+        {
+            DeleteTempStoragePath(factory.StoragePath);
+        }
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task CsvImportsPersistSupportedDataTypesAndHistory()
+    {
+        await using var factory = new DataExportApiFactory();
+        using var client = CreateClient(factory);
+        var projectId = await SeedProjectAsync(factory, "CSV import project");
+
+        try
+        {
+            var imports = new[]
+            {
+                new ImportScenario(
+                    "keywords",
+                    "keyword,language,source,memo\r\nImported SEO,ja,csv,first\r\n"),
+                new ImportScenario(
+                    "rankings",
+                    "keyword,target,position,rankedUrl,estimatedTraffic,checkedAt\r\nImported Rank,example.com,3,https://example.com/page,12.5,2026-06-01T00:00:00Z\r\n"),
+                new ImportScenario(
+                    "competitors",
+                    "domain,duplicateRate,estimatedTraffic,trafficValue,keywordCount\r\nhttps://competitor.example/path,0.42,1200,300,12\r\n"),
+                new ImportScenario(
+                    "briefs",
+                    "title,targetKeyword,contentJson,reviewStatus,status\r\nImported Brief,Brief Keyword,\"{\"\"outline\"\":\"\"ok\"\"}\",pending,draft\r\n"),
+                new ImportScenario(
+                    "tasks",
+                    "targetUrl,priorityScore,reasonJson,status,assigneeActor,memo\r\nhttps://example.com/rewrite,81.2,\"{\"\"reason\"\":\"\"import\"\"}\",active,developer,Imported task\r\n")
+            };
+
+            foreach (var import in imports)
+            {
+                var jobId = await UploadAndRegisterImportAsync(client, factory, projectId, import.ImportType, import.Csv);
+                await DispatchAsync(factory, jobId);
+            }
+
+            await using var scope = factory.Services.CreateAsyncScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<SeoIntelligenceDbContext>();
+
+            Assert.Equal(5, await dbContext.DataImports.CountAsync(entity => entity.ProjectId == projectId));
+            Assert.All(await dbContext.DataImports.AsNoTracking().Where(entity => entity.ProjectId == projectId).ToArrayAsync(), import =>
+            {
+                Assert.Equal(StatusValues.Succeeded, import.Status);
+                Assert.Equal("[]", import.ValidationErrorsJson);
+            });
+            Assert.True(await dbContext.KeywordSeeds.AnyAsync(entity => entity.ProjectId == projectId && entity.Seed == "Imported SEO"));
+            Assert.True(await dbContext.RankResults.AnyAsync(entity => entity.ProjectId == projectId && entity.Position == 3));
+            Assert.True(await dbContext.CompetitorSites.AnyAsync(entity => entity.ProjectId == projectId && entity.Domain == "competitor.example"));
+            Assert.True(await dbContext.ArticleBriefs.AnyAsync(entity => entity.ProjectId == projectId && entity.Title == "Imported Brief"));
+            Assert.True(await dbContext.ArtifactVersions.AnyAsync(entity => entity.ProjectId == projectId && entity.ArtifactType == "article_brief"));
+            Assert.True(await dbContext.RewriteTasks.AnyAsync(entity => entity.ProjectId == projectId && entity.TargetUrl == "https://example.com/rewrite"));
+
+            var importAuditCount = await dbContext.AuditLogs.CountAsync(entity =>
+                entity.ResourceType == AuditLogResourceTypes.DataImport &&
+                entity.Action == AuditLogActionNames.DataImportCompleted);
+            Assert.Equal(5, importAuditCount);
+        }
+        finally
+        {
+            DeleteTempStoragePath(factory.StoragePath);
+        }
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task ImportValidationErrorsArePersistedAndPaged()
+    {
+        await using var factory = new DataExportApiFactory();
+        using var client = CreateClient(factory);
+        var projectId = await SeedProjectAsync(factory, "CSV import validation project");
+
+        try
+        {
+            var jobId = await UploadAndRegisterImportAsync(
+                client,
+                factory,
+                projectId,
+                "rankings",
+                "keyword,target,position\r\nBroken Rank,example.com,not-a-number\r\n");
+            await DispatchAsync(factory, jobId);
+
+            Guid importId;
+            await using (var scope = factory.Services.CreateAsyncScope())
+            {
+                var dbContext = scope.ServiceProvider.GetRequiredService<SeoIntelligenceDbContext>();
+                var import = await dbContext.DataImports.AsNoTracking().SingleAsync(entity => entity.ProjectId == projectId);
+                importId = import.Id;
+                Assert.Equal(StatusValues.FailedFatal, import.Status);
+                Assert.Contains("position", import.ValidationErrorsJson, StringComparison.Ordinal);
+                Assert.False(await dbContext.RankResults.AnyAsync(entity => entity.ProjectId == projectId));
+            }
+
+            using var errorsResponse = await client.GetAsync($"/api/projects/{projectId}/imports/{importId}/errors?page=1&pageSize=10&q=position");
+            using var errorsDocument = await ReadJsonAsync(errorsResponse);
+
+            Assert.Equal(HttpStatusCode.OK, errorsResponse.StatusCode);
+            var items = errorsDocument.RootElement.GetProperty("data").EnumerateArray().ToArray();
+            Assert.Single(items);
+            Assert.Equal("rows[2].position", items[0].GetProperty("target").GetString());
+            Assert.Contains("integer", items[0].GetProperty("message").GetString(), StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            DeleteTempStoragePath(factory.StoragePath);
+        }
+    }
+
     private static async Task<Guid> SeedProjectWithKeywordMetricsAsync(DataExportApiFactory factory)
     {
         var projectId = await SeedProjectAsync(factory, "CSV export project");
@@ -260,6 +453,77 @@ public sealed class DataExportIntegrationTests
         return projectId;
     }
 
+    private static async Task<Guid> UploadAndRegisterImportAsync(
+        HttpClient client,
+        DataExportApiFactory factory,
+        Guid projectId,
+        string importType,
+        string csv)
+    {
+        using var uploadResponse = await client.PostAsJsonAsync(
+            $"/api/projects/{projectId}/imports/upload-url",
+            new
+            {
+                importType,
+                format = "csv",
+                fileName = $"{importType}.csv"
+            });
+        using var uploadDocument = await ReadJsonAsync(uploadResponse);
+
+        Assert.Equal(HttpStatusCode.OK, uploadResponse.StatusCode);
+        var sourceFileUri = uploadDocument.RootElement.GetProperty("data").GetProperty("sourceFileUri").GetString()!;
+        Assert.StartsWith("storage://local/imports/", sourceFileUri, StringComparison.Ordinal);
+
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var storage = scope.ServiceProvider.GetRequiredService<IObjectStorage>();
+            await using var content = new MemoryStream(Encoding.UTF8.GetBytes(csv), writable: false);
+            await storage.PutAsync(
+                new StoragePutRequest(
+                    ResolveStorageObjectKey(sourceFileUri),
+                    content,
+                    "text/csv; charset=utf-8"));
+        }
+
+        using var registerResponse = await client.PostAsJsonAsync(
+            $"/api/projects/{projectId}/imports",
+            new
+            {
+                importType,
+                format = "csv",
+                sourceFileUri,
+                validationMode = "strict"
+            });
+        using var registerDocument = await ReadJsonAsync(registerResponse);
+
+        Assert.Equal(HttpStatusCode.Accepted, registerResponse.StatusCode);
+        return registerDocument.RootElement.GetProperty("data").GetProperty("jobId").GetGuid();
+    }
+
+    private static async Task DispatchAsync(DataExportApiFactory factory, Guid jobId)
+    {
+        await using var scope = factory.Services.CreateAsyncScope();
+        var dispatcher = scope.ServiceProvider.GetRequiredService<IJobDispatcher>();
+        await dispatcher.DispatchAsync(jobId);
+    }
+
+    private static async Task AssertXlsxContainsAsync(
+        DataExportApiFactory factory,
+        string fileUri,
+        string expectedText)
+    {
+        await using var scope = factory.Services.CreateAsyncScope();
+        var storage = scope.ServiceProvider.GetRequiredService<IObjectStorage>();
+        await using var stream = await storage.OpenReadAsync(ResolveStorageObjectKey(fileUri));
+        using var archive = new ZipArchive(stream, ZipArchiveMode.Read);
+        var worksheet = archive.GetEntry("xl/worksheets/sheet1.xml");
+        Assert.NotNull(worksheet);
+        using var worksheetStream = worksheet!.Open();
+        using var reader = new StreamReader(worksheetStream);
+        var xml = await reader.ReadToEndAsync();
+        Assert.Contains(expectedText, xml, StringComparison.Ordinal);
+    }
+
     private static async Task<Guid> SeedProjectAsync(DataExportApiFactory factory, string name)
     {
         var projectId = Guid.NewGuid();
@@ -310,6 +574,8 @@ public sealed class DataExportIntegrationTests
             Directory.Delete(storagePath, recursive: true);
         }
     }
+
+    private sealed record ImportScenario(string ImportType, string Csv);
 
     private sealed class DataExportApiFactory : WebApplicationFactory<Program>
     {

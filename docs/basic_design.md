@@ -493,7 +493,7 @@ Response envelope:
 
 ### 7.3 ファイル入出力方式
 
-CSV/ExcelインポートはPhase 3対象とし、Phase 1/MVPではAPIを公開しない。APIサーバが大容量ファイルを直接保持しない方式とする。クライアントは`POST /api/projects/{projectId}/imports/upload-url`で期限付きアップロードURLを取得し、Storageへファイルをアップロードした後、`POST /api/projects/{projectId}/imports`へ`source_file_uri`、`format`、`import_type`、`validation_mode`を渡して取込ジョブを登録する。WorkerはStorageからファイルを読み取り、検証結果をdata_imports.validation_errors_jsonへ保存する。
+CSV/ExcelインポートはPhase 3対象とし、Phase 1/MVPではAPIを公開しない。APIサーバが大容量ファイルを直接保持しない方式とする。クライアントは`POST /api/projects/{projectId}/imports/upload-url`で期限付きアップロードURLを取得し、Storageへファイルをアップロードした後、`POST /api/projects/{projectId}/imports`へ`source_file_uri`、`format`、`import_type`、`validation_mode`を渡して取込ジョブを登録する。初期実装の`validation_mode`は`strict`のみとし、WorkerはStorageからファイルを読み取り、検証結果をdata_imports.validation_errors_jsonへ保存する。
 
 MVPの一括検索ボリューム画面で扱うCSVはインポート機能ではない。Blazor UIがブラウザ内でCSVをパースし、空行除外・重複除外・上限検証を行ったうえで、`POST /api/projects/{projectId}/search-volume/jobs`へ`keywords` JSON配列として送信する。APIサーバへCSVファイル本体はアップロードしない。
 
