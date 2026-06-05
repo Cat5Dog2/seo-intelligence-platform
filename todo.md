@@ -115,13 +115,13 @@ ISSUE-MVP-00X の続きから再開してください。
 - [x] ISSUE-MVP-016 Blazorキーワード探索、検索ボリューム、ダッシュボードを実装する
 - [x] ISSUE-MVP-017 MVP受入テストを整備する
 - [x] ISSUE-MVP-018 MVP運用、監視、ドキュメントを整備する
-- [ ] ISSUE-P2-001 Phase 2 DB/API/外部API基盤を追加する
+- [x] ISSUE-P2-001 Phase 2 DB/API/外部API基盤を追加する
 - [x] ISSUE-P2-002 競合分析と獲得語/ページ分析を実装する
 - [x] ISSUE-P2-003 コンテンツ分析と記事ブリーフを実装する
-- [ ] ISSUE-P2-004 トピッククラスターを実装する
-- [ ] ISSUE-P2-005 順位監視と順位アラートを実装する
+- [x] ISSUE-P2-004 トピッククラスターを実装する
+- [x] ISSUE-P2-005 順位監視と順位アラートを実装する
 - [x] ISSUE-P2-006 Phase 2 UIを実装する
-- [ ] ISSUE-P2-007 Phase 2受入テストを整備する
+- [x] ISSUE-P2-007 Phase 2受入テストを整備する
 - [ ] ISSUE-P3-001 Phase 3 DB/API基盤を追加する
 - [ ] ISSUE-P3-002 リライト優先度とカニバリ検出を実装する
 - [ ] ISSUE-P3-003 レポート生成、共有URL、監査を実装する
