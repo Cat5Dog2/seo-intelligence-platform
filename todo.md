@@ -863,16 +863,16 @@ ISSUE-MVP-00X の続きから再開してください。
 
 範囲:
 
-- [ ] AC-004 競合分析のE2E/Integrationを通す。
-- [ ] AC-005 コンテンツ分析/記事ブリーフのE2E/Integrationを通す。
-- [ ] AC-006 順位監視/順位分布/`alert_events`/通知連携のE2E/Integrationを通す。
-- [ ] AC-012のPhase 2順位アラート通知を通す。
-- [ ] S-010のPhase 2ダッシュボードレスポンスと表示のIntegration/E2Eを通す。
-- [ ] 競合、コンテンツ、記事ブリーフ、順位監視の契約テストを通す。
+- [x] AC-004 競合分析のE2E/Integrationを通す。
+- [x] AC-005 コンテンツ分析/記事ブリーフのE2E/Integrationを通す。
+- [x] AC-006 順位監視/順位分布/`alert_events`/通知連携のE2E/Integrationを通す。
+- [x] AC-012のPhase 2順位アラート通知を通す。
+- [x] S-010のPhase 2ダッシュボードレスポンスと表示のIntegration/E2Eを通す。
+- [x] 競合、コンテンツ、記事ブリーフ、順位監視の契約テストを通す。
 
 受入条件:
 
-- [ ] Phase 2完了条件が通る。
+- [x] Phase 2完了条件が通る。
 
 ## Phase 3: 自動化 / AI / 外部連携
 
