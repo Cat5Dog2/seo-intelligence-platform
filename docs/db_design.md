@@ -134,14 +134,14 @@ external_connector_settings
 | `topic_clusters` | `id uuid PK`, `project_id uuid FK`, `name text`, `parent_id uuid NULL FK`, `representative_keyword_id uuid NULL FK`, `score numeric(8,4)`, `created_at`, `updated_at` | 親子クラスター。 |
 | `cluster_keywords` | `cluster_id uuid FK`, `keyword_id uuid FK`, `role text`, `opportunity_score numeric(8,4)`, `intent_label text` | `PRIMARY KEY(cluster_id, keyword_id)`。 |
 | `article_briefs` | `id uuid PK`, `project_id uuid FK`, `cluster_id uuid NULL FK`, `title text`, `target_keyword_id uuid NULL FK`, `current_version integer`, `content_json jsonb`, `review_status text`, `status text`, `created_at`, `updated_at` | 記事ブリーフ本体。 |
-| `rewrite_tasks` | `id uuid PK`, `project_id uuid FK`, `target_url text`, `priority_score numeric(8,4)`, `reason_json jsonb`, `status text`, `assignee_actor text`, `created_at`, `updated_at` | 初期版の担当者は`developer`。 |
+| `rewrite_tasks` | `id uuid PK`, `project_id uuid FK`, `target_url text`, `priority_score numeric(8,4)`, `reason_json jsonb`, `status text`, `assignee_actor text`, `memo text NULL`, `created_at`, `updated_at` | 初期版の担当者は`developer`。 |
 | `cannibalization_candidates` | `id uuid PK`, `project_id uuid FK`, `keyword_id uuid FK`, `primary_url text`, `competing_urls_json jsonb`, `severity_score numeric(8,4)`, `evidence_json jsonb`, `recommendation_json jsonb`, `status text`, `detected_at timestamptz` | カニバリ候補。 |
 | `rank_check_jobs` | `job_id uuid PK/FK`, `depth integer`, `match_type text`, `with_metrics boolean`, `request_options_json jsonb`, `status_json jsonb` | `job_id -> jobs.id`。 |
 | `rank_check_targets` | `id uuid PK`, `job_id uuid FK`, `target text`, `target_type text` | URL/ドメイン等の順位チェック対象。 |
 | `rank_results` | `id uuid PK`, `job_id uuid FK`, `project_id uuid FK`, `keyword_id uuid FK`, `target text`, `position integer`, `ranked_url text`, `estimated_traffic numeric(18,4)`, `metrics_snapshot_json jsonb`, `source_call_id uuid NULL FK`, `contract_scope_key text`, `checked_at timestamptz` | 順位履歴。外部API結果の出自と契約スコープを追跡する。 |
 | `alerts` | `id uuid PK`, `project_id uuid FK`, `alert_type text`, `condition_json jsonb`, `notification_channel_id uuid NULL FK`, `status text`, `last_triggered_at timestamptz`, `created_at`, `updated_at` | アラート定義。発火履歴の正本は`alert_events`。 |
 | `alert_events` | `id uuid PK`, `alert_id uuid FK`, `project_id uuid FK`, `job_id uuid NULL FK`, `keyword_id uuid NULL FK`, `event_type text`, `previous_value_json jsonb`, `current_value_json jsonb`, `evidence_json jsonb`, `notification_delivery_id uuid NULL FK`, `triggered_at timestamptz`, `resolved_at timestamptz NULL` | アラート発火履歴の正本。順位差分、圏外化、競合抜かれ等の根拠と通知結果を保持する。 |
-| `reports` | `id uuid PK`, `project_id uuid FK`, `report_type text`, `period text`, `format text`, `current_version integer`, `file_uri text`, `share_token_hash text`, `share_expires_at timestamptz`, `status text`, `generated_by text`, `created_at`, `updated_at` | `format`はpdf/excel。共有URLはトークンハッシュのみ保存。 |
+| `reports` | `id uuid PK`, `project_id uuid FK`, `report_type text`, `period text`, `format text`, `current_version integer`, `file_uri text`, `share_token_hash text NULL`, `share_expires_at timestamptz NULL`, `share_revoked_at timestamptz NULL`, `status text`, `generated_by text`, `created_at`, `updated_at` | `format`はpdf/excel。共有URLはトークンハッシュのみ保存し、実トークンは保存しない。 |
 | `artifact_versions` | `id uuid PK`, `workspace_id uuid FK`, `project_id uuid NULL FK`, `artifact_type text`, `artifact_id uuid`, `version_no integer`, `content_hash text`, `content_uri text`, `content_json jsonb`, `created_by text`, `review_status text`, `change_summary text`, `created_at` | Phase 2から記事ブリーフ版履歴で使用する。Phase 3でレポート、AI生成物の版管理にも利用する。 |
 
 ### 5.6 入出力・AI
@@ -195,7 +195,7 @@ external_connector_settings
 | `notification_deliveries` | `INDEX(workspace_id, project_id, created_at)`, `INDEX(status, next_retry_at)`, `INDEX(job_id)`, `INDEX(resource_type, resource_id)`, `INDEX(correlation_id)` | 送信履歴、再送制御、送信元追跡。 |
 | `influx_keyword_results` | `INDEX(project_id, target)`, `INDEX(keyword_id)`, `INDEX(rank)` | 競合ギャップ、順位条件。 |
 | `content_search_results` | `INDEX(project_id, keyword_id)`, `INDEX(domain)`, `GIN(to_tsvector('simple', concat_ws(' ', title, description)))` | コンテンツ検索。 |
-| `reports` | `INDEX(project_id, report_type, period, format)`, `INDEX(share_expires_at)`, `INDEX(share_token_hash)` | レポート一覧、形式別検索、共有URL。 |
+| `reports` | `INDEX(project_id, report_type, period, format)`, `INDEX(share_expires_at)`, `INDEX(share_revoked_at)`, `UNIQUE(share_token_hash) WHERE share_token_hash IS NOT NULL` | レポート一覧、形式別検索、共有URL。 |
 | `artifact_versions` | `UNIQUE(artifact_type, artifact_id, version_no)`, `INDEX(workspace_id, project_id, created_at)` | 成果物履歴。 |
 | `data_exports` | `INDEX(workspace_id, project_id, created_at)`, `INDEX(status, created_at)` | 出力履歴。 |
 | `data_imports` | `INDEX(workspace_id, project_id, created_at)`, `INDEX(status, created_at)` | 取込履歴。 |
