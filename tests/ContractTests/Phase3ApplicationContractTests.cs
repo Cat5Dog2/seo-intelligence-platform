@@ -59,6 +59,22 @@ public sealed class Phase3ApplicationContractTests
         Assert.Equal("rank-results", ai.RootElement.GetProperty("allowedTools")[0].GetString());
         Assert.True(ai.RootElement.GetProperty("referenceScope").GetProperty("projectOnly").GetBoolean());
 
+        using var aiResponse = JsonDocument.Parse(JsonSerializer.Serialize(
+            new AiChatResponse(
+                SessionId: Guid.Parse("018f4dd8-0005-7000-8000-000000000005"),
+                MessageId: Guid.Parse("018f4dd8-0006-7000-8000-000000000006"),
+                JobId: Guid.Parse("018f4dd8-0007-7000-8000-000000000007"),
+                Response: "Draft response.",
+                ToolCalls: [JsonSerializer.SerializeToElement(new { name = "rank-results" })],
+                ReferenceData: JsonSerializer.SerializeToElement(new { projectOnly = true }),
+                TokenUsage: JsonSerializer.SerializeToElement(new { totalTokens = 42 }),
+                RedactionStatus: "clean",
+                ReviewStatus: "pending"),
+            JsonOptions));
+        Assert.Equal("018f4dd8-0007-7000-8000-000000000007", aiResponse.RootElement.GetProperty("jobId").GetGuid().ToString("D"));
+        Assert.Equal("pending", aiResponse.RootElement.GetProperty("reviewStatus").GetString());
+        Assert.Equal(42, aiResponse.RootElement.GetProperty("tokenUsage").GetProperty("totalTokens").GetInt32());
+
         using var candidate = JsonDocument.Parse(JsonSerializer.Serialize(
             new CannibalizationCandidateDetails(
                 CandidateId: Guid.Parse("018f4dd8-0002-7000-8000-000000000002"),

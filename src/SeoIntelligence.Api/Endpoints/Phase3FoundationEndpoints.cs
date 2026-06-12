@@ -61,7 +61,8 @@ internal static class Phase3FoundationEndpoints
         _ = project.MapGroup(Phase3EndpointRoutes.Exports);
         _ = project.MapGroup(Phase3EndpointRoutes.Imports);
         _ = project.MapGroup(Phase3EndpointRoutes.Connectors);
-        _ = project.MapGroup(Phase3EndpointRoutes.Ai);
+        var ai = project.MapGroup(Phase3EndpointRoutes.Ai);
+        ai.MapPost("/chat", ChatWithAiAsync);
         var reportShares = app.MapGroup(Phase3EndpointRoutes.ReportShares);
         reportShares.MapGet("/{token}", GetSharedReportAsync);
 
@@ -277,6 +278,27 @@ internal static class Phase3FoundationEndpoints
                 CreateSharedContext(contextService, httpContext),
                 token,
                 cancellationToken));
+
+    private static async Task<IResult> ChatWithAiAsync(
+        Guid projectId,
+        [FromBody] AiChatRequest request,
+        [FromServices] IAiAssistantService service,
+        [FromServices] IProjectContextService contextService,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        var result = await service.ChatAsync(
+            CreateContext(contextService, httpContext, projectId),
+            request,
+            cancellationToken);
+
+        return result.IsSuccess
+            ? ApiResponseResults.Accepted(
+                httpContext,
+                result.Value!,
+                new ApiResponseMeta(JobId: result.Value!.JobId))
+            : ApiResponseResults.FromError(httpContext, result.Error!);
+    }
 
     private static IReadOnlyDictionary<string, string[]> ValidateListQuery(
         int page,

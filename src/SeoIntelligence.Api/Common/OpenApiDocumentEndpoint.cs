@@ -74,7 +74,8 @@ internal static class OpenApiDocumentEndpoint
         new("/api/projects/{projectId}/imports/upload-url", Post: "Issue a short-lived import source upload URL"),
         new("/api/projects/{projectId}/imports", Post: "Register CSV or Excel import job", PostSuccessCode: "202"),
         new("/api/projects/{projectId}/imports/{importId}", Get: "Get import state and validation summary"),
-        new("/api/projects/{projectId}/imports/{importId}/errors", Get: "List import validation errors")
+        new("/api/projects/{projectId}/imports/{importId}/errors", Get: "List import validation errors"),
+        new("/api/projects/{projectId}/ai/chat", Post: "Register AI assistant generation job", PostSuccessCode: "202")
     ];
 
     public static IResult GetV1(HttpContext context)
