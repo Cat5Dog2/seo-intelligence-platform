@@ -127,7 +127,7 @@ ISSUE-MVP-00X の続きから再開してください。
 - [x] ISSUE-P3-003 レポート生成、共有URL、監査を実装する
 - [x] ISSUE-P3-004 CSV/ExcelインポートとExcelエクスポートを実装する
 - [x] ISSUE-P3-005 AIアシスタントを実装する
-- [ ] ISSUE-P3-006 外部連携スタブを実装する
+- [x] ISSUE-P3-006 外部連携スタブを実装する
 - [ ] ISSUE-P3-007 Phase 3 UIを実装する
 - [ ] ISSUE-P3-008 Phase 3受入テストを整備する
 - [ ] ISSUE-P4-001 エンタープライズ拡張を設計する
@@ -1000,20 +1000,20 @@ ISSUE-MVP-00X の続きから再開してください。
 
 範囲:
 
-- [ ] `GET /api/projects/{projectId}/connectors`
-- [ ] `POST /api/projects/{projectId}/connectors`
-- [ ] `PUT /api/projects/{projectId}/connectors/{connectorId}`
-- [ ] `DELETE /api/projects/{projectId}/connectors/{connectorId}` を `status=disabled` 更新として実装する。
-- [ ] `POST /api/projects/{projectId}/connectors/{connectorId}/test`
-- [ ] `GET /api/projects/{projectId}/connectors/{connectorId}/runs`
-- [ ] GSC/GA4/CMS/BIの設定、Secret参照、接続テスト履歴を保存する。
-- [ ] 実データ取得は行わない。
-- [ ] P3-001で追加したContracts/DTO、ルートグループ、projectIdスコープ検証を使う。
+- [x] `GET /api/projects/{projectId}/connectors`
+- [x] `POST /api/projects/{projectId}/connectors`
+- [x] `PUT /api/projects/{projectId}/connectors/{connectorId}`
+- [x] `DELETE /api/projects/{projectId}/connectors/{connectorId}` を `status=disabled` 更新として実装する。
+- [x] `POST /api/projects/{projectId}/connectors/{connectorId}/test`
+- [x] `GET /api/projects/{projectId}/connectors/{connectorId}/runs`
+- [x] GSC/GA4/CMS/BIの設定、Secret参照、接続テスト履歴を保存する。
+- [x] 実データ取得は行わない。
+- [x] P3-001で追加したContracts/DTO、ルートグループ、projectIdスコープ検証を使う。
 
 受入条件:
 
-- [ ] コネクタ設定を作成/更新/無効化できる。
-- [ ] Secret実値を返さず、接続テストスタブと実行履歴を確認できる。
+- [x] コネクタ設定を作成/更新/無効化できる。
+- [x] Secret実値を返さず、接続テストスタブと実行履歴を確認できる。
 
 ### ISSUE-P3-007 Phase 3 UIを実装する
 
