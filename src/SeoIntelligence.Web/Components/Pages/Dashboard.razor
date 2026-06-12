@@ -19,6 +19,9 @@
             <button type="button" class="secondary-button" @onclick="NavigateToSearchVolume">一括調査</button>
             <button type="button" class="secondary-button" @onclick="NavigateToCompetitors">競合分析</button>
             <button type="button" class="secondary-button" @onclick="NavigateToRankMonitoring">順位監視</button>
+            <button type="button" class="secondary-button" @onclick="NavigateToRewrite">リライト</button>
+            <button type="button" class="secondary-button" @onclick="NavigateToReports">レポート</button>
+            <button type="button" class="secondary-button" @onclick="NavigateToAiAssistant">AIアシスタント</button>
         </div>
     </header>
 
@@ -112,6 +115,41 @@
             </div>
         </section>
 
+        <section class="metric-strip dashboard-metrics" aria-label="Phase 3指標">
+            <div class="metric">
+                <span>リライトタスク</span>
+                <strong>@(Snapshot.RewriteSummary?.TaskCount ?? 0)</strong>
+            </div>
+            <div class="metric">
+                <span>対応中リライト</span>
+                <strong>@(Snapshot.RewriteSummary?.ActiveTaskCount ?? 0)</strong>
+            </div>
+            <div class="metric">
+                <span>最大優先度</span>
+                <strong>@((Snapshot.RewriteSummary?.MaxPriorityScore ?? 0m).ToString("0.##"))</strong>
+            </div>
+            <div class="metric">
+                <span>カニバリ候補</span>
+                <strong>@(Snapshot.CannibalizationSummary?.CandidateCount ?? 0)</strong>
+            </div>
+            <div class="metric">
+                <span>有効カニバリ候補</span>
+                <strong>@(Snapshot.CannibalizationSummary?.ActiveCandidateCount ?? 0)</strong>
+            </div>
+            <div class="metric">
+                <span>共有レポート</span>
+                <strong>@(Snapshot.ReportSummary?.SharedReportCount ?? 0)</strong>
+            </div>
+            <div class="metric">
+                <span>AIメッセージ</span>
+                <strong>@(Snapshot.AiSummary?.MessageCount ?? 0)</strong>
+            </div>
+            <div class="metric">
+                <span>AIレビュー待ち</span>
+                <strong>@(Snapshot.AiSummary?.PendingReviewCount ?? 0)</strong>
+            </div>
+        </section>
+
         <section class="panel">
             <div class="section-heading">
                 <h2>Phase 2導線</h2>
@@ -123,6 +161,19 @@
                 <button type="button" class="secondary-button" @onclick="NavigateToContentAnalysis">コンテンツ分析</button>
                 <button type="button" class="secondary-button" @onclick="NavigateToBriefs">記事ブリーフ</button>
                 <button type="button" class="secondary-button" @onclick="NavigateToRankMonitoring">順位監視</button>
+            </div>
+        </section>
+
+        <section class="panel">
+            <div class="section-heading">
+                <h2>Phase 3導線</h2>
+            </div>
+            <div class="button-row">
+                <button type="button" class="secondary-button" @onclick="NavigateToBriefs">記事ブリーフAI再生成</button>
+                <button type="button" class="secondary-button" @onclick="NavigateToRewrite">リライト管理</button>
+                <button type="button" class="secondary-button" @onclick="NavigateToReports">レポート</button>
+                <button type="button" class="secondary-button" @onclick="NavigateToAiAssistant">AIアシスタント</button>
+                <button type="button" class="secondary-button" @onclick="NavigateToAdmin">外部連携スタブ</button>
             </div>
         </section>
 
@@ -186,7 +237,11 @@
             (Snapshot.CompetitorSummary?.CompetitorCount ?? 0) == 0 &&
             (Snapshot.ContentAnalysisSummary?.KeywordCount ?? 0) == 0 &&
             (Snapshot.BriefSummary?.BriefCount ?? 0) == 0 &&
-            (Snapshot.RankSummary?.RankResultCount ?? 0) == 0;
+            (Snapshot.RankSummary?.RankResultCount ?? 0) == 0 &&
+            (Snapshot.RewriteSummary?.TaskCount ?? 0) == 0 &&
+            (Snapshot.CannibalizationSummary?.CandidateCount ?? 0) == 0 &&
+            (Snapshot.ReportSummary?.ReportCount ?? 0) == 0 &&
+            (Snapshot.AiSummary?.MessageCount ?? 0) == 0;
 
     protected override async Task OnInitializedAsync()
     {
@@ -284,6 +339,18 @@
 
     private void NavigateToRankMonitoring()
         => Navigation.NavigateTo("/rank-monitoring");
+
+    private void NavigateToRewrite()
+        => Navigation.NavigateTo("/rewrite");
+
+    private void NavigateToReports()
+        => Navigation.NavigateTo("/reports");
+
+    private void NavigateToAiAssistant()
+        => Navigation.NavigateTo("/ai-assistant");
+
+    private void NavigateToAdmin()
+        => Navigation.NavigateTo("/admin");
 
     private static string FormatDateTime(DateTime value)
         => value.ToLocalTime().ToString("yyyy-MM-dd HH:mm");

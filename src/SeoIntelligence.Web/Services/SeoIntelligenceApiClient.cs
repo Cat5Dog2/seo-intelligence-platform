@@ -381,6 +381,12 @@ public sealed class SeoIntelligenceApiClient : ISeoIntelligenceApiClient
         CancellationToken cancellationToken = default)
         => SendAsync<ArticleBriefDetails>(HttpMethod.Put, $"/api/projects/{projectId:D}/briefs/{briefId:D}", request, cancellationToken);
 
+    public Task<ApiClientResult<AiChatResponse>> ChatWithAiAsync(
+        Guid projectId,
+        AiChatRequest request,
+        CancellationToken cancellationToken = default)
+        => SendAsync<AiChatResponse>(HttpMethod.Post, $"/api/projects/{projectId:D}/ai/chat", request, cancellationToken);
+
     public Task<ApiClientResult<IReadOnlyList<ArticleBriefVersionDetails>>> GetBriefVersionsAsync(
         Guid projectId,
         Guid briefId,
@@ -520,6 +526,165 @@ public sealed class SeoIntelligenceApiClient : ISeoIntelligenceApiClient
                 ("q", q),
                 ("from", from),
                 ("to", to),
+                ("page", page),
+                ("pageSize", pageSize)),
+            cancellationToken: cancellationToken);
+
+    public Task<ApiClientResult<IReadOnlyList<RewriteTaskDetails>>> SearchRewriteTasksAsync(
+        Guid projectId,
+        string status = "active",
+        string? q = null,
+        string sortBy = "priorityScore",
+        string orderBy = "desc",
+        int page = 1,
+        int pageSize = 100,
+        CancellationToken cancellationToken = default)
+        => SendAsync<IReadOnlyList<RewriteTaskDetails>>(
+            HttpMethod.Get,
+            WithQuery(
+                $"/api/projects/{projectId:D}/rewrite/tasks",
+                ("status", status),
+                ("q", q),
+                ("sortBy", sortBy),
+                ("orderBy", orderBy),
+                ("page", page),
+                ("pageSize", pageSize)),
+            cancellationToken: cancellationToken);
+
+    public Task<ApiClientResult<RewriteTaskDetails>> GetRewriteTaskAsync(
+        Guid projectId,
+        Guid taskId,
+        CancellationToken cancellationToken = default)
+        => SendAsync<RewriteTaskDetails>(HttpMethod.Get, $"/api/projects/{projectId:D}/rewrite/tasks/{taskId:D}", cancellationToken: cancellationToken);
+
+    public Task<ApiClientResult<RewriteTaskDetails>> UpdateRewriteTaskAsync(
+        Guid projectId,
+        Guid taskId,
+        RewriteTaskUpdateRequest request,
+        CancellationToken cancellationToken = default)
+        => SendAsync<RewriteTaskDetails>(HttpMethod.Put, $"/api/projects/{projectId:D}/rewrite/tasks/{taskId:D}", request, cancellationToken);
+
+    public Task<ApiClientResult<IReadOnlyList<CannibalizationCandidateDetails>>> SearchCannibalizationCandidatesAsync(
+        Guid projectId,
+        string status = "active",
+        string? q = null,
+        string sortBy = "severityScore",
+        string orderBy = "desc",
+        int page = 1,
+        int pageSize = 100,
+        CancellationToken cancellationToken = default)
+        => SendAsync<IReadOnlyList<CannibalizationCandidateDetails>>(
+            HttpMethod.Get,
+            WithQuery(
+                $"/api/projects/{projectId:D}/cannibalization/candidates",
+                ("status", status),
+                ("q", q),
+                ("sortBy", sortBy),
+                ("orderBy", orderBy),
+                ("page", page),
+                ("pageSize", pageSize)),
+            cancellationToken: cancellationToken);
+
+    public Task<ApiClientResult<JobReference>> RefreshCannibalizationAsync(
+        Guid projectId,
+        CancellationToken cancellationToken = default)
+        => SendAsync<JobReference>(HttpMethod.Post, $"/api/projects/{projectId:D}/cannibalization/refresh", cancellationToken: cancellationToken);
+
+    public Task<ApiClientResult<JobReference>> CreateReportAsync(
+        Guid projectId,
+        ReportRequest request,
+        CancellationToken cancellationToken = default)
+        => SendAsync<JobReference>(HttpMethod.Post, $"/api/projects/{projectId:D}/reports", request, cancellationToken);
+
+    public Task<ApiClientResult<ReportDetails>> GetReportAsync(
+        Guid projectId,
+        Guid reportId,
+        CancellationToken cancellationToken = default)
+        => SendAsync<ReportDetails>(HttpMethod.Get, $"/api/projects/{projectId:D}/reports/{reportId:D}", cancellationToken: cancellationToken);
+
+    public Task<ApiClientResult<ReportDownload>> CreateReportDownloadAsync(
+        Guid projectId,
+        Guid reportId,
+        CancellationToken cancellationToken = default)
+        => SendAsync<ReportDownload>(HttpMethod.Get, $"/api/projects/{projectId:D}/reports/{reportId:D}/download", cancellationToken: cancellationToken);
+
+    public Task<ApiClientResult<ReportShareDetails>> ShareReportAsync(
+        Guid projectId,
+        Guid reportId,
+        ReportShareRequest request,
+        CancellationToken cancellationToken = default)
+        => SendAsync<ReportShareDetails>(HttpMethod.Post, $"/api/projects/{projectId:D}/reports/{reportId:D}/share", request, cancellationToken);
+
+    public Task<ApiClientResult<ReportShareDetails>> RevokeReportShareAsync(
+        Guid projectId,
+        Guid reportId,
+        CancellationToken cancellationToken = default)
+        => SendAsync<ReportShareDetails>(HttpMethod.Delete, $"/api/projects/{projectId:D}/reports/{reportId:D}/share", cancellationToken: cancellationToken);
+
+    public Task<ApiClientResult<IReadOnlyList<ConnectorSettingsDetails>>> SearchConnectorsAsync(
+        Guid projectId,
+        string status = "active",
+        string? q = null,
+        string sortBy = "updatedAt",
+        string orderBy = "desc",
+        int page = 1,
+        int pageSize = 100,
+        CancellationToken cancellationToken = default)
+        => SendAsync<IReadOnlyList<ConnectorSettingsDetails>>(
+            HttpMethod.Get,
+            WithQuery(
+                $"/api/projects/{projectId:D}/connectors",
+                ("status", status),
+                ("q", q),
+                ("sortBy", sortBy),
+                ("orderBy", orderBy),
+                ("page", page),
+                ("pageSize", pageSize)),
+            cancellationToken: cancellationToken);
+
+    public Task<ApiClientResult<ConnectorSettingsDetails>> CreateConnectorAsync(
+        Guid projectId,
+        ConnectorSettingsRequest request,
+        CancellationToken cancellationToken = default)
+        => SendAsync<ConnectorSettingsDetails>(HttpMethod.Post, $"/api/projects/{projectId:D}/connectors", request, cancellationToken);
+
+    public Task<ApiClientResult<ConnectorSettingsDetails>> UpdateConnectorAsync(
+        Guid projectId,
+        Guid connectorId,
+        ConnectorSettingsRequest request,
+        CancellationToken cancellationToken = default)
+        => SendAsync<ConnectorSettingsDetails>(HttpMethod.Put, $"/api/projects/{projectId:D}/connectors/{connectorId:D}", request, cancellationToken);
+
+    public Task<ApiClientResult<ConnectorSettingsDetails>> DisableConnectorAsync(
+        Guid projectId,
+        Guid connectorId,
+        CancellationToken cancellationToken = default)
+        => SendAsync<ConnectorSettingsDetails>(HttpMethod.Delete, $"/api/projects/{projectId:D}/connectors/{connectorId:D}", cancellationToken: cancellationToken);
+
+    public Task<ApiClientResult<ConnectorRunDetails>> TestConnectorAsync(
+        Guid projectId,
+        Guid connectorId,
+        CancellationToken cancellationToken = default)
+        => SendAsync<ConnectorRunDetails>(HttpMethod.Post, $"/api/projects/{projectId:D}/connectors/{connectorId:D}/test", cancellationToken: cancellationToken);
+
+    public Task<ApiClientResult<IReadOnlyList<ConnectorRunDetails>>> GetConnectorRunsAsync(
+        Guid projectId,
+        Guid connectorId,
+        string status = "all",
+        string? q = null,
+        string sortBy = "createdAt",
+        string orderBy = "desc",
+        int page = 1,
+        int pageSize = 50,
+        CancellationToken cancellationToken = default)
+        => SendAsync<IReadOnlyList<ConnectorRunDetails>>(
+            HttpMethod.Get,
+            WithQuery(
+                $"/api/projects/{projectId:D}/connectors/{connectorId:D}/runs",
+                ("status", status),
+                ("q", q),
+                ("sortBy", sortBy),
+                ("orderBy", orderBy),
                 ("page", page),
                 ("pageSize", pageSize)),
             cancellationToken: cancellationToken);

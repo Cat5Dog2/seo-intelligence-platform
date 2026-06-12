@@ -68,7 +68,23 @@ public sealed class BlazorPhase2DashboardUiTests
                         RankAlertSummary: new DashboardRankAlertSummary(
                             ActiveAlertCount: 2,
                             UnresolvedEventCount: 1,
-                            RankAlertNotificationCount: 1)))));
+                            RankAlertNotificationCount: 1),
+                        RewriteSummary: new DashboardRewriteSummary(
+                            TaskCount: 4,
+                            ActiveTaskCount: 3,
+                            MaxPriorityScore: 88.5m),
+                        CannibalizationSummary: new DashboardCannibalizationSummary(
+                            CandidateCount: 2,
+                            ActiveCandidateCount: 1,
+                            MaxSeverityScore: 72.25m),
+                        ReportSummary: new DashboardReportSummary(
+                            ReportCount: 3,
+                            SharedReportCount: 2,
+                            ExpiredShareCount: 1),
+                        AiSummary: new DashboardAiSummary(
+                            SessionCount: 5,
+                            MessageCount: 12,
+                            PendingReviewCount: 4)))));
         using var httpClient = new HttpClient(handler)
         {
             BaseAddress = new Uri("https://localhost")
@@ -89,6 +105,10 @@ public sealed class BlazorPhase2DashboardUiTests
         Assert.Equal(9, snapshot.RankSummary!.RankResultCount);
         Assert.Equal(2, snapshot.RankSummary.Distribution.Top10);
         Assert.Equal(1, snapshot.RankAlertSummary!.UnresolvedEventCount);
+        Assert.Equal(4, snapshot.RewriteSummary!.TaskCount);
+        Assert.Equal(72.25m, snapshot.CannibalizationSummary!.MaxSeverityScore);
+        Assert.Equal(2, snapshot.ReportSummary!.SharedReportCount);
+        Assert.Equal(12, snapshot.AiSummary!.MessageCount);
     }
 
     private static HttpResponseMessage JsonResponse<T>(HttpStatusCode statusCode, ApiResponseEnvelope<T> envelope)

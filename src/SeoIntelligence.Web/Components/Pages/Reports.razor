@@ -1,0 +1,407 @@
+@page "/reports"
+@implements IDisposable
+@inject ISeoIntelligenceApiClient ApiClient
+@inject ProjectSelectionState ProjectState
+
+<PageTitle>レポート - SEO Intelligence</PageTitle>
+
+<div class="page-stack">
+    <header class="page-header">
+        <div>
+            <h1>レポート</h1>
+            <p>選択中プロジェクト: @(ProjectState.SelectedProject?.Name ?? "未選択")</p>
+        </div>
+        <div class="toolbar">
+            <button type="button" class="secondary-button" @onclick="LoadReportDeliveriesAsync">通知履歴更新</button>
+            <button type="button" class="secondary-button" @onclick="CreateReportAsync" disabled="@(!CanOperate)">生成</button>
+        </div>
+    </header>
+
+    <ErrorSummary Errors="@Errors" />
+    @if (!string.IsNullOrWhiteSpace(Message))
+    {
+        <div class="state-row">@Message</div>
+    }
+
+    @if (ProjectState.SelectedProject is null)
+    {
+        <div class="state-row">プロジェクトを選択してください。</div>
+    }
+    else
+    {
+        <section class="panel">
+            <div class="section-heading">
+                <h2>生成条件</h2>
+                <span class="muted">MonthlyReportJob</span>
+            </div>
+            <div class="form-grid dense-form">
+                <label class="field">
+                    <span>report_type</span>
+                    <select @bind="ReportForm.ReportType">
+                        <option value="monthly_seo">monthly_seo</option>
+                        <option value="competitor_gap">competitor_gap</option>
+                        <option value="rank">rank</option>
+                        <option value="article_brief">article_brief</option>
+                    </select>
+                </label>
+                <label class="field">
+                    <span>period</span>
+                    <input @bind="ReportForm.Period" />
+                </label>
+                <label class="field">
+                    <span>format</span>
+                    <select @bind="ReportForm.Format">
+                        <option value="pdf">pdf</option>
+                        <option value="excel">excel</option>
+                    </select>
+                </label>
+                <label class="field wide-field">
+                    <span>sections</span>
+                    <input @bind="ReportForm.Sections" />
+                </label>
+                <label class="field">
+                    <span>share_expires_at</span>
+                    <input @bind="ReportForm.ShareExpiresAt" />
+                </label>
+                <button type="button" class="primary-button" @onclick="CreateReportAsync" disabled="@(!CanOperate)">生成ジョブ登録</button>
+            </div>
+        </section>
+
+        <section class="split-grid">
+            <div class="panel">
+                <div class="section-heading">
+                    <h2>レポート詳細</h2>
+                    <button type="button" class="secondary-button" @onclick="LoadReportAsync">取得</button>
+                </div>
+                <div class="form-grid dense-form">
+                    <label class="field wide-field">
+                        <span>report_id</span>
+                        <input @bind="ReportId" />
+                    </label>
+                </div>
+
+                @if (SelectedReport is null)
+                {
+                    <div class="state-row">レポートIDを指定してください。</div>
+                }
+                else
+                {
+                    <div class="detail-list">
+                        <div><span>type</span><strong>@SelectedReport.ReportType</strong></div>
+                        <div><span>period</span><strong>@SelectedReport.Period</strong></div>
+                        <div><span>format</span><strong>@SelectedReport.Format</strong></div>
+                        <div><span>status</span><strong>@SelectedReport.Status</strong></div>
+                        <div><span>file_uri</span><strong>@(SelectedReport.FileUri ?? "-")</strong></div>
+                        <div><span>share_expires_at</span><strong>@FormatDateTime(SelectedReport.ShareExpiresAt)</strong></div>
+                    </div>
+                    <div class="button-row">
+                        <button type="button" class="secondary-button" @onclick="CreateDownloadAsync">ダウンロードURL発行</button>
+                        <button type="button" class="secondary-button" @onclick="ShareReportAsync">共有URL発行</button>
+                        <button type="button" class="secondary-button danger-button" @onclick="RevokeShareAsync">共有URL失効</button>
+                        <AuditLink ResourceType="report" ResourceId="@SelectedReport.ReportId.ToString("D")" />
+                    </div>
+                }
+            </div>
+
+            <div class="panel">
+                <div class="section-heading">
+                    <h2>出力・共有</h2>
+                </div>
+                @if (CurrentDownload is not null)
+                {
+                    <div class="detail-list">
+                        <div><span>download_expires_at</span><strong>@FormatDateTime(CurrentDownload.ExpiresAt)</strong></div>
+                        <div><span>download_url</span><strong><a href="@CurrentDownload.DownloadUrl">download</a></strong></div>
+                    </div>
+                }
+                @if (CurrentShare is not null)
+                {
+                    <div class="detail-list">
+                        <div><span>share_status</span><strong>@CurrentShare.Status</strong></div>
+                        <div><span>share_expires_at</span><strong>@FormatDateTime(CurrentShare.ShareExpiresAt)</strong></div>
+                        <div><span>share_revoked_at</span><strong>@FormatDateTime(CurrentShare.ShareRevokedAt)</strong></div>
+                        <div><span>share_url</span><strong>@(CurrentShare.ShareUrl ?? "-")</strong></div>
+                    </div>
+                }
+                @if (CurrentDownload is null && CurrentShare is null)
+                {
+                    <div class="state-row">出力操作の結果はありません。</div>
+                }
+            </div>
+        </section>
+
+        <section class="panel">
+            <JobProgressPanel Title="レポートジョブ" ProjectScoped="true" JobType="MonthlyReportJob" />
+        </section>
+
+        <section class="panel">
+            <div class="section-heading">
+                <h2>report_completed通知履歴</h2>
+            </div>
+            <DataTable Items="@ReportDeliveries" Columns="@DeliveryColumns" IsLoading="@IsDeliveryLoading" EmptyText="レポート完了通知はありません。">
+                <RowActions Context="delivery">
+                    <AuditLink ResourceType="notification_delivery" ResourceId="@delivery.DeliveryId.ToString("D")" />
+                </RowActions>
+            </DataTable>
+        </section>
+    }
+</div>
+
+@code {
+    private static readonly IReadOnlyList<DataTableColumn<NotificationDeliveryDetails>> DeliveryColumns =
+    [
+        new("Event", delivery => delivery.EventType),
+        new("Status", delivery => delivery.Status),
+        new("Retry", delivery => delivery.RetryCount.ToString()),
+        new("Error", delivery => delivery.ErrorMessage),
+        new("Created", delivery => FormatDateTime(delivery.CreatedAt))
+    ];
+
+    private ReportFormModel ReportForm { get; set; } = new();
+
+    private ReportDetails? SelectedReport { get; set; }
+
+    private ReportDownload? CurrentDownload { get; set; }
+
+    private ReportShareDetails? CurrentShare { get; set; }
+
+    private IReadOnlyList<NotificationDeliveryDetails> ReportDeliveries { get; set; } = [];
+
+    private IReadOnlyList<ApiError> Errors { get; set; } = [];
+
+    private string? Message { get; set; }
+
+    private string? ReportId { get; set; }
+
+    private bool IsCreating { get; set; }
+
+    private bool IsDeliveryLoading { get; set; }
+
+    private bool CanOperate
+        => ProjectState.SelectedProject is not null && !IsCreating;
+
+    protected override async Task OnInitializedAsync()
+    {
+        ProjectState.Changed += OnProjectStateChanged;
+        await ProjectState.LoadAsync();
+        await LoadReportDeliveriesAsync();
+    }
+
+    private async Task CreateReportAsync()
+    {
+        if (ProjectState.SelectedProject is not { } project)
+        {
+            return;
+        }
+
+        Errors = [];
+        var shareExpiresAt = ParseDateTimeOffset(ReportForm.ShareExpiresAt, "share_expires_at");
+        if (Errors.Count > 0)
+        {
+            return;
+        }
+
+        IsCreating = true;
+        Message = null;
+        var result = await ApiClient.CreateReportAsync(
+            project.ProjectId,
+            new ReportRequest(
+                ReportForm.ReportType,
+                ReportForm.Period,
+                ReportForm.Format,
+                ParseSections(ReportForm.Sections),
+                shareExpiresAt));
+        if (result.IsSuccess && result.Data is { } job)
+        {
+            Message = $"レポート生成ジョブを登録しました: {job.JobId:D}";
+        }
+        else
+        {
+            Errors = result.Errors;
+        }
+
+        IsCreating = false;
+    }
+
+    private async Task LoadReportAsync()
+    {
+        if (ProjectState.SelectedProject is not { } project)
+        {
+            return;
+        }
+
+        Errors = [];
+        CurrentDownload = null;
+        CurrentShare = null;
+        if (!Guid.TryParse(ReportId, out var reportId))
+        {
+            Errors = [new ApiError("Validation.ReportId.Invalid", "report_id must be a GUID.", "reportId")];
+            return;
+        }
+
+        var result = await ApiClient.GetReportAsync(project.ProjectId, reportId);
+        if (result.IsSuccess && result.Data is { } report)
+        {
+            SelectedReport = report;
+        }
+        else
+        {
+            SelectedReport = null;
+            Errors = result.Errors;
+        }
+    }
+
+    private async Task CreateDownloadAsync()
+    {
+        if (ProjectState.SelectedProject is not { } project || SelectedReport is null)
+        {
+            return;
+        }
+
+        Errors = [];
+        var result = await ApiClient.CreateReportDownloadAsync(project.ProjectId, SelectedReport.ReportId);
+        if (result.IsSuccess && result.Data is { } download)
+        {
+            CurrentDownload = download;
+            Message = "ダウンロードURLを発行しました。";
+        }
+        else
+        {
+            Errors = result.Errors;
+        }
+    }
+
+    private async Task ShareReportAsync()
+    {
+        if (ProjectState.SelectedProject is not { } project || SelectedReport is null)
+        {
+            return;
+        }
+
+        Errors = [];
+        var expiresAt = ParseDateTimeOffset(ReportForm.ShareExpiresAt, "share_expires_at");
+        if (!expiresAt.HasValue)
+        {
+            Errors = [new ApiError("Validation.ShareExpiresAt.Required", "share_expires_at is required.", "shareExpiresAt")];
+            return;
+        }
+
+        if (Errors.Count > 0)
+        {
+            return;
+        }
+
+        var result = await ApiClient.ShareReportAsync(
+            project.ProjectId,
+            SelectedReport.ReportId,
+            new ReportShareRequest(expiresAt.Value));
+        if (result.IsSuccess && result.Data is { } share)
+        {
+            CurrentShare = share;
+            Message = "共有URLを発行しました。";
+        }
+        else
+        {
+            Errors = result.Errors;
+        }
+    }
+
+    private async Task RevokeShareAsync()
+    {
+        if (ProjectState.SelectedProject is not { } project || SelectedReport is null)
+        {
+            return;
+        }
+
+        Errors = [];
+        var result = await ApiClient.RevokeReportShareAsync(project.ProjectId, SelectedReport.ReportId);
+        if (result.IsSuccess && result.Data is { } share)
+        {
+            CurrentShare = share;
+            Message = "共有URLを失効しました。";
+        }
+        else
+        {
+            Errors = result.Errors;
+        }
+    }
+
+    private async Task LoadReportDeliveriesAsync()
+    {
+        IsDeliveryLoading = true;
+        var result = await ApiClient.SearchNotificationDeliveriesAsync("all", q: "report_completed", pageSize: 50);
+        if (result.IsSuccess)
+        {
+            ReportDeliveries = (result.Data ?? [])
+                .Where(delivery => string.Equals(delivery.EventType, "report_completed", StringComparison.Ordinal))
+                .ToArray();
+        }
+        else
+        {
+            ReportDeliveries = [];
+            Errors = result.Errors;
+        }
+
+        IsDeliveryLoading = false;
+    }
+
+    private DateTimeOffset? ParseDateTimeOffset(string? value, string target)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        if (DateTimeOffset.TryParse(value, out var parsed))
+        {
+            return parsed;
+        }
+
+        Errors = [new ApiError("Validation.Date.Invalid", $"{target} must be ISO 8601 date time.", target)];
+        return null;
+    }
+
+    private async void OnProjectStateChanged()
+    {
+        await InvokeAsync(async () =>
+        {
+            SelectedReport = null;
+            CurrentDownload = null;
+            CurrentShare = null;
+            await LoadReportDeliveriesAsync();
+            StateHasChanged();
+        });
+    }
+
+    private static IReadOnlyList<string>? ParseSections(string? value)
+    {
+        var sections = string.IsNullOrWhiteSpace(value)
+            ? []
+            : value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Where(section => !string.IsNullOrWhiteSpace(section))
+                .ToArray();
+        return sections.Length == 0 ? null : sections;
+    }
+
+    private static string FormatDateTime(DateTime value)
+        => value.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
+
+    private static string FormatDateTime(DateTimeOffset? value)
+        => value.HasValue ? value.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm") : "-";
+
+    public void Dispose()
+        => ProjectState.Changed -= OnProjectStateChanged;
+
+    private sealed class ReportFormModel
+    {
+        public string? ReportType { get; set; } = "monthly_seo";
+
+        public string? Period { get; set; } = DateTime.Today.ToString("yyyy-MM");
+
+        public string? Format { get; set; } = "pdf";
+
+        public string? Sections { get; set; } = "summary, rank, rewrite, cannibalization";
+
+        public string? ShareExpiresAt { get; set; } = DateTime.Today.AddDays(30).ToString("yyyy-MM-ddTHH:mm");
+    }
+}
