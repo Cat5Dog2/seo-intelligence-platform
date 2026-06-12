@@ -4,6 +4,7 @@ using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using SeoIntelligence.Application.Ai;
 using SeoIntelligence.Application.Auditing;
 using SeoIntelligence.Application.Common;
 using SeoIntelligence.Application.Jobs;
@@ -43,6 +44,9 @@ public static class AdministrationServiceCollectionExtensions
         services.TryAddScoped<IRewriteManagementService>(serviceProvider => serviceProvider.GetRequiredService<RewriteManagementService>());
         services.TryAddScoped<ReportService>();
         services.TryAddScoped<IReportService>(serviceProvider => serviceProvider.GetRequiredService<ReportService>());
+        services.TryAddScoped<AiAssistantService>();
+        services.TryAddScoped<IAiAssistantService>(serviceProvider => serviceProvider.GetRequiredService<AiAssistantService>());
+        services.TryAddScoped<IAiContentService, DeterministicAiContentService>();
         services.TryAddScoped<IScoringService, ScoringService>();
         services.TryAddScoped<DataTransferService>();
         services.TryAddScoped<IDataTransferService>(serviceProvider => serviceProvider.GetRequiredService<DataTransferService>());
@@ -81,6 +85,7 @@ public static class AdministrationServiceCollectionExtensions
         services.TryAddScoped<OpportunityScoringJob>();
         services.TryAddScoped<DataExportJob>();
         services.TryAddScoped<DataImportJob>();
+        services.TryAddScoped<AiAssistantJob>();
         return services;
     }
 }

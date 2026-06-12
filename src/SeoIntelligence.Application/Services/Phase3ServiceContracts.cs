@@ -215,6 +215,7 @@ public sealed record AiChatRequest(
 public sealed record AiChatResponse(
     Guid SessionId,
     Guid MessageId,
+    Guid JobId,
     string Response,
     IReadOnlyList<JsonElement> ToolCalls,
     JsonElement ReferenceData,

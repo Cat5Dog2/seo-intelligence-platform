@@ -26,6 +26,9 @@ public static class AuditLogActionNames
     public const string ReportShareRevoked = "report.share_revoked";
     public const string ReportShareAccessed = "report.share_accessed";
     public const string ReportShareAccessRejected = "report.share_access_rejected";
+    public const string AiChatQueued = "ai.chat_queued";
+    public const string AiChatCompleted = "ai.chat_completed";
+    public const string AiChatFailed = "ai.chat_failed";
     public const string JobQueued = "job.queued";
     public const string JobStarted = "job.started";
     public const string JobSucceeded = "job.succeeded";
@@ -43,5 +46,7 @@ public static class AuditLogResourceTypes
     public const string DataImport = "data_import";
     public const string Report = "report";
     public const string ReportShare = "report_share";
+    public const string AiMessage = "ai_message";
+    public const string AiSession = "ai_session";
     public const string Job = "job";
 }

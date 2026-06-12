@@ -123,10 +123,10 @@ ISSUE-MVP-00X の続きから再開してください。
 - [x] ISSUE-P2-006 Phase 2 UIを実装する
 - [x] ISSUE-P2-007 Phase 2受入テストを整備する
 - [x] ISSUE-P3-001 Phase 3 DB/API基盤を追加する
-- [ ] ISSUE-P3-002 リライト優先度とカニバリ検出を実装する
-- [ ] ISSUE-P3-003 レポート生成、共有URL、監査を実装する
-- [ ] ISSUE-P3-004 CSV/ExcelインポートとExcelエクスポートを実装する
-- [ ] ISSUE-P3-005 AIアシスタントを実装する
+- [x] ISSUE-P3-002 リライト優先度とカニバリ検出を実装する
+- [x] ISSUE-P3-003 レポート生成、共有URL、監査を実装する
+- [x] ISSUE-P3-004 CSV/ExcelインポートとExcelエクスポートを実装する
+- [x] ISSUE-P3-005 AIアシスタントを実装する
 - [ ] ISSUE-P3-006 外部連携スタブを実装する
 - [ ] ISSUE-P3-007 Phase 3 UIを実装する
 - [ ] ISSUE-P3-008 Phase 3受入テストを整備する
@@ -981,16 +981,16 @@ ISSUE-MVP-00X の続きから再開してください。
 
 範囲:
 
-- [ ] `AiAssistantJob` を実装する。
-- [ ] `POST /api/projects/{projectId}/ai/chat`
-- [ ] 自然言語から調査ジョブ、ブリーフ生成、差分分析、レポート要約を実行する。
-- [ ] AIプロンプト秘匿処理と `IAiContentService` はP3-001の共通処理/抽象を使う。
-- [ ] prompt、response、tool_calls、reference_data、token_usage、review_statusを保存する。
-- [ ] AI出力を人間レビュー前提の成果物として扱う。
+- [x] `AiAssistantJob` を実装する。
+- [x] `POST /api/projects/{projectId}/ai/chat`
+- [x] 自然言語から調査ジョブ、ブリーフ生成、差分分析、レポート要約を実行する。
+- [x] AIプロンプト秘匿処理と `IAiContentService` はP3-001の共通処理/抽象を使う。
+- [x] prompt、response、tool_calls、reference_data、token_usage、review_statusを保存する。
+- [x] AI出力を人間レビュー前提の成果物として扱う。
 
 受入条件:
 
-- [ ] AI生成で使用したプロンプト、参照データ、出力、実行者、token_usageを保存し、画面で確認できる。
+- [x] AI生成で使用したプロンプト、参照データ、出力、実行者、token_usageを保存し、画面で確認できる。
 
 ### ISSUE-P3-006 外部連携スタブを実装する
 
