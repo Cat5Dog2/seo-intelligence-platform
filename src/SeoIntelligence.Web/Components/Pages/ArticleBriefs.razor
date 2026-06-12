@@ -83,6 +83,7 @@
                 <h2>詳細・編集</h2>
                 <div class="toolbar">
                     <button type="button" class="secondary-button" @onclick="SaveAsync" disabled="@(SelectedBrief is null)">保存</button>
+                    <button type="button" class="secondary-button" @onclick="RegenerateWithAiAsync" disabled="@(SelectedBrief is null || IsAiRegenerating)">AI再生成</button>
                     <button type="button" class="secondary-button" @onclick="ExportMarkdownAsync" disabled="@(SelectedBrief is null)">Markdown出力</button>
                     <button type="button" class="secondary-button" @onclick="ExportCsvAsync" disabled="@(SelectedBrief is null)">CSV出力</button>
                 </div>
@@ -130,6 +131,28 @@
                     <div><span>updated</span><strong>@FormatDateTime(SelectedBrief.UpdatedAt)</strong></div>
                 </div>
 
+                @if (AiRegeneration is not null)
+                {
+                    <div class="form-grid dense-form">
+                        <label class="field wide-field">
+                            <span>AI response</span>
+                            <textarea readonly>@AiRegeneration.Response</textarea>
+                        </label>
+                        <label class="field">
+                            <span>review_status</span>
+                            <input readonly value="@AiRegeneration.ReviewStatus" />
+                        </label>
+                        <label class="field">
+                            <span>redaction</span>
+                            <input readonly value="@AiRegeneration.RedactionStatus" />
+                        </label>
+                        <label class="field wide-field json-field">
+                            <span>token_usage JSON</span>
+                            <textarea readonly>@FormatJson(AiRegeneration.TokenUsage)</textarea>
+                        </label>
+                    </div>
+                }
+
                 <h3 class="subsection-title">版履歴</h3>
                 <DataTable Items="@Versions" Columns="@VersionColumns" IsLoading="@IsVersionLoading" EmptyText="版履歴はありません。" />
             }
@@ -168,6 +191,8 @@
 
     private IReadOnlyList<ArticleBriefVersionDetails> Versions { get; set; } = [];
 
+    private AiChatResponse? AiRegeneration { get; set; }
+
     private IReadOnlyList<ApiError> Errors { get; set; } = [];
 
     private string? Message { get; set; }
@@ -181,6 +206,8 @@
     private bool IsVersionLoading { get; set; }
 
     private bool IsGenerating { get; set; }
+
+    private bool IsAiRegenerating { get; set; }
 
     private string? Query { get; set; }
 
@@ -280,6 +307,7 @@
         if (result.IsSuccess && result.Data is { } brief)
         {
             SelectedBrief = brief;
+            AiRegeneration = null;
             EditForm = new BriefEditFormModel
             {
                 Title = brief.Title,
@@ -292,6 +320,7 @@
         else
         {
             SelectedBrief = null;
+            AiRegeneration = null;
             Versions = [];
             Errors = result.Errors;
         }
@@ -364,6 +393,46 @@
 
     private Task ExportCsvAsync()
         => ExportAsync("csv");
+
+    private async Task RegenerateWithAiAsync()
+    {
+        if (ProjectState.SelectedProject is not { } project || SelectedBrief is null)
+        {
+            return;
+        }
+
+        IsAiRegenerating = true;
+        Errors = [];
+        Message = null;
+        var referenceScope = JsonSerializer.SerializeToElement(
+            new
+            {
+                type = "article_brief",
+                briefId = SelectedBrief.BriefId,
+                title = SelectedBrief.Title,
+                targetKeyword = SelectedBrief.TargetKeyword,
+                currentVersion = SelectedBrief.CurrentVersion
+            },
+            JsonOptions);
+        var result = await ApiClient.ChatWithAiAsync(
+            project.ProjectId,
+            new AiChatRequest(
+                $"記事ブリーフ「{SelectedBrief.Title}」を再生成してください。",
+                AllowedTools: ["brief.regenerate"],
+                ReferenceScope: referenceScope));
+        if (result.IsSuccess && result.Data is { } response)
+        {
+            AiRegeneration = response;
+            Message = $"AI再生成ジョブを登録しました: {response.JobId:D}";
+        }
+        else
+        {
+            AiRegeneration = null;
+            Errors = result.Errors;
+        }
+
+        IsAiRegenerating = false;
+    }
 
     private async Task LoadVersionsAsync(Guid briefId)
     {

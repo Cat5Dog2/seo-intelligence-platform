@@ -1,0 +1,399 @@
+@page "/rewrite"
+@using System.Globalization
+@using System.Text.Json
+@implements IDisposable
+@inject ISeoIntelligenceApiClient ApiClient
+@inject ProjectSelectionState ProjectState
+
+<PageTitle>リライト管理 - SEO Intelligence</PageTitle>
+
+<div class="page-stack">
+    <header class="page-header">
+        <div>
+            <h1>リライト管理</h1>
+            <p>選択中プロジェクト: @(ProjectState.SelectedProject?.Name ?? "未選択")</p>
+        </div>
+        <div class="toolbar">
+            <button type="button" class="secondary-button" @onclick="LoadAsync" disabled="@(ProjectState.SelectedProject is null)">更新</button>
+            <button type="button" class="secondary-button" @onclick="RefreshCannibalizationAsync" disabled="@(ProjectState.SelectedProject is null || IsRefreshingCannibalization)">カニバリ再計算</button>
+        </div>
+    </header>
+
+    <ErrorSummary Errors="@Errors" />
+    @if (!string.IsNullOrWhiteSpace(Message))
+    {
+        <div class="state-row">@Message</div>
+    }
+
+    @if (ProjectState.SelectedProject is null)
+    {
+        <div class="state-row">プロジェクトを選択してください。</div>
+    }
+    else
+    {
+        <section class="split-grid">
+            <div class="panel">
+                <div class="section-heading">
+                    <h2>リライト候補</h2>
+                    <div class="toolbar">
+                        <label class="field-inline">
+                            <span>検索</span>
+                            <input @bind="TaskQuery" @bind:event="oninput" />
+                        </label>
+                        <StatusFilter Value="@TaskStatus" ValueChanged="OnTaskStatusChanged" Statuses="@ContentStatuses" />
+                        <button type="button" class="secondary-button" @onclick="LoadRewriteTasksAsync">検索</button>
+                    </div>
+                </div>
+                <DataTable Items="@RewriteTasks" Columns="@RewriteTaskColumns" IsLoading="@IsTaskLoading" EmptyText="リライト候補はありません。">
+                    <RowActions Context="task">
+                        <button type="button" class="table-action" @onclick="() => SelectRewriteTaskAsync(task.TaskId)">詳細</button>
+                    </RowActions>
+                </DataTable>
+            </div>
+
+            <div class="panel">
+                <div class="section-heading">
+                    <h2>詳細・更新</h2>
+                    <button type="button" class="secondary-button" @onclick="UpdateRewriteTaskAsync" disabled="@(SelectedTask is null)">保存</button>
+                </div>
+                @if (SelectedTask is null)
+                {
+                    <div class="state-row">リライト候補を選択してください。</div>
+                }
+                else
+                {
+                    <div class="detail-list">
+                        <div><span>target_url</span><strong>@SelectedTask.TargetUrl</strong></div>
+                        <div><span>created</span><strong>@FormatDateTime(SelectedTask.CreatedAt)</strong></div>
+                        <div><span>updated</span><strong>@FormatDateTime(SelectedTask.UpdatedAt)</strong></div>
+                    </div>
+                    <div class="form-grid dense-form">
+                        <label class="field">
+                            <span>status</span>
+                            <select @bind="TaskEditForm.Status">
+                                <option value="draft">draft</option>
+                                <option value="active">active</option>
+                                <option value="completed">completed</option>
+                                <option value="archived">archived</option>
+                            </select>
+                        </label>
+                        <label class="field">
+                            <span>priority_score</span>
+                            <input type="number" step="0.01" @bind="TaskEditForm.PriorityScore" />
+                        </label>
+                        <label class="field">
+                            <span>assignee_actor</span>
+                            <input @bind="TaskEditForm.AssigneeActor" />
+                        </label>
+                        <label class="field wide-field">
+                            <span>memo</span>
+                            <input @bind="TaskEditForm.Memo" />
+                        </label>
+                        <label class="field wide-field json-field">
+                            <span>reason JSON</span>
+                            <textarea readonly>@FormatJson(SelectedTask.Reason)</textarea>
+                        </label>
+                    </div>
+                }
+            </div>
+        </section>
+
+        <section class="panel">
+            <div class="section-heading">
+                <h2>カニバリ候補</h2>
+                <div class="toolbar">
+                    <label class="field-inline">
+                        <span>検索</span>
+                        <input @bind="CannibalizationQuery" @bind:event="oninput" />
+                    </label>
+                    <StatusFilter Value="@CannibalizationStatus" ValueChanged="OnCannibalizationStatusChanged" Statuses="@ContentStatuses" />
+                    <button type="button" class="secondary-button" @onclick="LoadCannibalizationCandidatesAsync">検索</button>
+                </div>
+            </div>
+            <DataTable Items="@CannibalizationCandidates" Columns="@CannibalizationColumns" IsLoading="@IsCannibalizationLoading" EmptyText="カニバリ候補はありません。">
+                <RowActions Context="candidate">
+                    <div class="row-actions">
+                        <span class="muted">@JsonSummary(candidate.Recommendation)</span>
+                    </div>
+                </RowActions>
+            </DataTable>
+        </section>
+    }
+</div>
+
+@code {
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        WriteIndented = true
+    };
+
+    private static readonly IReadOnlyList<StatusFilterOption> ContentStatuses =
+    [
+        new("active", "active"),
+        new("draft", "draft"),
+        new("completed", "completed"),
+        new("archived", "archived"),
+        new("all", "all")
+    ];
+
+    private static readonly IReadOnlyList<DataTableColumn<RewriteTaskDetails>> RewriteTaskColumns =
+    [
+        new("URL", task => task.TargetUrl),
+        new("Priority", task => task.PriorityScore.ToString("0.##", CultureInfo.InvariantCulture), "table-number"),
+        new("Status", task => task.Status),
+        new("Assignee", task => task.AssigneeActor),
+        new("Reason", task => JsonSummary(task.Reason)),
+        new("Updated", task => FormatDateTime(task.UpdatedAt))
+    ];
+
+    private static readonly IReadOnlyList<DataTableColumn<CannibalizationCandidateDetails>> CannibalizationColumns =
+    [
+        new("Keyword", candidate => candidate.Keyword),
+        new("Primary URL", candidate => candidate.PrimaryUrl),
+        new("Severity", candidate => candidate.SeverityScore.ToString("0.##", CultureInfo.InvariantCulture), "table-number"),
+        new("Status", candidate => candidate.Status),
+        new("Competing URLs", candidate => JsonSummary(candidate.CompetingUrls)),
+        new("Detected", candidate => FormatDateTime(candidate.DetectedAt))
+    ];
+
+    private IReadOnlyList<RewriteTaskDetails> RewriteTasks { get; set; } = [];
+
+    private IReadOnlyList<CannibalizationCandidateDetails> CannibalizationCandidates { get; set; } = [];
+
+    private RewriteTaskDetails? SelectedTask { get; set; }
+
+    private RewriteTaskFormModel TaskEditForm { get; set; } = new();
+
+    private IReadOnlyList<ApiError> Errors { get; set; } = [];
+
+    private string? Message { get; set; }
+
+    private string TaskStatus { get; set; } = "active";
+
+    private string CannibalizationStatus { get; set; } = "active";
+
+    private string? TaskQuery { get; set; }
+
+    private string? CannibalizationQuery { get; set; }
+
+    private bool IsTaskLoading { get; set; }
+
+    private bool IsCannibalizationLoading { get; set; }
+
+    private bool IsRefreshingCannibalization { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        ProjectState.Changed += OnProjectStateChanged;
+        await ProjectState.LoadAsync();
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        Errors = [];
+        Message = null;
+        await LoadRewriteTasksAsync();
+        await LoadCannibalizationCandidatesAsync();
+    }
+
+    private async Task LoadRewriteTasksAsync()
+    {
+        if (ProjectState.SelectedProject is not { } project)
+        {
+            RewriteTasks = [];
+            SelectedTask = null;
+            return;
+        }
+
+        IsTaskLoading = true;
+        Errors = [];
+        var result = await ApiClient.SearchRewriteTasksAsync(
+            project.ProjectId,
+            TaskStatus,
+            TaskQuery,
+            pageSize: 100);
+        if (result.IsSuccess)
+        {
+            RewriteTasks = result.Data ?? [];
+        }
+        else
+        {
+            RewriteTasks = [];
+            Errors = result.Errors;
+        }
+
+        IsTaskLoading = false;
+    }
+
+    private async Task LoadCannibalizationCandidatesAsync()
+    {
+        if (ProjectState.SelectedProject is not { } project)
+        {
+            CannibalizationCandidates = [];
+            return;
+        }
+
+        IsCannibalizationLoading = true;
+        var result = await ApiClient.SearchCannibalizationCandidatesAsync(
+            project.ProjectId,
+            CannibalizationStatus,
+            CannibalizationQuery,
+            pageSize: 100);
+        if (result.IsSuccess)
+        {
+            CannibalizationCandidates = result.Data ?? [];
+        }
+        else
+        {
+            CannibalizationCandidates = [];
+            Errors = result.Errors;
+        }
+
+        IsCannibalizationLoading = false;
+    }
+
+    private async Task SelectRewriteTaskAsync(Guid taskId)
+    {
+        if (ProjectState.SelectedProject is not { } project)
+        {
+            return;
+        }
+
+        Errors = [];
+        var result = await ApiClient.GetRewriteTaskAsync(project.ProjectId, taskId);
+        if (result.IsSuccess && result.Data is { } task)
+        {
+            SelectedTask = task;
+            TaskEditForm = new RewriteTaskFormModel
+            {
+                Status = task.Status,
+                PriorityScore = task.PriorityScore.ToString("0.##", CultureInfo.InvariantCulture),
+                AssigneeActor = task.AssigneeActor,
+                Memo = task.Memo
+            };
+        }
+        else
+        {
+            SelectedTask = null;
+            Errors = result.Errors;
+        }
+    }
+
+    private async Task UpdateRewriteTaskAsync()
+    {
+        if (ProjectState.SelectedProject is not { } project || SelectedTask is null)
+        {
+            return;
+        }
+
+        Errors = [];
+        decimal? priorityScore = null;
+        if (!string.IsNullOrWhiteSpace(TaskEditForm.PriorityScore))
+        {
+            if (!decimal.TryParse(TaskEditForm.PriorityScore, NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed))
+            {
+                Errors = [new ApiError("Validation.Priority.Invalid", "priority_score must be a decimal.", "priorityScore")];
+                return;
+            }
+
+            priorityScore = parsed;
+        }
+
+        var result = await ApiClient.UpdateRewriteTaskAsync(
+            project.ProjectId,
+            SelectedTask.TaskId,
+            new RewriteTaskUpdateRequest(
+                TaskEditForm.Status,
+                priorityScore,
+                TaskEditForm.AssigneeActor,
+                TaskEditForm.Memo));
+        if (result.IsSuccess && result.Data is { } updated)
+        {
+            SelectedTask = updated;
+            Message = "リライトタスクを更新しました。";
+            await LoadRewriteTasksAsync();
+        }
+        else
+        {
+            Errors = result.Errors;
+        }
+    }
+
+    private async Task RefreshCannibalizationAsync()
+    {
+        if (ProjectState.SelectedProject is not { } project)
+        {
+            return;
+        }
+
+        IsRefreshingCannibalization = true;
+        Errors = [];
+        Message = null;
+        var result = await ApiClient.RefreshCannibalizationAsync(project.ProjectId);
+        if (result.IsSuccess && result.Data is { } job)
+        {
+            Message = $"カニバリ再計算ジョブを登録しました: {job.JobId:D}";
+        }
+        else
+        {
+            Errors = result.Errors;
+        }
+
+        IsRefreshingCannibalization = false;
+    }
+
+    private async Task OnTaskStatusChanged(string status)
+    {
+        TaskStatus = status;
+        await LoadRewriteTasksAsync();
+    }
+
+    private async Task OnCannibalizationStatusChanged(string status)
+    {
+        CannibalizationStatus = status;
+        await LoadCannibalizationCandidatesAsync();
+    }
+
+    private async void OnProjectStateChanged()
+    {
+        await InvokeAsync(async () =>
+        {
+            await LoadAsync();
+            StateHasChanged();
+        });
+    }
+
+    private static string JsonSummary(JsonElement element)
+    {
+        if (element.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
+        {
+            return "-";
+        }
+
+        var raw = element.GetRawText();
+        return raw.Length <= 120 ? raw : $"{raw[..117]}...";
+    }
+
+    private static string FormatJson(JsonElement element)
+        => element.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null
+            ? "{}"
+            : JsonSerializer.Serialize(element, JsonOptions);
+
+    private static string FormatDateTime(DateTime value)
+        => value.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
+
+    public void Dispose()
+        => ProjectState.Changed -= OnProjectStateChanged;
+
+    private sealed class RewriteTaskFormModel
+    {
+        public string? Status { get; set; } = "active";
+
+        public string? PriorityScore { get; set; }
+
+        public string? AssigneeActor { get; set; } = "developer";
+
+        public string? Memo { get; set; }
+    }
+}

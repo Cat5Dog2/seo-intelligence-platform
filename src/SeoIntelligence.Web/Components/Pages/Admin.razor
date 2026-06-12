@@ -25,6 +25,7 @@
         <button type="button" class="@TabClass(NotificationTab)" @onclick="@(() => SetTab(NotificationTab))">Discord通知</button>
         <button type="button" class="@TabClass(JobTab)" @onclick="@(() => SetTab(JobTab))">ジョブ</button>
         <button type="button" class="@TabClass(Phase2Tab)" @onclick="@(() => SetTab(Phase2Tab))">Phase 2運用</button>
+        <button type="button" class="@TabClass(Phase3Tab)" @onclick="@(() => SetTab(Phase3Tab))">Phase 3連携</button>
         <button type="button" class="@TabClass(AuditTab)" @onclick="@(() => SetTab(AuditTab))">監査ログ</button>
     </nav>
 
@@ -311,6 +312,83 @@
             </section>
         </section>
     }
+    else if (ActiveTab == Phase3Tab)
+    {
+        <section class="page-stack">
+            <section class="panel">
+                <div class="section-heading">
+                    <h2>外部連携スタブ設定</h2>
+                    <div class="toolbar">
+                        <span class="muted">選択中プロジェクト: @(ProjectState.SelectedProject?.Name ?? "未選択")</span>
+                        <StatusFilter Value="@ConnectorStatus" ValueChanged="OnConnectorStatusChanged" Statuses="@EnabledStatuses" />
+                        <button type="button" class="secondary-button" @onclick="LoadPhase3OperationsAsync">再読み込み</button>
+                    </div>
+                </div>
+                <div class="form-grid dense-form">
+                    <label class="field">
+                        <span>connector_type</span>
+                        <select @bind="ConnectorForm.ConnectorType" disabled="@(ProjectState.SelectedProject is null)">
+                            <option value="gsc">gsc</option>
+                            <option value="ga4">ga4</option>
+                            <option value="cms">cms</option>
+                            <option value="bi">bi</option>
+                        </select>
+                    </label>
+                    <label class="field">
+                        <span>名称</span>
+                        <input @bind="ConnectorForm.Name" disabled="@(ProjectState.SelectedProject is null)" />
+                    </label>
+                    <label class="field">
+                        <span>auth_ref</span>
+                        <input @bind="ConnectorForm.AuthRef" disabled="@(ProjectState.SelectedProject is null)" />
+                    </label>
+                    <label class="field">
+                        <span>status</span>
+                        <select @bind="ConnectorForm.Status" disabled="@(ProjectState.SelectedProject is null)">
+                            <option value="active">active</option>
+                            <option value="disabled">disabled</option>
+                        </select>
+                    </label>
+                    <label class="field wide-field json-field">
+                        <span>settings JSON</span>
+                        <textarea @bind="ConnectorForm.SettingsJson" disabled="@(ProjectState.SelectedProject is null)"></textarea>
+                    </label>
+                    <button type="button" class="primary-button" @onclick="SaveConnectorAsync" disabled="@(ProjectState.SelectedProject is null)">保存</button>
+                    @if (EditingConnectorId.HasValue)
+                    {
+                        <button type="button" class="text-button" @onclick="ClearConnectorForm">新規</button>
+                    }
+                </div>
+
+                <DataTable Items="@Connectors" Columns="@ConnectorColumns" IsLoading="@IsConnectorLoading" EmptyText="外部連携スタブ設定はありません。">
+                    <RowActions Context="connector">
+                        <div class="row-actions">
+                            <button type="button" class="table-action" @onclick="() => EditConnector(connector)">編集</button>
+                            <button type="button" class="table-action" @onclick="() => TestConnectorAsync(connector.ConnectorId)">接続テスト</button>
+                            <button type="button" class="table-action" @onclick="() => LoadConnectorRunsAsync(connector.ConnectorId)">履歴</button>
+                            @if (connector.Status != "disabled")
+                            {
+                                <button type="button" class="table-action danger-button" @onclick="() => DisableConnectorAsync(connector.ConnectorId)">無効化</button>
+                            }
+                            <AuditLink ResourceType="external_connector_setting" ResourceId="@connector.ConnectorId.ToString("D")" />
+                        </div>
+                    </RowActions>
+                </DataTable>
+            </section>
+
+            <section class="panel">
+                <div class="section-heading">
+                    <h2>外部連携スタブ実行履歴</h2>
+                    <span class="muted">connector_id: @(SelectedConnectorId?.ToString("D") ?? "-")</span>
+                </div>
+                <DataTable Items="@ConnectorRuns" Columns="@ConnectorRunColumns" IsLoading="@IsConnectorRunLoading" EmptyText="外部連携スタブ実行履歴はありません。">
+                    <RowActions Context="run">
+                        <AuditLink ResourceType="external_connector_run" ResourceId="@run.RunId.ToString("D")" />
+                    </RowActions>
+                </DataTable>
+            </section>
+        </section>
+    }
     else if (ActiveTab == AuditTab)
     {
         <section class="panel">
@@ -360,6 +438,7 @@
     private const string NotificationTab = "notification";
     private const string JobTab = "job";
     private const string Phase2Tab = "phase2";
+    private const string Phase3Tab = "phase3";
     private const string AuditTab = "audit";
 
     private static readonly IReadOnlyList<StatusFilterOption> EnabledStatuses =
@@ -454,6 +533,25 @@
         new("Triggered", alertEvent => FormatDateTime(alertEvent.TriggeredAt))
     ];
 
+    private static readonly IReadOnlyList<DataTableColumn<ConnectorSettingsDetails>> ConnectorColumns =
+    [
+        new("Type", connector => connector.ConnectorType),
+        new("名称", connector => connector.Name),
+        new("Auth Ref", connector => connector.AuthRef),
+        new("状態", connector => connector.Status),
+        new("Updated", connector => FormatDateTime(connector.UpdatedAt))
+    ];
+
+    private static readonly IReadOnlyList<DataTableColumn<ConnectorRunDetails>> ConnectorRunColumns =
+    [
+        new("Run Type", run => run.RunType),
+        new("状態", run => run.Status),
+        new("Started", run => FormatDateTime(run.StartedAt)),
+        new("Completed", run => run.CompletedAt.HasValue ? FormatDateTime(run.CompletedAt.Value) : "-"),
+        new("Summary", run => JsonSummary(run.ResultSummary)),
+        new("Error", run => run.Error.HasValue ? JsonSummary(run.Error.Value) : "-")
+    ];
+
     private string ActiveTab { get; set; } = WorkspaceTab;
 
     private WorkspaceFormModel WorkspaceForm { get; set; } = new();
@@ -476,6 +574,10 @@
 
     private IReadOnlyList<NotificationDeliveryDetails> Phase2RankAlertDeliveries { get; set; } = [];
 
+    private IReadOnlyList<ConnectorSettingsDetails> Connectors { get; set; } = [];
+
+    private IReadOnlyList<ConnectorRunDetails> ConnectorRuns { get; set; } = [];
+
     private IReadOnlyList<ApiError> Errors { get; set; } = [];
 
     private string? Message { get; set; }
@@ -492,6 +594,10 @@
 
     private bool IsPhase2Loading { get; set; }
 
+    private bool IsConnectorLoading { get; set; }
+
+    private bool IsConnectorRunLoading { get; set; }
+
     private string CredentialStatus { get; set; } = "active";
 
     private string ChannelStatus { get; set; } = "active";
@@ -502,17 +608,25 @@
 
     private string Phase2JobTitle => $"Phase 2ジョブ: {Phase2JobType}";
 
+    private string ConnectorStatus { get; set; } = "active";
+
     private Guid? EditingCredentialId { get; set; }
 
     private Guid? RotatingCredentialId { get; set; }
 
     private Guid? EditingChannelId { get; set; }
 
+    private Guid? EditingConnectorId { get; set; }
+
+    private Guid? SelectedConnectorId { get; set; }
+
     private CredentialFormModel CredentialForm { get; set; } = new();
 
     private RotateCredentialFormModel RotateForm { get; set; } = new();
 
     private ChannelFormModel ChannelForm { get; set; } = new();
+
+    private ConnectorFormModel ConnectorForm { get; set; } = new();
 
     private AuditSearchFormModel AuditForm { get; set; } = new();
 
@@ -548,6 +662,7 @@
         await LoadExternalCallsAsync();
         await LoadNotificationsAsync();
         await LoadPhase2OperationsAsync();
+        await LoadPhase3OperationsAsync();
         await LoadAuditLogsAsync();
     }
 
@@ -924,6 +1039,157 @@
         IsPhase2Loading = false;
     }
 
+    private async Task LoadPhase3OperationsAsync()
+    {
+        await LoadConnectorsAsync();
+        if (SelectedConnectorId.HasValue)
+        {
+            await LoadConnectorRunsAsync(SelectedConnectorId.Value);
+        }
+    }
+
+    private async Task LoadConnectorsAsync()
+    {
+        IsConnectorLoading = true;
+        if (ProjectState.SelectedProject is not { } project)
+        {
+            Connectors = [];
+            ConnectorRuns = [];
+            SelectedConnectorId = null;
+            IsConnectorLoading = false;
+            return;
+        }
+
+        var result = await ApiClient.SearchConnectorsAsync(project.ProjectId, ConnectorStatus, pageSize: 100);
+        if (result.IsSuccess)
+        {
+            Connectors = result.Data ?? [];
+        }
+        else
+        {
+            Connectors = [];
+            Errors = result.Errors;
+        }
+
+        IsConnectorLoading = false;
+    }
+
+    private async Task LoadConnectorRunsAsync(Guid connectorId)
+    {
+        IsConnectorRunLoading = true;
+        SelectedConnectorId = connectorId;
+        if (ProjectState.SelectedProject is not { } project)
+        {
+            ConnectorRuns = [];
+            IsConnectorRunLoading = false;
+            return;
+        }
+
+        var result = await ApiClient.GetConnectorRunsAsync(project.ProjectId, connectorId, pageSize: 50);
+        if (result.IsSuccess)
+        {
+            ConnectorRuns = result.Data ?? [];
+        }
+        else
+        {
+            ConnectorRuns = [];
+            Errors = result.Errors;
+        }
+
+        IsConnectorRunLoading = false;
+    }
+
+    private async Task SaveConnectorAsync()
+    {
+        ClearErrors();
+        if (ProjectState.SelectedProject is not { } project)
+        {
+            return;
+        }
+
+        var settings = ParseJson(ConnectorForm.SettingsJson, "settings JSON");
+        if (Errors.Count > 0)
+        {
+            return;
+        }
+
+        var request = new ConnectorSettingsRequest(
+            ConnectorForm.ConnectorType,
+            ConnectorForm.Name,
+            ConnectorForm.AuthRef,
+            settings,
+            ConnectorForm.Status);
+        ApiClientResult<ConnectorSettingsDetails> result = EditingConnectorId.HasValue
+            ? await ApiClient.UpdateConnectorAsync(project.ProjectId, EditingConnectorId.Value, request)
+            : await ApiClient.CreateConnectorAsync(project.ProjectId, request);
+        if (result.IsSuccess && result.Data is { } connector)
+        {
+            Message = "外部連携スタブ設定を保存しました。";
+            EditingConnectorId = connector.ConnectorId;
+            SelectedConnectorId = connector.ConnectorId;
+            await LoadConnectorsAsync();
+        }
+        else
+        {
+            Errors = result.Errors;
+        }
+    }
+
+    private void EditConnector(ConnectorSettingsDetails connector)
+    {
+        EditingConnectorId = connector.ConnectorId;
+        SelectedConnectorId = connector.ConnectorId;
+        ConnectorForm = new ConnectorFormModel
+        {
+            ConnectorType = connector.ConnectorType,
+            Name = connector.Name,
+            AuthRef = connector.AuthRef,
+            Status = connector.Status,
+            SettingsJson = connector.Settings.ValueKind == JsonValueKind.Undefined ? "{}" : connector.Settings.GetRawText()
+        };
+    }
+
+    private async Task TestConnectorAsync(Guid connectorId)
+    {
+        ClearErrors();
+        if (ProjectState.SelectedProject is not { } project)
+        {
+            return;
+        }
+
+        var result = await ApiClient.TestConnectorAsync(project.ProjectId, connectorId);
+        if (result.IsSuccess && result.Data is { } run)
+        {
+            SelectedConnectorId = connectorId;
+            Message = $"外部連携スタブ接続テストを実行しました: {run.RunId:D}";
+            await LoadConnectorRunsAsync(connectorId);
+        }
+        else
+        {
+            Errors = result.Errors;
+        }
+    }
+
+    private async Task DisableConnectorAsync(Guid connectorId)
+    {
+        ClearErrors();
+        if (ProjectState.SelectedProject is not { } project)
+        {
+            return;
+        }
+
+        var result = await ApiClient.DisableConnectorAsync(project.ProjectId, connectorId);
+        if (result.IsSuccess)
+        {
+            Message = "外部連携スタブ設定を無効化しました。";
+            await LoadConnectorsAsync();
+        }
+        else
+        {
+            Errors = result.Errors;
+        }
+    }
+
     private async Task OnCredentialStatusChanged(string status)
     {
         CredentialStatus = status;
@@ -940,6 +1206,12 @@
     {
         DeliveryStatus = status;
         await LoadDeliveriesAsync();
+    }
+
+    private async Task OnConnectorStatusChanged(string status)
+    {
+        ConnectorStatus = status;
+        await LoadConnectorsAsync();
     }
 
     private void SetTab(string tab)
@@ -964,6 +1236,12 @@
     {
         EditingChannelId = null;
         ChannelForm = new ChannelFormModel();
+    }
+
+    private void ClearConnectorForm()
+    {
+        EditingConnectorId = null;
+        ConnectorForm = new ConnectorFormModel();
     }
 
     private void ClearErrors()
@@ -1028,6 +1306,17 @@
             ? []
             : value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
+    private static string JsonSummary(JsonElement element)
+    {
+        if (element.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
+        {
+            return "-";
+        }
+
+        var raw = element.GetRawText();
+        return raw.Length <= 96 ? raw : $"{raw[..93]}...";
+    }
+
     private static string FormatDateTime(DateTime value)
         => value.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
 
@@ -1036,6 +1325,7 @@
         await InvokeAsync(async () =>
         {
             await LoadPhase2OperationsAsync();
+            await LoadPhase3OperationsAsync();
             StateHasChanged();
         });
     }
@@ -1083,6 +1373,19 @@
         public string? WebhookSecretRef { get; set; }
 
         public string? EventTypes { get; set; } = "job_failed, credit_low";
+    }
+
+    private sealed class ConnectorFormModel
+    {
+        public string? ConnectorType { get; set; } = "gsc";
+
+        public string? Name { get; set; }
+
+        public string? AuthRef { get; set; }
+
+        public string? SettingsJson { get; set; } = "{}";
+
+        public string? Status { get; set; } = "active";
     }
 
     private sealed class AuditSearchFormModel

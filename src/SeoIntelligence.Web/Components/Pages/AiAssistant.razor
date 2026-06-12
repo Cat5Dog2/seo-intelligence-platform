@@ -1,0 +1,246 @@
+@page "/ai-assistant"
+@using System.Text.Json
+@implements IDisposable
+@inject ISeoIntelligenceApiClient ApiClient
+@inject ProjectSelectionState ProjectState
+
+<PageTitle>AIアシスタント - SEO Intelligence</PageTitle>
+
+<div class="page-stack">
+    <header class="page-header">
+        <div>
+            <h1>AIアシスタント</h1>
+            <p>選択中プロジェクト: @(ProjectState.SelectedProject?.Name ?? "未選択")</p>
+        </div>
+        <button type="button" class="secondary-button" @onclick="SendAsync" disabled="@(!CanSend)">送信</button>
+    </header>
+
+    <ErrorSummary Errors="@Errors" />
+    @if (!string.IsNullOrWhiteSpace(Message))
+    {
+        <div class="state-row">@Message</div>
+    }
+
+    @if (ProjectState.SelectedProject is null)
+    {
+        <div class="state-row">プロジェクトを選択してください。</div>
+    }
+    else
+    {
+        <section class="split-grid">
+            <div class="panel">
+                <div class="section-heading">
+                    <h2>入力</h2>
+                </div>
+                <div class="form-grid dense-form">
+                    <label class="field wide-field">
+                        <span>message</span>
+                        <textarea @bind="Form.Message" @bind:event="oninput"></textarea>
+                    </label>
+                    <label class="field wide-field">
+                        <span>conversation_id</span>
+                        <input @bind="Form.ConversationId" />
+                    </label>
+                    <label class="field wide-field">
+                        <span>allowed_tools</span>
+                        <input @bind="Form.AllowedTools" />
+                    </label>
+                    <label class="field wide-field json-field">
+                        <span>reference_scope JSON</span>
+                        <textarea @bind="Form.ReferenceScopeJson"></textarea>
+                    </label>
+                    <button type="button" class="primary-button" @onclick="SendAsync" disabled="@(!CanSend)">送信</button>
+                </div>
+            </div>
+
+            <div class="panel">
+                <div class="section-heading">
+                    <h2>応答</h2>
+                </div>
+                @if (Response is null)
+                {
+                    <div class="state-row">AI応答はありません。</div>
+                }
+                else
+                {
+                    <div class="detail-list">
+                        <div><span>session_id</span><strong>@Response.SessionId</strong></div>
+                        <div><span>message_id</span><strong>@Response.MessageId</strong></div>
+                        <div><span>job_id</span><strong>@Response.JobId</strong></div>
+                        <div><span>review_status</span><strong>@Response.ReviewStatus</strong></div>
+                        <div><span>redaction</span><strong>@Response.RedactionStatus</strong></div>
+                    </div>
+                    <div class="form-grid dense-form">
+                        <label class="field wide-field">
+                            <span>response</span>
+                            <textarea readonly>@Response.Response</textarea>
+                        </label>
+                        <label class="field wide-field json-field">
+                            <span>tool_calls JSON</span>
+                            <textarea readonly>@FormatJsonArray(Response.ToolCalls)</textarea>
+                        </label>
+                        <label class="field wide-field json-field">
+                            <span>reference_data JSON</span>
+                            <textarea readonly>@FormatJson(Response.ReferenceData)</textarea>
+                        </label>
+                        <label class="field wide-field json-field">
+                            <span>token_usage JSON</span>
+                            <textarea readonly>@FormatJson(Response.TokenUsage)</textarea>
+                        </label>
+                    </div>
+                }
+            </div>
+        </section>
+
+        <section class="panel">
+            <JobProgressPanel Title="AIジョブ" ProjectScoped="true" JobType="AiAssistantJob" />
+        </section>
+    }
+</div>
+
+@code {
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        WriteIndented = true
+    };
+
+    private AiAssistantFormModel Form { get; set; } = new();
+
+    private AiChatResponse? Response { get; set; }
+
+    private IReadOnlyList<ApiError> Errors { get; set; } = [];
+
+    private string? Message { get; set; }
+
+    private bool IsSending { get; set; }
+
+    private bool CanSend
+        => ProjectState.SelectedProject is not null && !IsSending;
+
+    protected override async Task OnInitializedAsync()
+    {
+        ProjectState.Changed += OnProjectStateChanged;
+        await ProjectState.LoadAsync();
+    }
+
+    private async Task SendAsync()
+    {
+        if (ProjectState.SelectedProject is not { } project)
+        {
+            return;
+        }
+
+        Errors = [];
+        Message = null;
+        if (string.IsNullOrWhiteSpace(Form.Message))
+        {
+            Errors = [new ApiError("Validation.Message.Required", "message is required.", "message")];
+            return;
+        }
+
+        var conversationId = ParseNullableGuid(Form.ConversationId, "conversation_id");
+        var referenceScope = ParseJson(Form.ReferenceScopeJson, "reference_scope");
+        if (Errors.Count > 0)
+        {
+            return;
+        }
+
+        IsSending = true;
+        var result = await ApiClient.ChatWithAiAsync(
+            project.ProjectId,
+            new AiChatRequest(
+                Form.Message.Trim(),
+                conversationId,
+                ParseAllowedTools(Form.AllowedTools),
+                referenceScope));
+        if (result.IsSuccess && result.Data is { } response)
+        {
+            Response = response;
+            Message = $"AIジョブを登録しました: {response.JobId:D}";
+            Form.ConversationId = response.SessionId.ToString("D");
+        }
+        else
+        {
+            Response = null;
+            Errors = result.Errors;
+        }
+
+        IsSending = false;
+    }
+
+    private Guid? ParseNullableGuid(string? value, string target)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        if (Guid.TryParse(value, out var parsed))
+        {
+            return parsed;
+        }
+
+        Errors = [new ApiError("Validation.Guid.Invalid", $"{target} must be a GUID.", target)];
+        return null;
+    }
+
+    private JsonElement? ParseJson(string? json, string target)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            return document.RootElement.Clone();
+        }
+        catch (JsonException exception)
+        {
+            Errors = [new ApiError("Validation.Json.Invalid", exception.Message, target)];
+            return null;
+        }
+    }
+
+    private async void OnProjectStateChanged()
+    {
+        await InvokeAsync(() =>
+        {
+            Response = null;
+            StateHasChanged();
+        });
+    }
+
+    private static IReadOnlyList<string>? ParseAllowedTools(string? value)
+    {
+        var tools = string.IsNullOrWhiteSpace(value)
+            ? []
+            : value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Where(tool => !string.IsNullOrWhiteSpace(tool))
+                .ToArray();
+        return tools.Length == 0 ? null : tools;
+    }
+
+    private static string FormatJson(JsonElement element)
+        => element.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null
+            ? "{}"
+            : JsonSerializer.Serialize(element, JsonOptions);
+
+    private static string FormatJsonArray(IReadOnlyList<JsonElement> elements)
+        => JsonSerializer.Serialize(elements, JsonOptions);
+
+    public void Dispose()
+        => ProjectState.Changed -= OnProjectStateChanged;
+
+    private sealed class AiAssistantFormModel
+    {
+        public string? Message { get; set; }
+
+        public string? ConversationId { get; set; }
+
+        public string? AllowedTools { get; set; } = "keyword.research, brief.generate, rewrite.plan, report.summarize";
+
+        public string? ReferenceScopeJson { get; set; } = "{}";
+    }
+}

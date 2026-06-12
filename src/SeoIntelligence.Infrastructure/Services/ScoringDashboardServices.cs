@@ -467,6 +467,40 @@ internal sealed class DashboardService(SeoIntelligenceDbContext dbContext)
                     entity.ProjectId == projectId &&
                     entity.EventType == NotificationService.RankAlertEventType,
                 cancellationToken);
+        var rewriteTasks = await dbContext.RewriteTasks
+            .AsNoTracking()
+            .Where(entity => entity.ProjectId == projectId)
+            .Select(entity => new { entity.Status, entity.PriorityScore })
+            .ToArrayAsync(cancellationToken);
+        var cannibalizationCandidates = await dbContext.CannibalizationCandidates
+            .AsNoTracking()
+            .Where(entity => entity.ProjectId == projectId)
+            .Select(entity => new { entity.Status, entity.SeverityScore })
+            .ToArrayAsync(cancellationToken);
+        var now = DateTime.UtcNow;
+        var reports = await dbContext.Reports
+            .AsNoTracking()
+            .Where(entity => entity.ProjectId == projectId)
+            .Select(entity => new
+            {
+                entity.ShareTokenHash,
+                entity.ShareExpiresAt,
+                entity.ShareRevokedAt
+            })
+            .ToArrayAsync(cancellationToken);
+        var aiSessions = await dbContext.AiSessions
+            .AsNoTracking()
+            .Where(entity => entity.WorkspaceId == context.WorkspaceId && entity.ProjectId == projectId)
+            .Select(entity => entity.Id)
+            .ToArrayAsync(cancellationToken);
+        var aiSessionIds = aiSessions.ToHashSet();
+        var aiMessages = aiSessionIds.Count == 0
+            ? []
+            : await dbContext.AiMessages
+                .AsNoTracking()
+                .Where(entity => aiSessionIds.Contains(entity.SessionId))
+                .Select(entity => entity.ReviewStatus)
+                .ToArrayAsync(cancellationToken);
 
         return Result<DashboardSnapshot>.Success(new DashboardSnapshot(
             keywordCandidateCount,
@@ -508,7 +542,23 @@ internal sealed class DashboardService(SeoIntelligenceDbContext dbContext)
             new DashboardRankAlertSummary(
                 activeAlertCount,
                 unresolvedAlertEventCount,
-                rankAlertNotificationCount)));
+                rankAlertNotificationCount),
+            new DashboardRewriteSummary(
+                rewriteTasks.Length,
+                rewriteTasks.Count(task => string.Equals(task.Status, StatusValues.Active, StringComparison.OrdinalIgnoreCase)),
+                rewriteTasks.Length == 0 ? 0m : rewriteTasks.Max(task => task.PriorityScore)),
+            new DashboardCannibalizationSummary(
+                cannibalizationCandidates.Length,
+                cannibalizationCandidates.Count(candidate => string.Equals(candidate.Status, StatusValues.Active, StringComparison.OrdinalIgnoreCase)),
+                cannibalizationCandidates.Length == 0 ? 0m : cannibalizationCandidates.Max(candidate => candidate.SeverityScore)),
+            new DashboardReportSummary(
+                reports.Length,
+                reports.Count(report => report.ShareTokenHash is not null && report.ShareRevokedAt is null && report.ShareExpiresAt > now),
+                reports.Count(report => report.ShareTokenHash is not null && report.ShareRevokedAt is null && report.ShareExpiresAt <= now)),
+            new DashboardAiSummary(
+                aiSessions.Length,
+                aiMessages.Length,
+                aiMessages.Count(status => string.Equals(status, StatusValues.Pending, StringComparison.OrdinalIgnoreCase)))));
     }
 
     private static Result<T> Failure<T>(ErrorCode code, string message)

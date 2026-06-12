@@ -217,6 +217,11 @@ public interface ISeoIntelligenceApiClient
         ArticleBriefUpdateRequest request,
         CancellationToken cancellationToken = default);
 
+    Task<ApiClientResult<AiChatResponse>> ChatWithAiAsync(
+        Guid projectId,
+        AiChatRequest request,
+        CancellationToken cancellationToken = default);
+
     Task<ApiClientResult<IReadOnlyList<ArticleBriefVersionDetails>>> GetBriefVersionsAsync(
         Guid projectId,
         Guid briefId,
@@ -298,6 +303,109 @@ public interface ISeoIntelligenceApiClient
         DateTimeOffset? to = null,
         int page = 1,
         int pageSize = 100,
+        CancellationToken cancellationToken = default);
+
+    Task<ApiClientResult<IReadOnlyList<RewriteTaskDetails>>> SearchRewriteTasksAsync(
+        Guid projectId,
+        string status = "active",
+        string? q = null,
+        string sortBy = "priorityScore",
+        string orderBy = "desc",
+        int page = 1,
+        int pageSize = 100,
+        CancellationToken cancellationToken = default);
+
+    Task<ApiClientResult<RewriteTaskDetails>> GetRewriteTaskAsync(
+        Guid projectId,
+        Guid taskId,
+        CancellationToken cancellationToken = default);
+
+    Task<ApiClientResult<RewriteTaskDetails>> UpdateRewriteTaskAsync(
+        Guid projectId,
+        Guid taskId,
+        RewriteTaskUpdateRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<ApiClientResult<IReadOnlyList<CannibalizationCandidateDetails>>> SearchCannibalizationCandidatesAsync(
+        Guid projectId,
+        string status = "active",
+        string? q = null,
+        string sortBy = "severityScore",
+        string orderBy = "desc",
+        int page = 1,
+        int pageSize = 100,
+        CancellationToken cancellationToken = default);
+
+    Task<ApiClientResult<JobReference>> RefreshCannibalizationAsync(
+        Guid projectId,
+        CancellationToken cancellationToken = default);
+
+    Task<ApiClientResult<JobReference>> CreateReportAsync(
+        Guid projectId,
+        ReportRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<ApiClientResult<ReportDetails>> GetReportAsync(
+        Guid projectId,
+        Guid reportId,
+        CancellationToken cancellationToken = default);
+
+    Task<ApiClientResult<ReportDownload>> CreateReportDownloadAsync(
+        Guid projectId,
+        Guid reportId,
+        CancellationToken cancellationToken = default);
+
+    Task<ApiClientResult<ReportShareDetails>> ShareReportAsync(
+        Guid projectId,
+        Guid reportId,
+        ReportShareRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<ApiClientResult<ReportShareDetails>> RevokeReportShareAsync(
+        Guid projectId,
+        Guid reportId,
+        CancellationToken cancellationToken = default);
+
+    Task<ApiClientResult<IReadOnlyList<ConnectorSettingsDetails>>> SearchConnectorsAsync(
+        Guid projectId,
+        string status = "active",
+        string? q = null,
+        string sortBy = "updatedAt",
+        string orderBy = "desc",
+        int page = 1,
+        int pageSize = 100,
+        CancellationToken cancellationToken = default);
+
+    Task<ApiClientResult<ConnectorSettingsDetails>> CreateConnectorAsync(
+        Guid projectId,
+        ConnectorSettingsRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<ApiClientResult<ConnectorSettingsDetails>> UpdateConnectorAsync(
+        Guid projectId,
+        Guid connectorId,
+        ConnectorSettingsRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<ApiClientResult<ConnectorSettingsDetails>> DisableConnectorAsync(
+        Guid projectId,
+        Guid connectorId,
+        CancellationToken cancellationToken = default);
+
+    Task<ApiClientResult<ConnectorRunDetails>> TestConnectorAsync(
+        Guid projectId,
+        Guid connectorId,
+        CancellationToken cancellationToken = default);
+
+    Task<ApiClientResult<IReadOnlyList<ConnectorRunDetails>>> GetConnectorRunsAsync(
+        Guid projectId,
+        Guid connectorId,
+        string status = "all",
+        string? q = null,
+        string sortBy = "createdAt",
+        string orderBy = "desc",
+        int page = 1,
+        int pageSize = 50,
         CancellationToken cancellationToken = default);
 
     Task<ApiClientResult<KeywordDiscoveryResult>> DiscoverKeywordsAsync(
