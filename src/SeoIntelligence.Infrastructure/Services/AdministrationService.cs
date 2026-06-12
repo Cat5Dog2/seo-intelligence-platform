@@ -44,6 +44,8 @@ public static class AdministrationServiceCollectionExtensions
         services.TryAddScoped<IRewriteManagementService>(serviceProvider => serviceProvider.GetRequiredService<RewriteManagementService>());
         services.TryAddScoped<ReportService>();
         services.TryAddScoped<IReportService>(serviceProvider => serviceProvider.GetRequiredService<ReportService>());
+        services.TryAddScoped<ExternalConnectorService>();
+        services.TryAddScoped<IExternalConnectorService>(serviceProvider => serviceProvider.GetRequiredService<ExternalConnectorService>());
         services.TryAddScoped<AiAssistantService>();
         services.TryAddScoped<IAiAssistantService>(serviceProvider => serviceProvider.GetRequiredService<AiAssistantService>());
         services.TryAddScoped<IAiContentService, DeterministicAiContentService>();

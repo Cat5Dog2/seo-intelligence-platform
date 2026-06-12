@@ -75,6 +75,10 @@ internal static class OpenApiDocumentEndpoint
         new("/api/projects/{projectId}/imports", Post: "Register CSV or Excel import job", PostSuccessCode: "202"),
         new("/api/projects/{projectId}/imports/{importId}", Get: "Get import state and validation summary"),
         new("/api/projects/{projectId}/imports/{importId}/errors", Get: "List import validation errors"),
+        new("/api/projects/{projectId}/connectors", Get: "List external connector stubs", Post: "Create external connector stub", PostSuccessCode: "201"),
+        new("/api/projects/{projectId}/connectors/{connectorId}", Put: "Update external connector stub", Delete: "Disable external connector stub"),
+        new("/api/projects/{projectId}/connectors/{connectorId}/test", Post: "Run external connector connection test stub"),
+        new("/api/projects/{projectId}/connectors/{connectorId}/runs", Get: "List external connector stub runs"),
         new("/api/projects/{projectId}/ai/chat", Post: "Register AI assistant generation job", PostSuccessCode: "202")
     ];
 

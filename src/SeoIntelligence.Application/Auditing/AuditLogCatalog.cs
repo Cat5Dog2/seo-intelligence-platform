@@ -18,6 +18,10 @@ public static class AuditLogActionNames
     public const string DataImportRegistered = "data_import.registered";
     public const string DataImportCompleted = "data_import.completed";
     public const string DataImportFailed = "data_import.failed";
+    public const string ExternalConnectorCreated = "external_connector.created";
+    public const string ExternalConnectorUpdated = "external_connector.updated";
+    public const string ExternalConnectorDisabled = "external_connector.disabled";
+    public const string ExternalConnectorTested = "external_connector.tested";
     public const string ReportGenerationQueued = "report.generation_queued";
     public const string ReportCreated = "report.created";
     public const string ReportDownloadUrlIssued = "report.download_url_issued";
@@ -44,6 +48,8 @@ public static class AuditLogResourceTypes
     public const string CsvExport = "csv_export";
     public const string DataExport = "data_export";
     public const string DataImport = "data_import";
+    public const string ExternalConnector = "external_connector";
+    public const string ExternalConnectorRun = "external_connector_run";
     public const string Report = "report";
     public const string ReportShare = "report_share";
     public const string AiMessage = "ai_message";

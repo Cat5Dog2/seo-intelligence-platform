@@ -37,6 +37,39 @@ internal static class Phase3FoundationEndpoints
         "completed",
         "all"
     ];
+    private static readonly string[] ConnectorStatuses =
+    [
+        "active",
+        "disabled",
+        "all"
+    ];
+    private static readonly string[] ConnectorSortFields =
+    [
+        "connectorType",
+        "name",
+        "status",
+        "createdAt",
+        "updatedAt"
+    ];
+    private static readonly string[] ConnectorRunStatuses =
+    [
+        "queued",
+        "running",
+        "waiting_external",
+        "succeeded",
+        "failed_retryable",
+        "failed_fatal",
+        "canceled",
+        "all"
+    ];
+    private static readonly string[] ConnectorRunSortFields =
+    [
+        "runType",
+        "status",
+        "startedAt",
+        "completedAt",
+        "createdAt"
+    ];
 
     public static IEndpointRouteBuilder MapPhase3FoundationEndpoints(this IEndpointRouteBuilder app)
     {
@@ -60,7 +93,15 @@ internal static class Phase3FoundationEndpoints
 
         _ = project.MapGroup(Phase3EndpointRoutes.Exports);
         _ = project.MapGroup(Phase3EndpointRoutes.Imports);
-        _ = project.MapGroup(Phase3EndpointRoutes.Connectors);
+
+        var connectors = project.MapGroup(Phase3EndpointRoutes.Connectors);
+        connectors.MapGet("", GetConnectorsAsync);
+        connectors.MapPost("", CreateConnectorAsync);
+        connectors.MapPut("/{connectorId:guid}", UpdateConnectorAsync);
+        connectors.MapDelete("/{connectorId:guid}", DisableConnectorAsync);
+        connectors.MapPost("/{connectorId:guid}/test", TestConnectorAsync);
+        connectors.MapGet("/{connectorId:guid}/runs", GetConnectorRunsAsync);
+
         var ai = project.MapGroup(Phase3EndpointRoutes.Ai);
         ai.MapPost("/chat", ChatWithAiAsync);
         var reportShares = app.MapGroup(Phase3EndpointRoutes.ReportShares);
@@ -278,6 +319,136 @@ internal static class Phase3FoundationEndpoints
                 CreateSharedContext(contextService, httpContext),
                 token,
                 cancellationToken));
+
+    private static async Task<IResult> GetConnectorsAsync(
+        Guid projectId,
+        [FromServices] IExternalConnectorService service,
+        [FromServices] IProjectContextService contextService,
+        HttpContext httpContext,
+        CancellationToken cancellationToken,
+        int page = ListQueryParameters.DefaultPage,
+        int pageSize = ListQueryParameters.DefaultPageSize,
+        string status = "active",
+        string sortBy = "updatedAt",
+        string orderBy = "desc",
+        string? q = null)
+    {
+        var validationErrors = ValidateListQuery(
+            page,
+            pageSize,
+            status,
+            sortBy,
+            orderBy,
+            q,
+            ConnectorStatuses,
+            ConnectorSortFields);
+        if (validationErrors.Count > 0)
+        {
+            return ApiResponseResults.ValidationFailure(httpContext, validationErrors);
+        }
+
+        return ApiResponseResults.FromPagedResult(
+            httpContext,
+            await service.SearchConnectorsAsync(
+                CreateContext(contextService, httpContext, projectId),
+                CreateSearchQuery(q, status, sortBy, orderBy, page, pageSize),
+                cancellationToken));
+    }
+
+    private static async Task<IResult> CreateConnectorAsync(
+        Guid projectId,
+        [FromBody] ConnectorSettingsRequest request,
+        [FromServices] IExternalConnectorService service,
+        [FromServices] IProjectContextService contextService,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+        => ApiResponseResults.FromCreatedResult(
+            httpContext,
+            await service.CreateConnectorAsync(
+                CreateContext(contextService, httpContext, projectId),
+                request,
+                cancellationToken));
+
+    private static async Task<IResult> UpdateConnectorAsync(
+        Guid projectId,
+        Guid connectorId,
+        [FromBody] ConnectorSettingsRequest request,
+        [FromServices] IExternalConnectorService service,
+        [FromServices] IProjectContextService contextService,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+        => ApiResponseResults.FromResult(
+            httpContext,
+            await service.UpdateConnectorAsync(
+                CreateContext(contextService, httpContext, projectId),
+                connectorId,
+                request,
+                cancellationToken));
+
+    private static async Task<IResult> DisableConnectorAsync(
+        Guid projectId,
+        Guid connectorId,
+        [FromServices] IExternalConnectorService service,
+        [FromServices] IProjectContextService contextService,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+        => ApiResponseResults.FromResult(
+            httpContext,
+            await service.DisableConnectorAsync(
+                CreateContext(contextService, httpContext, projectId),
+                connectorId,
+                cancellationToken));
+
+    private static async Task<IResult> TestConnectorAsync(
+        Guid projectId,
+        Guid connectorId,
+        [FromServices] IExternalConnectorService service,
+        [FromServices] IProjectContextService contextService,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+        => ApiResponseResults.FromResult(
+            httpContext,
+            await service.TestConnectorAsync(
+                CreateContext(contextService, httpContext, projectId),
+                connectorId,
+                cancellationToken));
+
+    private static async Task<IResult> GetConnectorRunsAsync(
+        Guid projectId,
+        Guid connectorId,
+        [FromServices] IExternalConnectorService service,
+        [FromServices] IProjectContextService contextService,
+        HttpContext httpContext,
+        CancellationToken cancellationToken,
+        int page = ListQueryParameters.DefaultPage,
+        int pageSize = ListQueryParameters.DefaultPageSize,
+        string status = "all",
+        string sortBy = "createdAt",
+        string orderBy = "desc",
+        string? q = null)
+    {
+        var validationErrors = ValidateListQuery(
+            page,
+            pageSize,
+            status,
+            sortBy,
+            orderBy,
+            q,
+            ConnectorRunStatuses,
+            ConnectorRunSortFields);
+        if (validationErrors.Count > 0)
+        {
+            return ApiResponseResults.ValidationFailure(httpContext, validationErrors);
+        }
+
+        return ApiResponseResults.FromPagedResult(
+            httpContext,
+            await service.GetConnectorRunsAsync(
+                CreateContext(contextService, httpContext, projectId),
+                connectorId,
+                CreateSearchQuery(q, status, sortBy, orderBy, page, pageSize),
+                cancellationToken));
+    }
 
     private static async Task<IResult> ChatWithAiAsync(
         Guid projectId,
