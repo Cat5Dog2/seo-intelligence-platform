@@ -1,0 +1,57 @@
+<section class="panel">
+    <div class="section-heading">
+        <h2>監査ログ検索</h2>
+        <button type="button" class="secondary-button" @onclick="SearchAsync">検索</button>
+    </div>
+    <div class="form-grid">
+        <label class="field">
+            <span>q</span>
+            <input @bind="AuditForm.Q" />
+        </label>
+        <label class="field">
+            <span>Actor</span>
+            <input @bind="AuditForm.Actor" />
+        </label>
+        <label class="field">
+            <span>Resource Type</span>
+            <input @bind="AuditForm.ResourceType" />
+        </label>
+        <label class="field">
+            <span>Resource Id</span>
+            <input @bind="AuditForm.ResourceId" />
+        </label>
+        <label class="field">
+            <span>Correlation Id</span>
+            <input @bind="AuditForm.CorrelationId" />
+        </label>
+        <label class="field">
+            <span>From</span>
+            <input @bind="AuditForm.From" />
+        </label>
+        <label class="field">
+            <span>To</span>
+            <input @bind="AuditForm.To" />
+        </label>
+    </div>
+    <DataTable Items="@AuditLogs" Columns="@AuditColumns" IsLoading="@IsAuditLoading" EmptyText="監査ログはありません。" />
+</section>
+
+@code {
+    [Parameter]
+    public AdminAuditSearchFormModel AuditForm { get; set; } = new();
+
+    [Parameter]
+    public IReadOnlyList<AuditLogDetails> AuditLogs { get; set; } = [];
+
+    [Parameter]
+    public IReadOnlyList<DataTableColumn<AuditLogDetails>> AuditColumns { get; set; } = [];
+
+    [Parameter]
+    public bool IsAuditLoading { get; set; }
+
+    [Parameter]
+    public EventCallback OnSearch { get; set; }
+
+    private Task SearchAsync()
+        => OnSearch.InvokeAsync();
+}

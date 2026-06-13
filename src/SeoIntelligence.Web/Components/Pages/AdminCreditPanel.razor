@@ -1,0 +1,52 @@
+<section class="page-stack">
+    <div class="metric-strip">
+        <div class="metric">
+            <span>表示中コール</span>
+            <strong>@ExternalCalls.Count</strong>
+        </div>
+        <div class="metric">
+            <span>消費クレジット</span>
+            <strong>@ExternalCalls.Sum(call => call.ConsumedCredit).ToString("0.##")</strong>
+        </div>
+        <div class="metric">
+            <span>402</span>
+            <strong>@ExternalCalls.Count(call => call.StatusCode == 402)</strong>
+        </div>
+        <div class="metric">
+            <span>429</span>
+            <strong>@ExternalCalls.Count(call => call.StatusCode == 429)</strong>
+        </div>
+        <div class="metric">
+            <span>失敗</span>
+            <strong>@ExternalCalls.Count(call => call.StatusCode >= 400)</strong>
+        </div>
+    </div>
+    <section class="panel">
+        <div class="section-heading">
+            <h2>外部API呼び出し・クレジット</h2>
+            <button type="button" class="secondary-button" @onclick="ReloadAsync">再読み込み</button>
+        </div>
+        <DataTable Items="@ExternalCalls" Columns="@ExternalCallColumns" IsLoading="@IsExternalCallLoading" EmptyText="外部API呼び出しはありません。">
+            <RowActions Context="call">
+                <AuditLink ResourceType="external_api_call" ResourceId="@call.CallId.ToString("D")" />
+            </RowActions>
+        </DataTable>
+    </section>
+</section>
+
+@code {
+    [Parameter]
+    public IReadOnlyList<ExternalApiCallDetails> ExternalCalls { get; set; } = [];
+
+    [Parameter]
+    public IReadOnlyList<DataTableColumn<ExternalApiCallDetails>> ExternalCallColumns { get; set; } = [];
+
+    [Parameter]
+    public bool IsExternalCallLoading { get; set; }
+
+    [Parameter]
+    public EventCallback OnReload { get; set; }
+
+    private Task ReloadAsync()
+        => OnReload.InvokeAsync();
+}

@@ -1,0 +1,111 @@
+<section class="page-stack">
+    <section class="panel">
+        <div class="section-heading">
+            <h2>Phase 2ジョブ</h2>
+            <span class="muted">選択中プロジェクト: @(SelectedProjectName ?? "未選択")</span>
+        </div>
+        <div class="form-grid dense-form">
+            <label class="field">
+                <span>job_type</span>
+                <select value="@Phase2JobType" @onchange="OnJobTypeChangedAsync">
+                    @foreach (var option in Phase2JobTypeOptions)
+                    {
+                        <option value="@option">@option</option>
+                    }
+                </select>
+            </label>
+            <button type="button" class="secondary-button" @onclick="ReloadAsync">再読み込み</button>
+        </div>
+        <JobProgressPanel Title="@Phase2JobTitle" ProjectScoped="true" JobType="@Phase2JobType" />
+    </section>
+
+    <section class="panel">
+        <div class="section-heading">
+            <h2>順位アラート</h2>
+            <button type="button" class="secondary-button" @onclick="ReloadAsync">更新</button>
+        </div>
+        <DataTable Items="@Phase2Alerts" Columns="@Phase2AlertColumns" IsLoading="@IsPhase2Loading" EmptyText="順位アラートはありません。">
+            <RowActions Context="alert">
+                <AuditLink ResourceType="alert" ResourceId="@alert.AlertId.ToString("D")" />
+            </RowActions>
+        </DataTable>
+    </section>
+
+    <section class="panel">
+        <div class="section-heading">
+            <h2>alert_events</h2>
+        </div>
+        <DataTable Items="@Phase2AlertEvents" Columns="@Phase2AlertEventColumns" IsLoading="@IsPhase2Loading" EmptyText="alert_eventsはありません。">
+            <RowActions Context="alertEvent">
+                <div class="row-actions">
+                    @if (alertEvent.NotificationDeliveryId.HasValue)
+                    {
+                        <AuditLink ResourceType="notification_delivery" ResourceId="@alertEvent.NotificationDeliveryId.Value.ToString("D")" />
+                    }
+                    <AuditLink ResourceType="alert_event" ResourceId="@alertEvent.AlertEventId.ToString("D")" />
+                </div>
+            </RowActions>
+        </DataTable>
+    </section>
+
+    <section class="panel">
+        <div class="section-heading">
+            <h2>rank_alert通知履歴</h2>
+        </div>
+        <DataTable Items="@Phase2RankAlertDeliveries" Columns="@DeliveryColumns" IsLoading="@IsPhase2Loading" EmptyText="rank_alert通知履歴はありません。">
+            <RowActions Context="delivery">
+                <AuditLink ResourceType="notification_delivery" ResourceId="@delivery.DeliveryId.ToString("D")" />
+            </RowActions>
+        </DataTable>
+    </section>
+</section>
+
+@code {
+    [Parameter]
+    public string? SelectedProjectName { get; set; }
+
+    [Parameter]
+    public string Phase2JobType { get; set; } = "RegisterRankCheckJob";
+
+    [Parameter]
+    public EventCallback<string> Phase2JobTypeChanged { get; set; }
+
+    [Parameter]
+    public IReadOnlyList<string> Phase2JobTypeOptions { get; set; } = [];
+
+    [Parameter]
+    public string Phase2JobTitle { get; set; } = string.Empty;
+
+    [Parameter]
+    public IReadOnlyList<RankAlertDetails> Phase2Alerts { get; set; } = [];
+
+    [Parameter]
+    public IReadOnlyList<RankAlertEventDetails> Phase2AlertEvents { get; set; } = [];
+
+    [Parameter]
+    public IReadOnlyList<NotificationDeliveryDetails> Phase2RankAlertDeliveries { get; set; } = [];
+
+    [Parameter]
+    public IReadOnlyList<DataTableColumn<RankAlertDetails>> Phase2AlertColumns { get; set; } = [];
+
+    [Parameter]
+    public IReadOnlyList<DataTableColumn<RankAlertEventDetails>> Phase2AlertEventColumns { get; set; } = [];
+
+    [Parameter]
+    public IReadOnlyList<DataTableColumn<NotificationDeliveryDetails>> DeliveryColumns { get; set; } = [];
+
+    [Parameter]
+    public bool IsPhase2Loading { get; set; }
+
+    [Parameter]
+    public EventCallback OnReload { get; set; }
+
+    private Task ReloadAsync()
+        => OnReload.InvokeAsync();
+
+    private async Task OnJobTypeChangedAsync(ChangeEventArgs args)
+    {
+        Phase2JobType = args.Value?.ToString() ?? "RegisterRankCheckJob";
+        await Phase2JobTypeChanged.InvokeAsync(Phase2JobType);
+    }
+}
