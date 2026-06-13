@@ -220,7 +220,7 @@ public sealed class BlazorPhase3UiTests
         var cannibalizationRefresh = await client.RefreshCannibalizationAsync(projectId);
         var reportCreate = await client.CreateReportAsync(
             projectId,
-            new ReportRequest("monthly_seo", "2026-06", "pdf", ["summary", "rewrite"], DateTimeOffset.UtcNow.AddDays(7)));
+            new ReportRequest("monthly", "2026-06", "pdf", ["summary", "rewrite"], DateTimeOffset.UtcNow.AddDays(7)));
         var reportDownload = await client.CreateReportDownloadAsync(projectId, reportId);
         var reportShare = await client.ShareReportAsync(projectId, reportId, new ReportShareRequest(DateTimeOffset.UtcNow.AddDays(7)));
         var reportRevoke = await client.RevokeReportShareAsync(projectId, reportId);

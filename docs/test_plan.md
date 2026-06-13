@@ -186,6 +186,15 @@ Playwrightによる実ブラウザ操作は `BrowserE2E` カテゴリとして�
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-local.ps1 -RunBrowserTests -InstallPlaywrightBrowsers
 ```
 
+BrowserE2Eは代表的なユーザーフローの疎通確認に限定し、全ACの境界値、異常系、監査、DB状態、Secret非表示の詳細検証はUnit/Integration/Contractで担保する。
+
+| フェーズ | BrowserE2Eで確認する代表フロー | 詳細検証を担うテスト |
+| --- | --- | --- |
+| MVP | プロジェクト選択、キーワード探索、候補CSV出力、検索ボリューム登録、結果CSV出力 | Unit、Integration、Contract |
+| 管理 | API認証情報をsecretValueで登録し、画面に秘密値が残らないこと | 管理API Integration、Contract、Blazor client tests |
+| Phase 2 | 順位監視画面から順位チェックジョブを登録できること | 競合、コンテンツ、記事ブリーフ、順位監視、ダッシュボードのIntegration/Contract |
+| Phase 3 | レポート生成ジョブ登録、report_id取得、詳細表示、ダウンロードURL発行、共有URL発行 | AI、リライト、カニバリ、レポート、CSV/Excelインポート、外部連携スタブのIntegration/Contract |
+
 既存プロジェクトやDiscordテスト通知を使う場合は、必要に応じて `SMOKE_PROJECT_ID` と `SMOKE_DISCORD_CHANNEL_ID` を指定する。Discord Webhook URLの実値はテストコマンドやログへ出さない。
 
 Integration/Contract/E2Eの正式な実行条件、テストDB初期化、外部API Mockの固定データは各実装Issueで追記する。

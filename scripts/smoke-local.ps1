@@ -24,6 +24,9 @@ $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "load-dotenv.ps1")
 Import-DotEnvFile -Path (Join-Path $PSScriptRoot "..\.env")
 
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$sharedStorageBasePath = Join-Path (Join-Path $repoRoot ".data") "storage"
+
 if ([string]::IsNullOrWhiteSpace($SmokeProjectId)) {
     $SmokeProjectId = $env:SMOKE_PROJECT_ID
 }
@@ -40,6 +43,8 @@ $previousEnvironment = @{
     ASPNETCORE_ENVIRONMENT = $env:ASPNETCORE_ENVIRONMENT
     RakkoKeyword__Mode = $env:RakkoKeyword__Mode
     Api__BaseUrl = $env:Api__BaseUrl
+    Storage__Provider = $env:Storage__Provider
+    Storage__BasePath = $env:Storage__BasePath
     E2E_BROWSER_ENABLED = $env:E2E_BROWSER_ENABLED
     E2E_WEB_URL = $env:E2E_WEB_URL
     E2E_API_URL = $env:E2E_API_URL
@@ -48,6 +53,9 @@ $previousEnvironment = @{
 $env:ASPNETCORE_ENVIRONMENT = if ($env:ASPNETCORE_ENVIRONMENT) { $env:ASPNETCORE_ENVIRONMENT } else { "Development" }
 $env:RakkoKeyword__Mode = "Mock"
 $env:Api__BaseUrl = $ApiUrl
+$env:Storage__Provider = "Local"
+$env:Storage__BasePath = $sharedStorageBasePath
+New-Item -ItemType Directory -Force -Path $sharedStorageBasePath | Out-Null
 
 $standaloneCompose = Get-Command "docker-compose" -ErrorAction SilentlyContinue
 if ($standaloneCompose) {

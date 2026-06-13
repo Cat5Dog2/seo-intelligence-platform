@@ -37,8 +37,8 @@
             <div class="form-grid dense-form">
                 <label class="field">
                     <span>report_type</span>
-                    <select @bind="ReportForm.ReportType">
-                        <option value="monthly_seo">monthly_seo</option>
+                    <select data-testid="report-type-select" @bind="ReportForm.ReportType">
+                        <option value="monthly">monthly</option>
                         <option value="competitor_gap">competitor_gap</option>
                         <option value="rank">rank</option>
                         <option value="article_brief">article_brief</option>
@@ -46,24 +46,24 @@
                 </label>
                 <label class="field">
                     <span>period</span>
-                    <input @bind="ReportForm.Period" />
+                    <input data-testid="report-period-input" @bind="ReportForm.Period" />
                 </label>
                 <label class="field">
                     <span>format</span>
-                    <select @bind="ReportForm.Format">
+                    <select data-testid="report-format-select" @bind="ReportForm.Format">
                         <option value="pdf">pdf</option>
                         <option value="excel">excel</option>
                     </select>
                 </label>
                 <label class="field wide-field">
                     <span>sections</span>
-                    <input @bind="ReportForm.Sections" />
+                    <input data-testid="report-sections-input" @bind="ReportForm.Sections" />
                 </label>
                 <label class="field">
                     <span>share_expires_at</span>
-                    <input @bind="ReportForm.ShareExpiresAt" />
+                    <input data-testid="report-share-expires-at-input" @bind="ReportForm.ShareExpiresAt" />
                 </label>
-                <button type="button" class="primary-button" @onclick="CreateReportAsync" disabled="@(!CanOperate)">生成ジョブ登録</button>
+                <button type="button" class="primary-button" data-testid="report-create-button" @onclick="CreateReportAsync" disabled="@(!CanOperate)">生成ジョブ登録</button>
             </div>
         </section>
 
@@ -71,12 +71,12 @@
             <div class="panel">
                 <div class="section-heading">
                     <h2>レポート詳細</h2>
-                    <button type="button" class="secondary-button" @onclick="LoadReportAsync">取得</button>
+                    <button type="button" class="secondary-button" data-testid="report-load-button" @onclick="LoadReportAsync">取得</button>
                 </div>
                 <div class="form-grid dense-form">
                     <label class="field wide-field">
                         <span>report_id</span>
-                        <input @bind="ReportId" />
+                        <input data-testid="report-id-input" @bind="ReportId" />
                     </label>
                 </div>
 
@@ -86,17 +86,17 @@
                 }
                 else
                 {
-                    <div class="detail-list">
+                    <div class="detail-list" data-testid="report-detail-list">
                         <div><span>type</span><strong>@SelectedReport.ReportType</strong></div>
                         <div><span>period</span><strong>@SelectedReport.Period</strong></div>
                         <div><span>format</span><strong>@SelectedReport.Format</strong></div>
-                        <div><span>status</span><strong>@SelectedReport.Status</strong></div>
-                        <div><span>file_uri</span><strong>@(SelectedReport.FileUri ?? "-")</strong></div>
+                        <div><span>status</span><strong data-testid="report-status-value">@SelectedReport.Status</strong></div>
+                        <div><span>file_uri</span><strong data-testid="report-file-uri-value">@(SelectedReport.FileUri ?? "-")</strong></div>
                         <div><span>share_expires_at</span><strong>@FormatDateTime(SelectedReport.ShareExpiresAt)</strong></div>
                     </div>
                     <div class="button-row">
-                        <button type="button" class="secondary-button" @onclick="CreateDownloadAsync">ダウンロードURL発行</button>
-                        <button type="button" class="secondary-button" @onclick="ShareReportAsync">共有URL発行</button>
+                        <button type="button" class="secondary-button" data-testid="report-download-button" @onclick="CreateDownloadAsync">ダウンロードURL発行</button>
+                        <button type="button" class="secondary-button" data-testid="report-share-button" @onclick="ShareReportAsync">共有URL発行</button>
                         <button type="button" class="secondary-button danger-button" @onclick="RevokeShareAsync">共有URL失効</button>
                         <AuditLink ResourceType="report" ResourceId="@SelectedReport.ReportId.ToString("D")" />
                     </div>
@@ -109,18 +109,18 @@
                 </div>
                 @if (CurrentDownload is not null)
                 {
-                    <div class="detail-list">
+                    <div class="detail-list" data-testid="report-download-details">
                         <div><span>download_expires_at</span><strong>@FormatDateTime(CurrentDownload.ExpiresAt)</strong></div>
-                        <div><span>download_url</span><strong><a href="@CurrentDownload.DownloadUrl">download</a></strong></div>
+                        <div><span>download_url</span><strong><a data-testid="report-download-url-link" href="@CurrentDownload.DownloadUrl">download</a></strong></div>
                     </div>
                 }
                 @if (CurrentShare is not null)
                 {
-                    <div class="detail-list">
-                        <div><span>share_status</span><strong>@CurrentShare.Status</strong></div>
+                    <div class="detail-list" data-testid="report-share-details">
+                        <div><span>share_status</span><strong data-testid="report-share-status-value">@CurrentShare.Status</strong></div>
                         <div><span>share_expires_at</span><strong>@FormatDateTime(CurrentShare.ShareExpiresAt)</strong></div>
                         <div><span>share_revoked_at</span><strong>@FormatDateTime(CurrentShare.ShareRevokedAt)</strong></div>
-                        <div><span>share_url</span><strong>@(CurrentShare.ShareUrl ?? "-")</strong></div>
+                        <div><span>share_url</span><strong data-testid="report-share-url-value">@(CurrentShare.ShareUrl ?? "-")</strong></div>
                     </div>
                 }
                 @if (CurrentDownload is null && CurrentShare is null)
@@ -214,6 +214,7 @@
         if (result.IsSuccess && result.Data is { } job)
         {
             Message = $"レポート生成ジョブを登録しました: {job.JobId:D}";
+            await PopulateReportIdFromJobAsync(job.JobId);
         }
         else
         {
@@ -221,6 +222,16 @@
         }
 
         IsCreating = false;
+    }
+
+    private async Task PopulateReportIdFromJobAsync(Guid jobId)
+    {
+        var result = await ApiClient.GetJobAsync(jobId);
+        if (result.IsSuccess &&
+            result.Data?.ResultResource is { ResourceType: "report" } resource)
+        {
+            ReportId = resource.ResourceId.ToString("D");
+        }
     }
 
     private async Task LoadReportAsync()
@@ -394,7 +405,7 @@
 
     private sealed class ReportFormModel
     {
-        public string? ReportType { get; set; } = "monthly_seo";
+        public string? ReportType { get; set; } = "monthly";
 
         public string? Period { get; set; } = DateTime.Today.ToString("yyyy-MM");
 

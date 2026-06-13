@@ -24,7 +24,7 @@
     <ErrorSummary Errors="@Errors" />
     @if (!string.IsNullOrWhiteSpace(Message))
     {
-        <div class="state-row">@Message</div>
+        <div class="state-row" data-testid="search-volume-status-message">@Message</div>
     }
 
     <section class="split-grid">
