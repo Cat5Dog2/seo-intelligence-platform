@@ -129,7 +129,7 @@ ISSUE-MVP-00X の続きから再開してください。
 - [x] ISSUE-P3-005 AIアシスタントを実装する
 - [x] ISSUE-P3-006 外部連携スタブを実装する
 - [x] ISSUE-P3-007 Phase 3 UIを実装する
-- [ ] ISSUE-P3-008 Phase 3受入テストを整備する
+- [x] ISSUE-P3-008 Phase 3受入テストを整備する
 - [ ] ISSUE-P4-001 エンタープライズ拡張を設計する
 - [ ] ISSUE-BACKLOG-001 推奨バックログを整理する
 
@@ -1039,17 +1039,17 @@ ISSUE-MVP-00X の続きから再開してください。
 
 範囲:
 
-- [ ] P3-001のmigration、Phase 3 API土台build、AIプロンプト秘匿処理、共有URL共通処理のUnit/Security testを通す。
-- [ ] AC-007 レポート生成、ダウンロード、共有URL、期限切れ/失効制御を通す。
-- [ ] AC-015 AI prompt/response/reference/token_usage保存とレビュー状態を通す。
-- [ ] AC-016 CSV/Excelインポート、検証エラー、取込履歴を通す。
-- [ ] AC-017 レポート形式、file_uri、共有URL発行/失効/ダウンロード監査を通す。
-- [ ] AC-018 カニバリ候補、根拠データ、推奨対応を通す。
-- [ ] AC-020 外部連携スタブ、Secret非返却、接続テスト履歴を通す。
+- [x] P3-001のmigration、Phase 3 API土台build、AIプロンプト秘匿処理、共有URL共通処理のUnit/Security testを通す。
+- [x] AC-007 レポート生成、ダウンロード、共有URL、期限切れ/失効制御を通す。
+- [x] AC-015 AI prompt/response/reference/token_usage保存とレビュー状態を通す。
+- [x] AC-016 CSV/Excelインポート、検証エラー、取込履歴を通す。
+- [x] AC-017 レポート形式、file_uri、共有URL発行/失効/ダウンロード監査を通す。
+- [x] AC-018 カニバリ候補、根拠データ、推奨対応を通す。
+- [x] AC-020 外部連携スタブ、Secret非返却、接続テスト履歴を通す。
 
 受入条件:
 
-- [ ] Phase 3完了条件が通る。
+- [x] Phase 3完了条件が通る。
 
 ## Phase 4
 

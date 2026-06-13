@@ -255,12 +255,13 @@ public sealed class ReportIntegrationTests
     {
         await using var scope = factory.Services.CreateAsyncScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<SeoIntelligenceDbContext>();
-        var actions = await dbContext.AuditLogs
+        var audits = await dbContext.AuditLogs
             .AsNoTracking()
             .Where(entity => entity.ResourceType == AuditLogResourceTypes.Report && entity.ResourceId == reportId.ToString("D"))
-            .Select(entity => entity.Action)
+            .Select(entity => new { entity.Action, entity.BeforeAfterJson })
             .ToArrayAsync();
 
+        var actions = audits.Select(audit => audit.Action).ToArray();
         Assert.Contains(AuditLogActionNames.ReportGenerationQueued, actions);
         Assert.Contains(AuditLogActionNames.ReportCreated, actions);
         Assert.Contains(AuditLogActionNames.ReportDownloadUrlIssued, actions);
@@ -269,6 +270,31 @@ public sealed class ReportIntegrationTests
         Assert.Contains(AuditLogActionNames.ReportShareRevoked, actions);
         Assert.Contains(AuditLogActionNames.ReportShareAccessed, actions);
         Assert.Contains(AuditLogActionNames.ReportShareAccessRejected, actions);
+
+        Assert.Contains(audits, audit =>
+            audit.Action == AuditLogActionNames.ReportCreated &&
+            audit.BeforeAfterJson.Contains("\"format\":\"pdf\"", StringComparison.Ordinal) &&
+            audit.BeforeAfterJson.Contains("\"fileUri\":\"storage://local/reports/", StringComparison.Ordinal));
+        Assert.Contains(audits, audit =>
+            audit.Action == AuditLogActionNames.ReportDownloadUrlIssued &&
+            audit.BeforeAfterJson.Contains("\"downloadUrl\":\"storage://local/reports/", StringComparison.Ordinal) &&
+            audit.BeforeAfterJson.Contains("\"expiresAt\":", StringComparison.Ordinal));
+        Assert.Contains(audits, audit =>
+            audit.Action == AuditLogActionNames.ReportDownloaded &&
+            audit.BeforeAfterJson.Contains("\"via\":\"short_lived_url\"", StringComparison.Ordinal));
+        Assert.Contains(audits, audit =>
+            audit.Action == AuditLogActionNames.ReportShareIssued &&
+            audit.BeforeAfterJson.Contains("\"shareUrlReturnedOnce\":true", StringComparison.Ordinal) &&
+            audit.BeforeAfterJson.Contains("\"hasShareToken\":true", StringComparison.Ordinal));
+        Assert.Contains(audits, audit =>
+            audit.Action == AuditLogActionNames.ReportShareRevoked &&
+            audit.BeforeAfterJson.Contains("\"shareRevokedAt\":", StringComparison.Ordinal));
+        Assert.Contains(audits, audit =>
+            audit.Action == AuditLogActionNames.ReportShareAccessed &&
+            audit.BeforeAfterJson.Contains("\"downloadExpiresAt\":", StringComparison.Ordinal));
+        Assert.Contains(audits, audit =>
+            audit.Action == AuditLogActionNames.ReportShareAccessRejected &&
+            audit.BeforeAfterJson.Contains("\"reason\":\"expired\"", StringComparison.Ordinal));
     }
 
     private static async Task DispatchAsync(ReportApiFactory factory, Guid jobId)

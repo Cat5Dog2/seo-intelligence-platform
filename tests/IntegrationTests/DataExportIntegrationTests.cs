@@ -242,10 +242,12 @@ public sealed class DataExportIntegrationTests
             var importJobId = importDocument.RootElement.GetProperty("data").GetProperty("jobId").GetGuid();
             await DispatchAsync(factory, importJobId);
 
+            Guid importId;
             await using (var scope = factory.Services.CreateAsyncScope())
             {
                 var dbContext = scope.ServiceProvider.GetRequiredService<SeoIntelligenceDbContext>();
                 var import = await dbContext.DataImports.AsNoTracking().SingleAsync(entity => entity.SourceFileUri == fileUri);
+                importId = import.Id;
                 Assert.Equal(StatusValues.Succeeded, import.Status);
                 Assert.Equal("excel", import.Format);
                 Assert.Equal("[]", import.ValidationErrorsJson);
@@ -259,6 +261,21 @@ public sealed class DataExportIntegrationTests
                     .ToArrayAsync();
                 Assert.Contains(AuditLogActionNames.DataExportCreated, actions);
                 Assert.Contains(AuditLogActionNames.DataImportCompleted, actions);
+            }
+
+            using (var importDetailResponse = await client.GetAsync($"/api/projects/{projectId}/imports/{importId}"))
+            using (var importDetailDocument = await ReadJsonAsync(importDetailResponse))
+            {
+                Assert.Equal(HttpStatusCode.OK, importDetailResponse.StatusCode);
+                var data = importDetailDocument.RootElement.GetProperty("data");
+                Assert.Equal(importId, data.GetProperty("importId").GetGuid());
+                Assert.Equal("keywords", data.GetProperty("importType").GetString());
+                Assert.Equal("excel", data.GetProperty("format").GetString());
+                Assert.Equal(StatusValues.Succeeded, data.GetProperty("status").GetString());
+                Assert.Equal(fileUri, data.GetProperty("sourceFileUri").GetString());
+                Assert.Equal(0, data.GetProperty("validationErrors").GetArrayLength());
+                Assert.Equal("developer", data.GetProperty("requestedBy").GetString());
+                Assert.Equal(projectId, data.GetProperty("projectId").GetGuid());
             }
         }
         finally
@@ -366,6 +383,16 @@ public sealed class DataExportIntegrationTests
             Assert.Single(items);
             Assert.Equal("rows[2].position", items[0].GetProperty("target").GetString());
             Assert.Contains("integer", items[0].GetProperty("message").GetString(), StringComparison.OrdinalIgnoreCase);
+
+            using var detailResponse = await client.GetAsync($"/api/projects/{projectId}/imports/{importId}");
+            using var detailDocument = await ReadJsonAsync(detailResponse);
+            var importData = detailDocument.RootElement.GetProperty("data");
+
+            Assert.Equal(HttpStatusCode.OK, detailResponse.StatusCode);
+            Assert.Equal(importId, importData.GetProperty("importId").GetGuid());
+            Assert.Equal(StatusValues.FailedFatal, importData.GetProperty("status").GetString());
+            Assert.Equal(1, importData.GetProperty("validationErrors").GetArrayLength());
+            Assert.Equal("rows[2].position", importData.GetProperty("validationErrors")[0].GetProperty("target").GetString());
         }
         finally
         {

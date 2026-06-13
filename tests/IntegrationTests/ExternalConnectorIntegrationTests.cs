@@ -71,6 +71,22 @@ public sealed class ExternalConnectorIntegrationTests
         Assert.Equal("secret-ref/ga4-main", updated.GetProperty("authRef").GetString());
         Assert.Equal("properties/1234", updated.GetProperty("settings").GetProperty("propertyId").GetString());
 
+        using (var listResponse = await client.GetAsync($"/api/projects/{projectId}/connectors?status=active&q=GA4"))
+        using (var listDocument = await ReadJsonAsync(listResponse))
+        {
+            Assert.Equal(HttpStatusCode.OK, listResponse.StatusCode);
+            var rawJson = listDocument.RootElement.GetRawText();
+            var items = listDocument.RootElement.GetProperty("data").EnumerateArray().ToArray();
+            var item = Assert.Single(items);
+            Assert.Equal(connectorId, item.GetProperty("connectorId").GetGuid());
+            Assert.Equal("ga4", item.GetProperty("connectorType").GetString());
+            Assert.Equal("secret-ref/ga4-main", item.GetProperty("authRef").GetString());
+            Assert.Equal("properties/1234", item.GetProperty("settings").GetProperty("propertyId").GetString());
+            Assert.DoesNotContain("secretValue", rawJson, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("oauthToken", rawJson, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("apiKey", rawJson, StringComparison.OrdinalIgnoreCase);
+        }
+
         using var testResponse = await client.PostAsync($"/api/projects/{projectId}/connectors/{connectorId}/test", content: null);
         using var testDocument = await ReadJsonAsync(testResponse);
 
