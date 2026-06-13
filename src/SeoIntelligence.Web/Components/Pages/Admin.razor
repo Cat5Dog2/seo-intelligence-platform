@@ -31,403 +31,119 @@
 
     @if (ActiveTab == WorkspaceTab)
     {
-        <section class="panel">
-            <div class="section-heading">
-                <h2>ワークスペース設定</h2>
-                <span class="muted">@WorkspaceStatus</span>
-            </div>
-            <div class="form-grid">
-                <label class="field">
-                    <span>名称</span>
-                    <input @bind="WorkspaceForm.Name" />
-                </label>
-                <label class="field">
-                    <span>Default Location</span>
-                    <input @bind="WorkspaceForm.DefaultLocation" />
-                </label>
-                <label class="field">
-                    <span>Default Language</span>
-                    <input @bind="WorkspaceForm.DefaultLanguage" />
-                </label>
-                <label class="field">
-                    <span>Retention JSON</span>
-                    <textarea @bind="WorkspaceForm.RetentionSettingsJson"></textarea>
-                </label>
-                <label class="field">
-                    <span>Notification Defaults JSON</span>
-                    <textarea @bind="WorkspaceForm.NotificationDefaultsJson"></textarea>
-                </label>
-                <button type="button" class="primary-button" @onclick="SaveWorkspaceAsync">保存</button>
-            </div>
-        </section>
+        <AdminWorkspacePanel WorkspaceForm="@WorkspaceForm" WorkspaceStatus="@WorkspaceStatus" OnSave="SaveWorkspaceAsync" />
     }
     else if (ActiveTab == CredentialTab)
     {
-        <section class="panel">
-            <div class="section-heading">
-                <h2>API認証情報</h2>
-                <div class="toolbar">
-                    <StatusFilter Value="@CredentialStatus" ValueChanged="OnCredentialStatusChanged" Statuses="@EnabledStatuses" />
-                    <button type="button" class="secondary-button" @onclick="LoadCredentialsAsync">再読み込み</button>
-                </div>
-            </div>
-
-            <div class="form-grid">
-                <label class="field">
-                    <span>Provider</span>
-                    <input data-testid="admin-credential-provider-input" @bind="CredentialForm.Provider" />
-                </label>
-                <label class="field">
-                    <span>Key Ref</span>
-                    <input data-testid="admin-credential-key-ref-input" @bind="CredentialForm.KeyRef" />
-                </label>
-                <label class="field">
-                    <span>Secret Value</span>
-                    <input type="password" data-testid="admin-credential-secret-input" @bind="CredentialForm.SecretValue" autocomplete="off" />
-                </label>
-                <button type="button" class="primary-button" data-testid="admin-credential-save-button" @onclick="SaveCredentialAsync">保存</button>
-                @if (EditingCredentialId.HasValue)
-                {
-                    <button type="button" class="text-button" @onclick="ClearCredentialForm">新規</button>
-                }
-            </div>
-
-            @if (RotatingCredentialId.HasValue)
-            {
-                <div class="form-grid">
-                    <label class="field">
-                        <span>New Key Ref</span>
-                        <input @bind="RotateForm.NewKeyRef" />
-                    </label>
-                    <label class="field">
-                        <span>New Secret Value</span>
-                        <input type="password" @bind="RotateForm.NewSecretValue" autocomplete="off" />
-                    </label>
-                    <button type="button" class="secondary-button" @onclick="RotateCredentialAsync">ローテーション</button>
-                    <button type="button" class="text-button" @onclick="ClearRotateForm">閉じる</button>
-                </div>
-            }
-
-            <DataTable Items="@Credentials" Columns="@CredentialColumns" IsLoading="@IsCredentialLoading" EmptyText="API認証情報はありません。">
-                <RowActions Context="credential">
-                    <div class="row-actions">
-                        <button type="button" class="table-action" @onclick="() => EditCredential(credential)">編集</button>
-                        <button type="button" class="table-action" @onclick="() => StartRotateCredential(credential.CredentialId)">ローテーション</button>
-                        @if (credential.Status == "disabled")
-                        {
-                            <button type="button" class="table-action" @onclick="() => EnableCredentialAsync(credential.CredentialId)">有効化</button>
-                        }
-                        else
-                        {
-                            <button type="button" class="table-action danger-button" @onclick="() => DisableCredentialAsync(credential.CredentialId)">無効化</button>
-                        }
-                        <AuditLink ResourceType="api_credential" ResourceId="@credential.CredentialId.ToString("D")" />
-                    </div>
-                </RowActions>
-            </DataTable>
-        </section>
+        <AdminCredentialsPanel
+            CredentialStatus="@CredentialStatus"
+            EnabledStatuses="@EnabledStatuses"
+            CredentialForm="@CredentialForm"
+            RotateForm="@RotateForm"
+            EditingCredentialId="@EditingCredentialId"
+            RotatingCredentialId="@RotatingCredentialId"
+            Credentials="@Credentials"
+            CredentialColumns="@CredentialColumns"
+            IsCredentialLoading="@IsCredentialLoading"
+            OnStatusChanged="OnCredentialStatusChanged"
+            OnReload="LoadCredentialsAsync"
+            OnSave="SaveCredentialAsync"
+            OnClear="ClearCredentialForm"
+            OnRotate="RotateCredentialAsync"
+            OnClearRotate="ClearRotateForm"
+            OnEdit="EditCredential"
+            OnStartRotate="StartRotateCredential"
+            OnEnable="EnableCredentialAsync"
+            OnDisable="DisableCredentialAsync" />
     }
     else if (ActiveTab == CreditTab)
     {
-        <section class="page-stack">
-            <div class="metric-strip">
-                <div class="metric">
-                    <span>表示中コール</span>
-                    <strong>@ExternalCalls.Count</strong>
-                </div>
-                <div class="metric">
-                    <span>消費クレジット</span>
-                    <strong>@ExternalCalls.Sum(call => call.ConsumedCredit).ToString("0.##")</strong>
-                </div>
-                <div class="metric">
-                    <span>402</span>
-                    <strong>@ExternalCalls.Count(call => call.StatusCode == 402)</strong>
-                </div>
-                <div class="metric">
-                    <span>429</span>
-                    <strong>@ExternalCalls.Count(call => call.StatusCode == 429)</strong>
-                </div>
-                <div class="metric">
-                    <span>失敗</span>
-                    <strong>@ExternalCalls.Count(call => call.StatusCode >= 400)</strong>
-                </div>
-            </div>
-            <section class="panel">
-                <div class="section-heading">
-                    <h2>外部API呼び出し・クレジット</h2>
-                    <button type="button" class="secondary-button" @onclick="LoadExternalCallsAsync">再読み込み</button>
-                </div>
-                <DataTable Items="@ExternalCalls" Columns="@ExternalCallColumns" IsLoading="@IsExternalCallLoading" EmptyText="外部API呼び出しはありません。">
-                    <RowActions Context="call">
-                        <AuditLink ResourceType="external_api_call" ResourceId="@call.CallId.ToString("D")" />
-                    </RowActions>
-                </DataTable>
-            </section>
-        </section>
+        <AdminCreditPanel
+            ExternalCalls="@ExternalCalls"
+            ExternalCallColumns="@ExternalCallColumns"
+            IsExternalCallLoading="@IsExternalCallLoading"
+            OnReload="LoadExternalCallsAsync" />
     }
     else if (ActiveTab == NotificationTab)
     {
-        <section class="page-stack">
-            <section class="panel">
-                <div class="section-heading">
-                    <h2>Discord通知設定</h2>
-                    <div class="toolbar">
-                        <StatusFilter Value="@ChannelStatus" ValueChanged="OnChannelStatusChanged" Statuses="@EnabledStatuses" />
-                        <button type="button" class="secondary-button" @onclick="LoadNotificationsAsync">再読み込み</button>
-                    </div>
-                </div>
-                <div class="form-grid">
-                    <label class="field">
-                        <span>名称</span>
-                        <input @bind="ChannelForm.Name" />
-                    </label>
-                    <label class="field">
-                        <span>Channel Type</span>
-                        <input @bind="ChannelForm.ChannelType" />
-                    </label>
-                    <label class="field">
-                        <span>Webhook Secret Ref</span>
-                        <input @bind="ChannelForm.WebhookSecretRef" />
-                    </label>
-                    <label class="field">
-                        <span>Project Id</span>
-                        <input @bind="ChannelForm.ProjectId" />
-                    </label>
-                    <label class="field">
-                        <span>Event Types</span>
-                        <input @bind="ChannelForm.EventTypes" />
-                    </label>
-                    <button type="button" class="primary-button" @onclick="SaveChannelAsync">保存</button>
-                    @if (EditingChannelId.HasValue)
-                    {
-                        <button type="button" class="text-button" @onclick="ClearChannelForm">新規</button>
-                    }
-                </div>
-
-                <DataTable Items="@Channels" Columns="@ChannelColumns" IsLoading="@IsChannelLoading" EmptyText="通知設定はありません。">
-                    <RowActions Context="channel">
-                        <div class="row-actions">
-                            <button type="button" class="table-action" @onclick="() => EditChannel(channel)">編集</button>
-                            <button type="button" class="table-action" @onclick="() => TestChannelAsync(channel.ChannelId)">テスト</button>
-                            @if (channel.Status == "disabled")
-                            {
-                                <button type="button" class="table-action" @onclick="() => EnableChannelAsync(channel.ChannelId)">有効化</button>
-                            }
-                            else
-                            {
-                                <button type="button" class="table-action danger-button" @onclick="() => DisableChannelAsync(channel.ChannelId)">無効化</button>
-                            }
-                            <AuditLink ResourceType="notification_channel" ResourceId="@channel.ChannelId.ToString("D")" />
-                        </div>
-                    </RowActions>
-                </DataTable>
-            </section>
-
-            <section class="panel">
-                <div class="section-heading">
-                    <h2>通知履歴</h2>
-                    <StatusFilter Value="@DeliveryStatus" ValueChanged="OnDeliveryStatusChanged" Statuses="@DeliveryStatuses" />
-                </div>
-                <DataTable Items="@Deliveries" Columns="@DeliveryColumns" IsLoading="@IsDeliveryLoading" EmptyText="通知履歴はありません。">
-                    <RowActions Context="delivery">
-                        <div class="row-actions">
-                            @if (delivery.Status is "failed" or "retrying")
-                            {
-                                <button type="button" class="table-action" @onclick="() => RetryDeliveryAsync(delivery.DeliveryId)">再送</button>
-                            }
-                            <AuditLink ResourceType="notification_delivery" ResourceId="@delivery.DeliveryId.ToString("D")" />
-                        </div>
-                    </RowActions>
-                </DataTable>
-            </section>
-        </section>
+        <AdminNotificationsPanel
+            ChannelStatus="@ChannelStatus"
+            DeliveryStatus="@DeliveryStatus"
+            EnabledStatuses="@EnabledStatuses"
+            DeliveryStatuses="@DeliveryStatuses"
+            ChannelForm="@ChannelForm"
+            EditingChannelId="@EditingChannelId"
+            Channels="@Channels"
+            Deliveries="@Deliveries"
+            ChannelColumns="@ChannelColumns"
+            DeliveryColumns="@DeliveryColumns"
+            IsChannelLoading="@IsChannelLoading"
+            IsDeliveryLoading="@IsDeliveryLoading"
+            OnChannelStatusChanged="OnChannelStatusChanged"
+            OnDeliveryStatusChanged="OnDeliveryStatusChanged"
+            OnReload="LoadNotificationsAsync"
+            OnSaveChannel="SaveChannelAsync"
+            OnClearChannel="ClearChannelForm"
+            OnEditChannel="EditChannel"
+            OnTestChannel="TestChannelAsync"
+            OnEnableChannel="EnableChannelAsync"
+            OnDisableChannel="DisableChannelAsync"
+            OnRetryDelivery="RetryDeliveryAsync" />
     }
     else if (ActiveTab == JobTab)
     {
-        <section class="panel">
-            <JobProgressPanel Title="ジョブ一覧" ProjectScoped="false" />
-        </section>
+        <AdminJobsPanel />
     }
     else if (ActiveTab == Phase2Tab)
     {
-        <section class="page-stack">
-            <section class="panel">
-                <div class="section-heading">
-                    <h2>Phase 2ジョブ</h2>
-                    <span class="muted">選択中プロジェクト: @(ProjectState.SelectedProject?.Name ?? "未選択")</span>
-                </div>
-                <div class="form-grid dense-form">
-                    <label class="field">
-                        <span>job_type</span>
-                        <select @bind="Phase2JobType">
-                            @foreach (var option in Phase2JobTypeOptions)
-                            {
-                                <option value="@option">@option</option>
-                            }
-                        </select>
-                    </label>
-                    <button type="button" class="secondary-button" @onclick="LoadPhase2OperationsAsync">再読み込み</button>
-                </div>
-                <JobProgressPanel Title="@Phase2JobTitle" ProjectScoped="true" JobType="@Phase2JobType" />
-            </section>
-
-            <section class="panel">
-                <div class="section-heading">
-                    <h2>順位アラート</h2>
-                    <button type="button" class="secondary-button" @onclick="LoadPhase2OperationsAsync">更新</button>
-                </div>
-                <DataTable Items="@Phase2Alerts" Columns="@Phase2AlertColumns" IsLoading="@IsPhase2Loading" EmptyText="順位アラートはありません。">
-                    <RowActions Context="alert">
-                        <AuditLink ResourceType="alert" ResourceId="@alert.AlertId.ToString("D")" />
-                    </RowActions>
-                </DataTable>
-            </section>
-
-            <section class="panel">
-                <div class="section-heading">
-                    <h2>alert_events</h2>
-                </div>
-                <DataTable Items="@Phase2AlertEvents" Columns="@Phase2AlertEventColumns" IsLoading="@IsPhase2Loading" EmptyText="alert_eventsはありません。">
-                    <RowActions Context="alertEvent">
-                        <div class="row-actions">
-                            @if (alertEvent.NotificationDeliveryId.HasValue)
-                            {
-                                <AuditLink ResourceType="notification_delivery" ResourceId="@alertEvent.NotificationDeliveryId.Value.ToString("D")" />
-                            }
-                            <AuditLink ResourceType="alert_event" ResourceId="@alertEvent.AlertEventId.ToString("D")" />
-                        </div>
-                    </RowActions>
-                </DataTable>
-            </section>
-
-            <section class="panel">
-                <div class="section-heading">
-                    <h2>rank_alert通知履歴</h2>
-                </div>
-                <DataTable Items="@Phase2RankAlertDeliveries" Columns="@DeliveryColumns" IsLoading="@IsPhase2Loading" EmptyText="rank_alert通知履歴はありません。">
-                    <RowActions Context="delivery">
-                        <AuditLink ResourceType="notification_delivery" ResourceId="@delivery.DeliveryId.ToString("D")" />
-                    </RowActions>
-                </DataTable>
-            </section>
-        </section>
+        <AdminPhase2Panel
+            SelectedProjectName="@ProjectState.SelectedProject?.Name"
+            Phase2JobType="@Phase2JobType"
+            Phase2JobTypeChanged="SetPhase2JobType"
+            Phase2JobTypeOptions="@Phase2JobTypeOptions"
+            Phase2JobTitle="@Phase2JobTitle"
+            Phase2Alerts="@Phase2Alerts"
+            Phase2AlertEvents="@Phase2AlertEvents"
+            Phase2RankAlertDeliveries="@Phase2RankAlertDeliveries"
+            Phase2AlertColumns="@Phase2AlertColumns"
+            Phase2AlertEventColumns="@Phase2AlertEventColumns"
+            DeliveryColumns="@DeliveryColumns"
+            IsPhase2Loading="@IsPhase2Loading"
+            OnReload="LoadPhase2OperationsAsync" />
     }
     else if (ActiveTab == Phase3Tab)
     {
-        <section class="page-stack">
-            <section class="panel">
-                <div class="section-heading">
-                    <h2>外部連携スタブ設定</h2>
-                    <div class="toolbar">
-                        <span class="muted">選択中プロジェクト: @(ProjectState.SelectedProject?.Name ?? "未選択")</span>
-                        <StatusFilter Value="@ConnectorStatus" ValueChanged="OnConnectorStatusChanged" Statuses="@EnabledStatuses" />
-                        <button type="button" class="secondary-button" @onclick="LoadPhase3OperationsAsync">再読み込み</button>
-                    </div>
-                </div>
-                <div class="form-grid dense-form">
-                    <label class="field">
-                        <span>connector_type</span>
-                        <select @bind="ConnectorForm.ConnectorType" disabled="@(ProjectState.SelectedProject is null)">
-                            <option value="gsc">gsc</option>
-                            <option value="ga4">ga4</option>
-                            <option value="cms">cms</option>
-                            <option value="bi">bi</option>
-                        </select>
-                    </label>
-                    <label class="field">
-                        <span>名称</span>
-                        <input @bind="ConnectorForm.Name" disabled="@(ProjectState.SelectedProject is null)" />
-                    </label>
-                    <label class="field">
-                        <span>auth_ref</span>
-                        <input @bind="ConnectorForm.AuthRef" disabled="@(ProjectState.SelectedProject is null)" />
-                    </label>
-                    <label class="field">
-                        <span>status</span>
-                        <select @bind="ConnectorForm.Status" disabled="@(ProjectState.SelectedProject is null)">
-                            <option value="active">active</option>
-                            <option value="disabled">disabled</option>
-                        </select>
-                    </label>
-                    <label class="field wide-field json-field">
-                        <span>settings JSON</span>
-                        <textarea @bind="ConnectorForm.SettingsJson" disabled="@(ProjectState.SelectedProject is null)"></textarea>
-                    </label>
-                    <button type="button" class="primary-button" @onclick="SaveConnectorAsync" disabled="@(ProjectState.SelectedProject is null)">保存</button>
-                    @if (EditingConnectorId.HasValue)
-                    {
-                        <button type="button" class="text-button" @onclick="ClearConnectorForm">新規</button>
-                    }
-                </div>
-
-                <DataTable Items="@Connectors" Columns="@ConnectorColumns" IsLoading="@IsConnectorLoading" EmptyText="外部連携スタブ設定はありません。">
-                    <RowActions Context="connector">
-                        <div class="row-actions">
-                            <button type="button" class="table-action" @onclick="() => EditConnector(connector)">編集</button>
-                            <button type="button" class="table-action" @onclick="() => TestConnectorAsync(connector.ConnectorId)">接続テスト</button>
-                            <button type="button" class="table-action" @onclick="() => LoadConnectorRunsAsync(connector.ConnectorId)">履歴</button>
-                            @if (connector.Status != "disabled")
-                            {
-                                <button type="button" class="table-action danger-button" @onclick="() => DisableConnectorAsync(connector.ConnectorId)">無効化</button>
-                            }
-                            <AuditLink ResourceType="external_connector_setting" ResourceId="@connector.ConnectorId.ToString("D")" />
-                        </div>
-                    </RowActions>
-                </DataTable>
-            </section>
-
-            <section class="panel">
-                <div class="section-heading">
-                    <h2>外部連携スタブ実行履歴</h2>
-                    <span class="muted">connector_id: @(SelectedConnectorId?.ToString("D") ?? "-")</span>
-                </div>
-                <DataTable Items="@ConnectorRuns" Columns="@ConnectorRunColumns" IsLoading="@IsConnectorRunLoading" EmptyText="外部連携スタブ実行履歴はありません。">
-                    <RowActions Context="run">
-                        <AuditLink ResourceType="external_connector_run" ResourceId="@run.RunId.ToString("D")" />
-                    </RowActions>
-                </DataTable>
-            </section>
-        </section>
+        <AdminPhase3Panel
+            SelectedProjectName="@ProjectState.SelectedProject?.Name"
+            IsProjectUnavailable="@(ProjectState.SelectedProject is null)"
+            ConnectorStatus="@ConnectorStatus"
+            EnabledStatuses="@EnabledStatuses"
+            ConnectorForm="@ConnectorForm"
+            EditingConnectorId="@EditingConnectorId"
+            SelectedConnectorId="@SelectedConnectorId"
+            Connectors="@Connectors"
+            ConnectorRuns="@ConnectorRuns"
+            ConnectorColumns="@ConnectorColumns"
+            ConnectorRunColumns="@ConnectorRunColumns"
+            IsConnectorLoading="@IsConnectorLoading"
+            IsConnectorRunLoading="@IsConnectorRunLoading"
+            OnConnectorStatusChanged="OnConnectorStatusChanged"
+            OnReload="LoadPhase3OperationsAsync"
+            OnSaveConnector="SaveConnectorAsync"
+            OnClearConnector="ClearConnectorForm"
+            OnEditConnector="EditConnector"
+            OnTestConnector="TestConnectorAsync"
+            OnLoadConnectorRuns="LoadConnectorRunsAsync"
+            OnDisableConnector="DisableConnectorAsync" />
     }
     else if (ActiveTab == AuditTab)
     {
-        <section class="panel">
-            <div class="section-heading">
-                <h2>監査ログ検索</h2>
-                <button type="button" class="secondary-button" @onclick="LoadAuditLogsAsync">検索</button>
-            </div>
-            <div class="form-grid">
-                <label class="field">
-                    <span>q</span>
-                    <input @bind="AuditForm.Q" />
-                </label>
-                <label class="field">
-                    <span>Actor</span>
-                    <input @bind="AuditForm.Actor" />
-                </label>
-                <label class="field">
-                    <span>Resource Type</span>
-                    <input @bind="AuditForm.ResourceType" />
-                </label>
-                <label class="field">
-                    <span>Resource Id</span>
-                    <input @bind="AuditForm.ResourceId" />
-                </label>
-                <label class="field">
-                    <span>Correlation Id</span>
-                    <input @bind="AuditForm.CorrelationId" />
-                </label>
-                <label class="field">
-                    <span>From</span>
-                    <input @bind="AuditForm.From" />
-                </label>
-                <label class="field">
-                    <span>To</span>
-                    <input @bind="AuditForm.To" />
-                </label>
-            </div>
-            <DataTable Items="@AuditLogs" Columns="@AuditColumns" IsLoading="@IsAuditLoading" EmptyText="監査ログはありません。" />
-        </section>
+        <AdminAuditPanel
+            AuditForm="@AuditForm"
+            AuditLogs="@AuditLogs"
+            AuditColumns="@AuditColumns"
+            IsAuditLoading="@IsAuditLoading"
+            OnSearch="LoadAuditLogsAsync" />
     }
 </div>
 
@@ -554,7 +270,7 @@
 
     private string ActiveTab { get; set; } = WorkspaceTab;
 
-    private WorkspaceFormModel WorkspaceForm { get; set; } = new();
+    private AdminWorkspaceFormModel WorkspaceForm { get; set; } = new();
 
     private string WorkspaceStatus { get; set; } = "未読込";
 
@@ -620,15 +336,15 @@
 
     private Guid? SelectedConnectorId { get; set; }
 
-    private CredentialFormModel CredentialForm { get; set; } = new();
+    private AdminCredentialFormModel CredentialForm { get; set; } = new();
 
-    private RotateCredentialFormModel RotateForm { get; set; } = new();
+    private AdminRotateCredentialFormModel RotateForm { get; set; } = new();
 
-    private ChannelFormModel ChannelForm { get; set; } = new();
+    private AdminChannelFormModel ChannelForm { get; set; } = new();
 
-    private ConnectorFormModel ConnectorForm { get; set; } = new();
+    private AdminConnectorFormModel ConnectorForm { get; set; } = new();
 
-    private AuditSearchFormModel AuditForm { get; set; } = new();
+    private AdminAuditSearchFormModel AuditForm { get; set; } = new();
 
     [SupplyParameterFromQuery(Name = "resourceType")]
     public string? QueryResourceType { get; set; }
@@ -672,7 +388,7 @@
         if (result.IsSuccess && result.Data is { } workspace)
         {
             WorkspaceStatus = workspace.Status;
-            WorkspaceForm = new WorkspaceFormModel
+            WorkspaceForm = new AdminWorkspaceFormModel
             {
                 Name = workspace.Name,
                 DefaultLocation = workspace.DefaultLocation,
@@ -752,7 +468,7 @@
     private void EditCredential(ApiCredentialDetails credential)
     {
         EditingCredentialId = credential.CredentialId;
-        CredentialForm = new CredentialFormModel
+        CredentialForm = new AdminCredentialFormModel
         {
             Provider = credential.Provider,
             KeyRef = credential.KeyRef
@@ -762,7 +478,7 @@
     private void StartRotateCredential(Guid credentialId)
     {
         RotatingCredentialId = credentialId;
-        RotateForm = new RotateCredentialFormModel();
+        RotateForm = new AdminRotateCredentialFormModel();
     }
 
     private async Task RotateCredentialAsync()
@@ -897,7 +613,7 @@
     private void EditChannel(NotificationChannelDetails channel)
     {
         EditingChannelId = channel.ChannelId;
-        ChannelForm = new ChannelFormModel
+        ChannelForm = new AdminChannelFormModel
         {
             Name = channel.Name,
             ChannelType = channel.ChannelType,
@@ -1139,7 +855,7 @@
     {
         EditingConnectorId = connector.ConnectorId;
         SelectedConnectorId = connector.ConnectorId;
-        ConnectorForm = new ConnectorFormModel
+        ConnectorForm = new AdminConnectorFormModel
         {
             ConnectorType = connector.ConnectorType,
             Name = connector.Name,
@@ -1217,31 +933,34 @@
     private void SetTab(string tab)
         => ActiveTab = tab;
 
+    private void SetPhase2JobType(string jobType)
+        => Phase2JobType = jobType;
+
     private string TabClass(string tab)
         => ActiveTab == tab ? "tab-button active" : "tab-button";
 
     private void ClearCredentialForm()
     {
         EditingCredentialId = null;
-        CredentialForm = new CredentialFormModel();
+        CredentialForm = new AdminCredentialFormModel();
     }
 
     private void ClearRotateForm()
     {
         RotatingCredentialId = null;
-        RotateForm = new RotateCredentialFormModel();
+        RotateForm = new AdminRotateCredentialFormModel();
     }
 
     private void ClearChannelForm()
     {
         EditingChannelId = null;
-        ChannelForm = new ChannelFormModel();
+        ChannelForm = new AdminChannelFormModel();
     }
 
     private void ClearConnectorForm()
     {
         EditingConnectorId = null;
-        ConnectorForm = new ConnectorFormModel();
+        ConnectorForm = new AdminConnectorFormModel();
     }
 
     private void ClearErrors()
@@ -1332,76 +1051,4 @@
 
     public void Dispose()
         => ProjectState.Changed -= OnProjectStateChanged;
-
-    private sealed class WorkspaceFormModel
-    {
-        public string? Name { get; set; }
-
-        public string? DefaultLocation { get; set; }
-
-        public string? DefaultLanguage { get; set; }
-
-        public string? RetentionSettingsJson { get; set; } = "{}";
-
-        public string? NotificationDefaultsJson { get; set; } = "{}";
-    }
-
-    private sealed class CredentialFormModel
-    {
-        public string? Provider { get; set; } = "rakko_keyword";
-
-        public string? KeyRef { get; set; }
-
-        public string? SecretValue { get; set; }
-    }
-
-    private sealed class RotateCredentialFormModel
-    {
-        public string? NewKeyRef { get; set; }
-
-        public string? NewSecretValue { get; set; }
-    }
-
-    private sealed class ChannelFormModel
-    {
-        public string? Name { get; set; }
-
-        public string? ChannelType { get; set; } = "discord";
-
-        public string? ProjectId { get; set; }
-
-        public string? WebhookSecretRef { get; set; }
-
-        public string? EventTypes { get; set; } = "job_failed, credit_low";
-    }
-
-    private sealed class ConnectorFormModel
-    {
-        public string? ConnectorType { get; set; } = "gsc";
-
-        public string? Name { get; set; }
-
-        public string? AuthRef { get; set; }
-
-        public string? SettingsJson { get; set; } = "{}";
-
-        public string? Status { get; set; } = "active";
-    }
-
-    private sealed class AuditSearchFormModel
-    {
-        public string? Q { get; set; }
-
-        public string? Actor { get; set; } = "developer";
-
-        public string? ResourceType { get; set; }
-
-        public string? ResourceId { get; set; }
-
-        public string? CorrelationId { get; set; }
-
-        public string? From { get; set; }
-
-        public string? To { get; set; }
-    }
 }

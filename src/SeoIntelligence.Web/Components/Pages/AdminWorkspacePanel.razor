@@ -1,0 +1,43 @@
+<section class="panel">
+    <div class="section-heading">
+        <h2>ワークスペース設定</h2>
+        <span class="muted">@WorkspaceStatus</span>
+    </div>
+    <div class="form-grid">
+        <label class="field">
+            <span>名称</span>
+            <input @bind="WorkspaceForm.Name" />
+        </label>
+        <label class="field">
+            <span>Default Location</span>
+            <input @bind="WorkspaceForm.DefaultLocation" />
+        </label>
+        <label class="field">
+            <span>Default Language</span>
+            <input @bind="WorkspaceForm.DefaultLanguage" />
+        </label>
+        <label class="field">
+            <span>Retention JSON</span>
+            <textarea @bind="WorkspaceForm.RetentionSettingsJson"></textarea>
+        </label>
+        <label class="field">
+            <span>Notification Defaults JSON</span>
+            <textarea @bind="WorkspaceForm.NotificationDefaultsJson"></textarea>
+        </label>
+        <button type="button" class="primary-button" @onclick="SaveAsync">保存</button>
+    </div>
+</section>
+
+@code {
+    [Parameter]
+    public AdminWorkspaceFormModel WorkspaceForm { get; set; } = new();
+
+    [Parameter]
+    public string WorkspaceStatus { get; set; } = "未読込";
+
+    [Parameter]
+    public EventCallback OnSave { get; set; }
+
+    private Task SaveAsync()
+        => OnSave.InvokeAsync();
+}

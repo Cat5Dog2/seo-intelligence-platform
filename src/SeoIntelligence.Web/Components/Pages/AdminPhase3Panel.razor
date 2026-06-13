@@ -1,0 +1,160 @@
+<section class="page-stack">
+    <section class="panel">
+        <div class="section-heading">
+            <h2>外部連携スタブ設定</h2>
+            <div class="toolbar">
+                <span class="muted">選択中プロジェクト: @(SelectedProjectName ?? "未選択")</span>
+                <StatusFilter Value="@ConnectorStatus" ValueChanged="@OnConnectorStatusChanged" Statuses="@EnabledStatuses" />
+                <button type="button" class="secondary-button" @onclick="ReloadAsync">再読み込み</button>
+            </div>
+        </div>
+        <div class="form-grid dense-form">
+            <label class="field">
+                <span>connector_type</span>
+                <select @bind="ConnectorForm.ConnectorType" disabled="@IsProjectUnavailable">
+                    <option value="gsc">gsc</option>
+                    <option value="ga4">ga4</option>
+                    <option value="cms">cms</option>
+                    <option value="bi">bi</option>
+                </select>
+            </label>
+            <label class="field">
+                <span>名称</span>
+                <input @bind="ConnectorForm.Name" disabled="@IsProjectUnavailable" />
+            </label>
+            <label class="field">
+                <span>auth_ref</span>
+                <input @bind="ConnectorForm.AuthRef" disabled="@IsProjectUnavailable" />
+            </label>
+            <label class="field">
+                <span>status</span>
+                <select @bind="ConnectorForm.Status" disabled="@IsProjectUnavailable">
+                    <option value="active">active</option>
+                    <option value="disabled">disabled</option>
+                </select>
+            </label>
+            <label class="field wide-field json-field">
+                <span>settings JSON</span>
+                <textarea @bind="ConnectorForm.SettingsJson" disabled="@IsProjectUnavailable"></textarea>
+            </label>
+            <button type="button" class="primary-button" @onclick="SaveConnectorAsync" disabled="@IsProjectUnavailable">保存</button>
+            @if (EditingConnectorId.HasValue)
+            {
+                <button type="button" class="text-button" @onclick="ClearConnectorAsync">新規</button>
+            }
+        </div>
+
+        <DataTable Items="@Connectors" Columns="@ConnectorColumns" IsLoading="@IsConnectorLoading" EmptyText="外部連携スタブ設定はありません。">
+            <RowActions Context="connector">
+                <div class="row-actions">
+                    <button type="button" class="table-action" @onclick="() => EditConnectorAsync(connector)">編集</button>
+                    <button type="button" class="table-action" @onclick="() => TestConnectorAsync(connector.ConnectorId)">接続テスト</button>
+                    <button type="button" class="table-action" @onclick="() => LoadConnectorRunsAsync(connector.ConnectorId)">履歴</button>
+                    @if (connector.Status != "disabled")
+                    {
+                        <button type="button" class="table-action danger-button" @onclick="() => DisableConnectorAsync(connector.ConnectorId)">無効化</button>
+                    }
+                    <AuditLink ResourceType="external_connector_setting" ResourceId="@connector.ConnectorId.ToString("D")" />
+                </div>
+            </RowActions>
+        </DataTable>
+    </section>
+
+    <section class="panel">
+        <div class="section-heading">
+            <h2>外部連携スタブ実行履歴</h2>
+            <span class="muted">connector_id: @(SelectedConnectorId?.ToString("D") ?? "-")</span>
+        </div>
+        <DataTable Items="@ConnectorRuns" Columns="@ConnectorRunColumns" IsLoading="@IsConnectorRunLoading" EmptyText="外部連携スタブ実行履歴はありません。">
+            <RowActions Context="run">
+                <AuditLink ResourceType="external_connector_run" ResourceId="@run.RunId.ToString("D")" />
+            </RowActions>
+        </DataTable>
+    </section>
+</section>
+
+@code {
+    [Parameter]
+    public string? SelectedProjectName { get; set; }
+
+    [Parameter]
+    public bool IsProjectUnavailable { get; set; }
+
+    [Parameter]
+    public string ConnectorStatus { get; set; } = "active";
+
+    [Parameter]
+    public IReadOnlyList<StatusFilterOption> EnabledStatuses { get; set; } = [];
+
+    [Parameter]
+    public AdminConnectorFormModel ConnectorForm { get; set; } = new();
+
+    [Parameter]
+    public Guid? EditingConnectorId { get; set; }
+
+    [Parameter]
+    public Guid? SelectedConnectorId { get; set; }
+
+    [Parameter]
+    public IReadOnlyList<ConnectorSettingsDetails> Connectors { get; set; } = [];
+
+    [Parameter]
+    public IReadOnlyList<ConnectorRunDetails> ConnectorRuns { get; set; } = [];
+
+    [Parameter]
+    public IReadOnlyList<DataTableColumn<ConnectorSettingsDetails>> ConnectorColumns { get; set; } = [];
+
+    [Parameter]
+    public IReadOnlyList<DataTableColumn<ConnectorRunDetails>> ConnectorRunColumns { get; set; } = [];
+
+    [Parameter]
+    public bool IsConnectorLoading { get; set; }
+
+    [Parameter]
+    public bool IsConnectorRunLoading { get; set; }
+
+    [Parameter]
+    public EventCallback<string> OnConnectorStatusChanged { get; set; }
+
+    [Parameter]
+    public EventCallback OnReload { get; set; }
+
+    [Parameter]
+    public EventCallback OnSaveConnector { get; set; }
+
+    [Parameter]
+    public EventCallback OnClearConnector { get; set; }
+
+    [Parameter]
+    public EventCallback<ConnectorSettingsDetails> OnEditConnector { get; set; }
+
+    [Parameter]
+    public EventCallback<Guid> OnTestConnector { get; set; }
+
+    [Parameter]
+    public EventCallback<Guid> OnLoadConnectorRuns { get; set; }
+
+    [Parameter]
+    public EventCallback<Guid> OnDisableConnector { get; set; }
+
+    private Task ReloadAsync()
+        => OnReload.InvokeAsync();
+
+    private Task SaveConnectorAsync()
+        => OnSaveConnector.InvokeAsync();
+
+    private Task ClearConnectorAsync()
+        => OnClearConnector.InvokeAsync();
+
+    private Task EditConnectorAsync(ConnectorSettingsDetails connector)
+        => OnEditConnector.InvokeAsync(connector);
+
+    private Task TestConnectorAsync(Guid connectorId)
+        => OnTestConnector.InvokeAsync(connectorId);
+
+    private Task LoadConnectorRunsAsync(Guid connectorId)
+        => OnLoadConnectorRuns.InvokeAsync(connectorId);
+
+    private Task DisableConnectorAsync(Guid connectorId)
+        => OnDisableConnector.InvokeAsync(connectorId);
+}

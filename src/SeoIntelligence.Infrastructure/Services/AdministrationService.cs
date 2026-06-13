@@ -26,6 +26,7 @@ public static class AdministrationServiceCollectionExtensions
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton<IProjectContextService, ProjectContextService>();
         services.TryAddScoped<IAuditLogWriter, AuditLogWriter>();
+        services.TryAddScoped<AdministrationAuditRecorder>();
         services.TryAddScoped<IAdministrationService, AdministrationService>();
         services.TryAddScoped<IMasterDataService, MasterDataService>();
         services.TryAddScoped<KeywordDiscoveryService>();
@@ -96,7 +97,7 @@ internal sealed class AdministrationService(
     SeoIntelligenceDbContext dbContext,
     TimeProvider timeProvider,
     ISecretStore secretStore,
-    IAuditLogWriter auditLogWriter,
+    AdministrationAuditRecorder auditRecorder,
     INotificationService notificationService)
     : IAdministrationService
 {
@@ -254,7 +255,7 @@ internal sealed class AdministrationService(
             return Failure<ApiCredentialDetails>(ErrorCode.NotFound, "API credential was not found.");
         }
 
-        var before = ToApiCredentialAuditSnapshot(credential);
+        var before = AdministrationAuditRecorder.ToApiCredentialAuditSnapshot(credential);
         credential.Provider = provider!;
         credential.UpdatedAt = NowUtc();
         AddApiCredentialAudit(context, AuditLogActionNames.ApiCredentialUpdated, credential, before);
@@ -296,7 +297,7 @@ internal sealed class AdministrationService(
             return Failure<ApiCredentialDetails>(ErrorCode.NotFound, "API credential was not found.");
         }
 
-        var before = ToApiCredentialAuditSnapshot(credential);
+        var before = AdministrationAuditRecorder.ToApiCredentialAuditSnapshot(credential);
         var now = NowUtc();
         if (secretValue is not null)
         {
@@ -865,7 +866,7 @@ internal sealed class AdministrationService(
             return Failure<ApiCredentialDetails>(ErrorCode.NotFound, "API credential was not found.");
         }
 
-        var before = ToApiCredentialAuditSnapshot(credential);
+        var before = AdministrationAuditRecorder.ToApiCredentialAuditSnapshot(credential);
         var now = NowUtc();
         credential.Status = status;
         credential.DisabledAt = status == StatusValues.Disabled ? now : null;
@@ -928,17 +929,7 @@ internal sealed class AdministrationService(
         string action,
         ApiCredentialEntity credential,
         object? before)
-        => auditLogWriter.Add(
-            context,
-            new AuditLogWriteRequest(
-                action,
-                AuditLogResourceTypes.ApiCredential,
-                credential.Id.ToString("D"),
-                new
-                {
-                    before,
-                    after = ToApiCredentialAuditSnapshot(credential)
-                }));
+        => auditRecorder.AddApiCredentialAudit(context, action, credential, before);
 
     private async Task<Result<ProjectDetails>> SetProjectStatusAsync(
         ProjectExecutionContext context,
@@ -1334,15 +1325,6 @@ internal sealed class AdministrationService(
 
     private static Result<T> Failure<T>(ErrorCode code, string message)
         => Result<T>.Failure(new Error(code, message));
-
-    private static object ToApiCredentialAuditSnapshot(ApiCredentialEntity entity)
-        => new
-        {
-            provider = entity.Provider,
-            keyRef = entity.KeyRef,
-            status = entity.Status,
-            disabledAt = entity.DisabledAt
-        };
 
     private static WorkspaceDetails MapWorkspace(WorkspaceEntity entity)
         => new(
