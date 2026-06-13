@@ -130,6 +130,7 @@ ISSUE-MVP-00X の続きから再開してください。
 - [x] ISSUE-P3-006 外部連携スタブを実装する
 - [x] ISSUE-P3-007 Phase 3 UIを実装する
 - [x] ISSUE-P3-008 Phase 3受入テストを整備する
+- [ ] ISSUE-REF-001 コードベース保守性リファクタリングを実施する
 - [ ] ISSUE-P4-001 エンタープライズ拡張を設計する
 - [ ] ISSUE-BACKLOG-001 推奨バックログを整理する
 
@@ -1050,6 +1051,43 @@ ISSUE-MVP-00X の続きから再開してください。
 受入条件:
 
 - [x] Phase 3完了条件が通る。
+
+## 横断リファクタリング
+
+### ISSUE-REF-001 コードベース保守性リファクタリングを実施する
+
+参照ドキュメント: `docs/basic_design.md`, `docs/test_plan.md`, `docs/requirements.md`, `docs/screen_design.md`
+
+関連: MVP(Phase 1相当)/Phase 2/Phase 3 実装済み機能全般。新規FR/ACは追加しない。
+
+目的:
+
+- [ ] MVP(Phase 1相当)/Phase 2/Phase 3完了後に大きくなったサービス、Blazor画面、DbContext、テストを、挙動を変えずに保守しやすい単位へ分割する。
+
+範囲:
+
+- [ ] `Admin.razor` など大きいBlazor画面をタブ/機能単位の子コンポーネントへ分割する。
+- [ ] `DataTransferService`, `ContentAnalysisService`, `RankMonitoringService`, `TopicClusterService`, `AdministrationService`, `ReportService` など高リスクInfrastructureサービスを、既存Application契約を維持したまま責務別の内部協調クラスへ分割する。
+- [ ] `SeoIntelligenceDbContext` のモデル設定を `IEntityTypeConfiguration<T>` など既存EF Core方針に沿う形で整理し、DBスキーマやmigrationは変更しない。
+- [ ] `MvpServiceContracts` / `SeoIntelligenceApiClient` / 大きいIntegration/E2Eテストのfixtureやbuilderを、機能単位で読みやすく整理する。
+- [ ] 既存テストの意味ある検証を維持し、テストを通すだけのハードコードや無意味なアサーションは追加しない。
+
+範囲外:
+
+- [ ] 新機能追加、API contract/URL/レスポンス形式変更、DB schema/migration変更、Secret/.env変更、外部API Real接続、本番依存追加は行わない。
+
+受入条件:
+
+- [ ] MVP(Phase 1相当)/Phase 2/Phase 3の既存機能、API契約、画面導線、DBスキーマが維持されている。
+- [ ] `Admin.razor` と、上記InfrastructureサービスまたはDbContextのうち少なくとも1つが、責務名の分かる小さい単位へ分割されている。
+- [ ] 分割後も代表BrowserE2Eと非Browserテストが通る。
+- [ ] 変更理由と検証結果がIssue/PRに記録されている。
+
+検証:
+
+- [ ] `dotnet build SeoIntelligence.sln`
+- [ ] `dotnet test --filter "Category!=BrowserE2E"`
+- [ ] `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-local.ps1 -RunBrowserTests -SkipBuild -SkipMigration`
 
 ## Phase 4
 

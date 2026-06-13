@@ -20,7 +20,7 @@
 
     <nav class="tab-bar" aria-label="管理メニュー">
         <button type="button" class="@TabClass(WorkspaceTab)" @onclick="@(() => SetTab(WorkspaceTab))">Workspace</button>
-        <button type="button" class="@TabClass(CredentialTab)" @onclick="@(() => SetTab(CredentialTab))">APIキー</button>
+        <button type="button" class="@TabClass(CredentialTab)" data-testid="admin-credentials-tab" @onclick="@(() => SetTab(CredentialTab))">APIキー</button>
         <button type="button" class="@TabClass(CreditTab)" @onclick="@(() => SetTab(CreditTab))">クレジット</button>
         <button type="button" class="@TabClass(NotificationTab)" @onclick="@(() => SetTab(NotificationTab))">Discord通知</button>
         <button type="button" class="@TabClass(JobTab)" @onclick="@(() => SetTab(JobTab))">ジョブ</button>
@@ -75,17 +75,17 @@
             <div class="form-grid">
                 <label class="field">
                     <span>Provider</span>
-                    <input @bind="CredentialForm.Provider" />
+                    <input data-testid="admin-credential-provider-input" @bind="CredentialForm.Provider" />
                 </label>
                 <label class="field">
                     <span>Key Ref</span>
-                    <input @bind="CredentialForm.KeyRef" />
+                    <input data-testid="admin-credential-key-ref-input" @bind="CredentialForm.KeyRef" />
                 </label>
                 <label class="field">
                     <span>Secret Value</span>
-                    <input type="password" @bind="CredentialForm.SecretValue" autocomplete="off" />
+                    <input type="password" data-testid="admin-credential-secret-input" @bind="CredentialForm.SecretValue" autocomplete="off" />
                 </label>
-                <button type="button" class="primary-button" @onclick="SaveCredentialAsync">保存</button>
+                <button type="button" class="primary-button" data-testid="admin-credential-save-button" @onclick="SaveCredentialAsync">保存</button>
                 @if (EditingCredentialId.HasValue)
                 {
                     <button type="button" class="text-button" @onclick="ClearCredentialForm">新規</button>

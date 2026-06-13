@@ -21,7 +21,7 @@
     <ErrorSummary Errors="@Errors" />
     @if (!string.IsNullOrWhiteSpace(Message))
     {
-        <div class="state-row">@Message</div>
+        <div class="state-row" data-testid="rank-status-message">@Message</div>
     }
 
     <section class="split-grid">
@@ -33,11 +33,11 @@
             <div class="form-grid dense-form">
                 <label class="field wide-field">
                     <span>keywords（改行区切り）</span>
-                    <textarea @bind="RankForm.KeywordsText" disabled="@(ProjectState.SelectedProject is null)"></textarea>
+                    <textarea data-testid="rank-keywords-input" @bind="RankForm.KeywordsText" disabled="@(ProjectState.SelectedProject is null)"></textarea>
                 </label>
                 <label class="field wide-field">
                     <span>targets（改行区切り）</span>
-                    <textarea @bind="RankForm.TargetsText" disabled="@(ProjectState.SelectedProject is null)"></textarea>
+                    <textarea data-testid="rank-targets-input" @bind="RankForm.TargetsText" disabled="@(ProjectState.SelectedProject is null)"></textarea>
                 </label>
                 <label class="field">
                     <span>targetType</span>
@@ -72,7 +72,7 @@
                     <input type="checkbox" @bind="RankForm.Deduplicate" disabled="@(ProjectState.SelectedProject is null)" />
                     <span>deduplicate</span>
                 </label>
-                <button type="button" class="primary-button" @onclick="RegisterRankCheckAsync" disabled="@(!CanOperate)">登録</button>
+                <button type="button" class="primary-button" data-testid="rank-register-button" @onclick="RegisterRankCheckAsync" disabled="@(!CanOperate)">登録</button>
             </div>
         </div>
 

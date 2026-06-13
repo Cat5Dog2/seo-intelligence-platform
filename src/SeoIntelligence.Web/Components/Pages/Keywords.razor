@@ -23,7 +23,7 @@
     <ErrorSummary Errors="@Errors" />
     @if (!string.IsNullOrWhiteSpace(Message))
     {
-        <div class="state-row">@Message</div>
+        <div class="state-row" data-testid="keyword-status-message">@Message</div>
     }
 
     <section class="panel">
