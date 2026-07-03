@@ -193,6 +193,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-local.ps1 -Run
 
 ローカル開発では `.env.example` を `.env` にコピーし、Discord Webhook URLなどの実値は `.env` にだけ置く。`.env` はGit管理対象外で、PowerShellのスモークスクリプトとE2Eテストは起動時に自動読み込みする。既にプロセス環境変数が設定されている場合は、そちらを優先する。
 
+`SecretStore__Provider=Configuration` のSecret Storeはプロセス内の設定を読み書きする。API経由で登録した秘密値（`secretValue`）はプロセス再起動で失われ、APIとWorkerの間でも共有されない。継続利用する秘密値は `Secrets__<参照名>` 形式の環境変数またはUser SecretsでAPIとWorkerの両方に設定し、APIへは参照名（`keyRef`等）だけを登録する。
+
 | Secret | 用途 | 注意 |
 | --- | --- | --- |
 | `rakko-keyword-api-key-dev` | ラッコキーワードAPIキー | DBへ実値保存しない。 |

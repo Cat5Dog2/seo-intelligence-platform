@@ -203,6 +203,8 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 
 API認証情報の作成/ローテーションでは、`secretValue`系と`keyRef`系を同時指定不可とする。`secretValue`を受け取る場合はAPIサーバーがSecret Storeへ登録し、生成または指定された参照名だけを`api_credentials.key_ref`へ保存する。`keyRef`を受け取る場合は既存Secret参照として扱い、APIサーバーは秘密値本体を受け取らない。レスポンス、ログ、監査ログには秘密値を出さず、マスク値または`key_ref`のみ返す。
 
+現在のSecret Store実装（`SecretStore:Provider=Configuration`）はAPIプロセス内の設定へ保存するため、`secretValue`で登録した秘密値はAPIサーバーの再起動で失われ、ジョブを実行する別プロセスのWorkerからは参照できない。継続利用する秘密値は、環境変数またはUser Secrets（`Secrets__<参照名>`）でAPIとWorkerの両方へ事前配布し、APIへは`keyRef`で参照名だけを登録する。
+
 監査ログ一覧は、共通の`page`、`pageSize`、`sortBy`、`orderBy`、`q`に加えて、`actor`、`resourceType`、`resourceId`、`correlationId`（または`correlation_id`）、`from`、`to`で検索できる。`from`と`to`はISO 8601日時として受け取り、`audit_logs.created_at`をUTC比較する。
 
 ### 7.2 プロジェクト・サイトAPI

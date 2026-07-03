@@ -37,6 +37,7 @@ internal sealed class DataTransferService(
     private const string XlsxFormat = "xlsx";
     private const string StrictValidationMode = "strict";
     private const int MaxImportRows = 50_000;
+    private const long MaxImportFileBytes = 20L * 1024 * 1024;
     private static readonly TimeSpan DownloadUrlTtl = TimeSpan.FromMinutes(15);
     private static readonly TimeSpan UploadUrlTtl = TimeSpan.FromMinutes(15);
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -603,11 +604,14 @@ internal sealed class DataTransferService(
             return Failure<DataImportDetails>(ErrorCode.Conflict, "Import source file URI is invalid.");
         }
 
-        ImportedTable table;
+        ImportedTable? table = null;
         try
         {
             await using var source = await objectStorage.OpenReadAsync(sourceKey, cancellationToken);
-            table = await ReadImportTableAsync(source, snapshot.Format, cancellationToken);
+            if (!source.CanSeek || source.Length <= MaxImportFileBytes)
+            {
+                table = await ReadImportTableAsync(source, snapshot.Format, cancellationToken);
+            }
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException)
         {
@@ -620,10 +624,15 @@ internal sealed class DataTransferService(
             return Failure<DataImportDetails>(ErrorCode.NotFound, "Project was not found.");
         }
 
-        var validationErrors = ValidateImportTable(table, snapshot.ImportType);
+        var validationErrors = table is null
+            ? new List<StoredImportValidationError>
+            {
+                CreateImportError("file", $"Import file size must be {MaxImportFileBytes} bytes or less.")
+            }
+            : ValidateImportTable(table, snapshot.ImportType);
         if (validationErrors.Count == 0)
         {
-            await ApplyImportAsync(context, project, jobId, snapshot.ImportType, table, validationErrors, cancellationToken);
+            await ApplyImportAsync(context, project, jobId, snapshot.ImportType, table!, validationErrors, cancellationToken);
         }
 
         var before = ToImportAuditSnapshot(import);
@@ -1911,12 +1920,13 @@ internal sealed class DataTransferService(
             return string.Empty;
         }
 
-        return value.Contains('"') ||
-            value.Contains(',') ||
-            value.Contains('\n') ||
-            value.Contains('\r')
-            ? $"\"{value.Replace("\"", "\"\"", StringComparison.Ordinal)}\""
-            : value;
+        var sanitized = TabularDataFile.SanitizeFormulaText(value);
+        return sanitized.Contains('"') ||
+            sanitized.Contains(',') ||
+            sanitized.Contains('\n') ||
+            sanitized.Contains('\r')
+            ? $"\"{sanitized.Replace("\"", "\"\"", StringComparison.Ordinal)}\""
+            : sanitized;
     }
 
     private static bool MatchesCommonFilters(string keyword, string location, string language, ExportFilters filters)

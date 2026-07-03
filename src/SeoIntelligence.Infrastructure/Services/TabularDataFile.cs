@@ -7,6 +7,7 @@ namespace SeoIntelligence.Infrastructure.Services;
 
 internal static class TabularDataFile
 {
+    private const long MaxXlsxPartBytes = 64L * 1024 * 1024;
     private static readonly XNamespace Spreadsheet = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
     private static readonly XNamespace Relationships = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
     private static readonly XNamespace PackageRelationships = "http://schemas.openxmlformats.org/package/2006/relationships";
@@ -86,6 +87,7 @@ internal static class TabularDataFile
             return new ImportedTable([], []);
         }
 
+        EnsurePartWithinLimit(worksheetEntry);
         using var worksheetStream = worksheetEntry.Open();
         var document = XDocument.Load(worksheetStream);
         var rows = new List<(int RowNumber, string[] Values)>();
@@ -137,6 +139,32 @@ internal static class TabularDataFile
         }
 
         return content.ToArray();
+    }
+
+    public static string SanitizeFormulaText(string value)
+    {
+        if (value.Length == 0)
+        {
+            return value;
+        }
+
+        var isFormulaLead = value[0] is '=' or '+' or '-' or '@' or '\t' or '\r';
+        if (!isFormulaLead ||
+            decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out _))
+        {
+            return value;
+        }
+
+        return "'" + value;
+    }
+
+    private static void EnsurePartWithinLimit(ZipArchiveEntry entry)
+    {
+        if (entry.Length > MaxXlsxPartBytes)
+        {
+            throw new InvalidDataException(
+                $"Xlsx part {entry.FullName} exceeds the maximum allowed size of {MaxXlsxPartBytes} bytes.");
+        }
     }
 
     private static void AddCsvRow(List<string[]> rows, List<string> currentRow, StringBuilder current)
@@ -255,6 +283,7 @@ internal static class TabularDataFile
             return [];
         }
 
+        EnsurePartWithinLimit(entry);
         using var stream = entry.Open();
         var document = XDocument.Load(stream);
         return document

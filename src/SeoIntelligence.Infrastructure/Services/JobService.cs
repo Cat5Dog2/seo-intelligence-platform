@@ -345,6 +345,30 @@ internal sealed class JobService(
         {
             var before = ToJobAuditSnapshot(job);
             var now = NowUtc();
+
+            // Redis未設定時もqueued→runningの遷移を単一の勝者に限定する。
+            // InMemoryプロバイダーはExecuteUpdateを持たないため、リレーショナル時のみ実行する。
+            if (dbContext.Database.IsRelational())
+            {
+                var claimed = await dbContext.Jobs
+                    .Where(entity => entity.Id == job.Id && entity.Status == StatusValues.Queued)
+                    .ExecuteUpdateAsync(
+                        setters => setters
+                            .SetProperty(entity => entity.Status, StatusValues.Running)
+                            .SetProperty(entity => entity.NextRunAt, (DateTime?)null)
+                            .SetProperty(entity => entity.UpdatedAt, now),
+                        cancellationToken);
+                if (claimed == 0)
+                {
+                    if (redisLease is not null)
+                    {
+                        await redisLease.DisposeAsync();
+                    }
+
+                    return Failure<IJobExecutionLease>(ErrorCode.Conflict, "Only queued jobs can start execution.");
+                }
+            }
+
             job.Status = StatusValues.Running;
             job.NextRunAt = null;
             job.UpdatedAt = now;
