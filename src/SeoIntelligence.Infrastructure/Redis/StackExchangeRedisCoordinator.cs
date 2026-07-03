@@ -84,13 +84,13 @@ internal sealed class StackExchangeRedisCoordinator : IRedisCoordinator, IAsyncD
 
     public async ValueTask DisposeAsync()
     {
-        connectionLock.Dispose();
-
         if (connection is not null)
         {
             await connection.CloseAsync();
             connection.Dispose();
         }
+
+        connectionLock.Dispose();
     }
 
     private async Task<IDatabase> GetDatabaseAsync(CancellationToken cancellationToken)
@@ -101,7 +101,10 @@ internal sealed class StackExchangeRedisCoordinator : IRedisCoordinator, IAsyncD
 
     private async Task<ConnectionMultiplexer> GetConnectionAsync(CancellationToken cancellationToken)
     {
-        if (connection?.IsConnected == true)
+        // AbortOnConnectFail=false のため、切断からの復旧はConnectionMultiplexerの
+        // 内部再接続に任せる。共有中の接続を破棄して作り直すと、他スレッドの
+        // 実行中操作を巻き込むため行わない。
+        if (connection is not null)
         {
             return connection;
         }
@@ -109,13 +112,7 @@ internal sealed class StackExchangeRedisCoordinator : IRedisCoordinator, IAsyncD
         await connectionLock.WaitAsync(cancellationToken);
         try
         {
-            if (connection?.IsConnected == true)
-            {
-                return connection;
-            }
-
-            connection?.Dispose();
-            connection = await ConnectionMultiplexer.ConnectAsync(configurationOptions).WaitAsync(cancellationToken);
+            connection ??= await ConnectionMultiplexer.ConnectAsync(configurationOptions).WaitAsync(cancellationToken);
             return connection;
         }
         finally

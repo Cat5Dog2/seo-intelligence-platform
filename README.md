@@ -151,8 +151,10 @@ BrowserE2EはAPI/Webと依存サービスが起動した状態で実行します
 
 ## セキュリティと運用上の前提
 
+- 認証・認可は未実装です（Phase 4スコープ）。API/Webは無認証で動作するため、信頼できるネットワーク内でのみ運用してください。
 - APIキー、Webhook URL、OAuthトークン等の実値はDB、レスポンス、ログ、監査ログへ出しません。
 - DBには `key_ref`、`webhook_secret_ref`、`auth_ref` 等の参照を保存します。
+- Secret Storeの既定実装（`SecretStore:Provider=Configuration`）はプロセス内の設定へ保存します。API経由で登録した秘密値はプロセス再起動で失われ、ジョブを実行する別プロセスのWorkerとは共有されません。実運用では環境変数またはUser SecretsでAPIとWorkerの両方へ同じSecret参照名の値を配布してください。
 - プロジェクト配下APIはURLの `projectId` と対象データの `project_id` を検証します。
 - DELETE系APIは物理削除せず、`archived` または `disabled` へ状態変更します。
 - 外部API呼び出しは `external_api_calls`、操作履歴は `audit_logs` に記録します。

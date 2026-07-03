@@ -133,7 +133,7 @@
 
 `POST /api/admin/api-credentials`
 
-秘密値をAPIサーバーへ渡してSecret Storeへ保存する場合。
+秘密値をAPIサーバーへ渡してSecret Storeへ保存する場合。Configuration実装ではAPIプロセス内にのみ保存されるため、再起動で失われ、Workerプロセスからは参照できない点に注意する（詳細は`api_design.md`と`environment_setup.md`を参照）。
 
 ```json
 {
