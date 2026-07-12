@@ -1,0 +1,63 @@
+# Production (VPS) overlay applied on top of compose.yaml:
+#   docker compose --env-file .env.production -f compose.yaml -f compose.production.yaml <command>
+# Only the deltas live here: Production environment, required password, the
+# internal/egress/caddy networks, and a distinct project name so a development
+# stack on the same host can never share volumes with this one.
+name: seo-intelligence-prod
+
+x-production-environment: &production-environment
+  DOTNET_ENVIRONMENT: Production
+  Database__Password: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.production}
+
+services:
+  postgres:
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.production}
+    networks:
+      - backend
+
+  redis:
+    networks:
+      - backend
+
+  migrate:
+    environment:
+      <<: *production-environment
+    networks:
+      - backend
+
+  api:
+    environment:
+      <<: *production-environment
+      ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
+    networks:
+      backend:
+      egress:
+      caddy:
+        aliases:
+          - seo-api
+
+  worker:
+    environment:
+      <<: *production-environment
+    networks:
+      - backend
+      - egress
+
+  web:
+    environment:
+      DOTNET_ENVIRONMENT: Production
+      ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
+    networks:
+      backend:
+      caddy:
+        aliases:
+          - seo-web
+
+networks:
+  backend:
+    internal: true
+  egress:
+  caddy:
+    external: true
+    name: ${CADDY_NETWORK:-seo-intelligence-caddy}

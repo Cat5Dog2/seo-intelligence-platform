@@ -1,0 +1,17 @@
+.git
+.gitignore
+.env
+.env.*
+**/.env
+**/.env.*
+.data
+**/.data
+**/bin
+**/obj
+artifacts
+TestResults
+**/TestResults
+*.binlog
+*.nupkg
+*.snupkg
+

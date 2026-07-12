@@ -38,6 +38,36 @@ jobs:
       - name: Migration dry-run
         run: bash scripts/migration-dry-run.sh
 
+      - name: Validate Compose files
+        env:
+          POSTGRES_PASSWORD: compose-validation-only
+        run: |
+          docker compose config --quiet
+          docker compose --env-file .env.production.example -f compose.yaml -f compose.production.yaml config --quiet
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build application containers
+        uses: docker/bake-action@v6
+        with:
+          source: .
+          files: compose.yaml
+          targets: |
+            api
+            web
+            worker
+            migrate
+          load: true
+          set: |
+            *.cache-from=type=gha
+            *.cache-to=type=gha,mode=max
+
+      - name: Smoke test application containers
+        env:
+          CONTAINER_SMOKE_SKIP_BUILD: "true"
+        run: bash scripts/container-smoke.sh
+
       - name: Comprehensive smoke test
         shell: pwsh
         run: |

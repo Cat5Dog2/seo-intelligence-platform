@@ -136,6 +136,7 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | 環境 | 推奨構成 |
 | --- | --- |
 | 開発 | Docker Compose: Web/API, Worker, PostgreSQL, Redis, LocalStack/MinIO。APIキーは開発用Key VaultまたはUser Secrets。 |
+| 小規模VPS（暫定・個人利用） | Docker Compose: Web/API/Worker/PostgreSQL/Redis。API/WorkerでLocal Storage Volumeを共有し、別Composeの共通Caddyだけを公開境界にする。アプリ内認証実装までは外部認証ゲートを必須とする。 |
 | ステージング | Azure Container AppsまたはApp Service、PostgreSQL Flexible Server、Azure Cache for Redis、Key Vault、Application Insights。 |
 | 本番 | Azure Container Apps/Kubernetes/App Serviceのいずれか。API/Worker分離、Auto Scale、Private Endpoint、WAF、監視/バックアップ有効化。 |
 
@@ -748,9 +749,17 @@ Phase 3追加: [AI再生成] [PDF出力] [共有URL発行]
 | Key Vault | APIキー、AIキー、OAuthシークレット、署名キーを保管。 |
 | CI/CD | GitHub Actions/Azure DevOps。build, test, migration dry-run, container scan, deploy, smoke test。 |
 
+小規模VPSでは、Web/API/Workerを.NET 10の非rootコンテナとして分離する。Compose定義はbase（`compose.yaml`）へ開発用（`compose.override.yaml`）またはVPS用（`compose.production.yaml`）のoverlayを重ねる構成とし、VPS overlayはホストへポート公開せず、共通Caddyと同じexternal networkへWeb/APIだけを接続する。API/Workerは`seo-storage`を同一パスへ共有mountし、WebのData Protection keysは別Volumeへ永続化する。DB接続はアプリが`Database__*`個別キーから接続文字列を組み立てる。DB MigrationはAPI起動時に自動適用せず、バックアップ確認後にEF migration bundleのone-shot `migrate`コンテナで適用する。API readinessは未適用Migrationを検知してunhealthyを返し、api/webコンテナのhealthcheckがデプロイ完了のシグナルとなる。MinIOは現行adapterが疎通確認のみのため、小規模VPSの既定構成には含めない。
+
 ### 14.1 環境変数例
 
 ```text
+# 個別キー（アプリが接続文字列を組み立てる。Host設定時はConnectionStringsより優先。Compose構成はこちら）
+Database__Host=postgres
+Database__Name=seo
+Database__Username=seo
+Database__Password=...
+# または完全な接続文字列（Database__Host未設定時に使用。ホスト開発のappsettingsが該当）
 ConnectionStrings__Default=Host=...;Database=seo;Username=...;
 Redis__ConnectionString=...
 Hangfire__Storage=PostgreSQL

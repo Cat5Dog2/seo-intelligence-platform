@@ -9,7 +9,7 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | 文書ID | TEST-RKSEO-001 |
 | 作成日 | 2026-05-30 |
 | 対象 | API / Blazor UI / Worker / DB / 外部API連携 / 運用機能 |
-| 関連文書 | requirements.md / basic_design.md / api_design.md / db_design.md / screen_design.md / job_design.md |
+| 関連文書 | requirements.md / basic_design.md / api_design.md / db_design.md / screen_design.md / job_design.md / docker_deployment.md |
 
 ## 改訂履歴
 
@@ -18,6 +18,8 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | 1.0 | 2026-05-30 | 初版作成。テストレベル、MVP受入、障害系、契約テスト、実行方針を定義。 | ChatGPT |
 | 1.1 | 2026-05-31 | CI雛形、ローカル依存サービス、migration dry-run、smoke testの実行方針を追記。 | Codex |
 | 1.2 | 2026-06-02 | MVP運用メトリクスと包括Runbookスモークの実行手順を追記。 | Codex |
+| 1.3 | 2026-07-11 | Compose構文、application image build、Migration、Volume永続化の確認方針を追記。 | Codex |
+| 1.4 | 2026-07-12 | レビュー反映。Compose overlay構成と`scripts/container-smoke.sh`による共通コンテナスモークへ更新。 | Claude |
 
 ## 1. 目的
 
@@ -44,6 +46,7 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | E2E | 主要業務フロー | キーワード探索、一括調査、CSV出力、管理操作。 |
 | Load | 大量データ/ジョブ | 50,000語、順位URL50件、キュー滞留、P95。 |
 | Security | 秘密情報/スコープ | APIキー非表示、CSRF、プロジェクト分離。 |
+| Container | Web/API/Worker/Migration | multi-stage build、非root実行、内部DNS、Migration、Volume共有/永続化。 |
 | Operational | 障害/復旧 | 再試行、通知、バックアップ復元、API仕様変更検知。 |
 
 ## 4. 受入基準トレース
@@ -141,6 +144,7 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | CSV/レポート出力 | 出力条件、発行、ダウンロードが監査される。 |
 | 共有URL | 有効トークンのみ取得でき、未知/改ざんトークンは404、期限切れ/失効済みトークンは410で拒否する。 |
 | AI | プロンプトからAPIキー、Webhook、認証情報、個人情報を除去し、出力はレビュー前提で保存する。 |
+| コンテナ公開境界 | `.env`がbuild contextへ入らず、VPS ComposeでDB/Redisのhost portがなく、Caddy経路が認証ゲート配下である。 |
 
 ## 10. 実行コマンド方針
 
@@ -153,7 +157,12 @@ dotnet test --filter Category=Unit
 dotnet test --filter Category=Integration
 dotnet test --filter Category=Contract
 docker compose up -d postgres redis minio minio-init
+docker compose config --quiet
+docker compose build api web worker migrate
+docker compose --profile tools run --rm migrate
 ```
+
+VPS用定義は検証用`POSTGRES_PASSWORD`を環境変数へ設定し、`docker compose --env-file .env.production.example -f compose.yaml -f compose.production.yaml config --quiet`で構文とoverlay mergeを確認する。コンテナ実起動試験はCIと同一の`bash scripts/container-smoke.sh`を使う。同スクリプトは分離したCompose project/Volume上でMigration、API `/healthz`・`/readyz`（未適用Migration検知を含む）、DB利用API、Web表示、Worker起動、Storage共有、Data Protection keys永続化、非root UIDを確認し、終了時にテスト用コンテナとVolumeを削除する。
 
 GitHub Actionsと同じスクリプトで確認する場合は以下を使う。
 
@@ -161,6 +170,7 @@ GitHub Actionsと同じスクリプトで確認する場合は以下を使う。
 bash scripts/build.sh
 bash scripts/test.sh
 bash scripts/migration-dry-run.sh
+bash scripts/container-smoke.sh
 pwsh -NoProfile -File scripts/smoke-local.ps1 -Configuration Release -SkipBuild -StopDependencies
 ```
 

@@ -312,7 +312,9 @@ function Wait-ComposeDependencies {
     $deadline = (Get-Date).AddSeconds($StartupTimeoutSeconds)
 
     while ((Get-Date) -lt $deadline) {
-        Invoke-DockerCompose -Arguments @("exec", "-T", "postgres", "pg_isready", "-U", "seo", "-d", "seo") *> $null
+        # Resolve the user/database inside the container so .env overrides of
+        # POSTGRES_USER / POSTGRES_DB keep working.
+        Invoke-DockerCompose -Arguments @("exec", "-T", "postgres", "sh", "-c", 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"') *> $null
         $postgresReady = $LASTEXITCODE -eq 0
 
         $redisOutput = Invoke-DockerCompose -Arguments @("exec", "-T", "redis", "redis-cli", "ping") 2>$null

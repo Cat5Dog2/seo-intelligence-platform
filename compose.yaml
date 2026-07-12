@@ -1,63 +1,156 @@
+# Base definition shared by development and production.
+# - Development: `docker compose ...` (compose.override.yaml is loaded automatically)
+# - Production:  `docker compose --env-file .env.production -f compose.yaml -f compose.production.yaml ...`
+# No host ports are published here; development ports live in compose.override.yaml.
 name: seo-intelligence-platform
+
+x-service-logging: &service-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+x-backend-environment: &backend-environment
+  DOTNET_ENVIRONMENT: ${DOTNET_ENVIRONMENT:-Development}
+  # The application composes the connection string from these discrete keys
+  # (DatabaseConnectionStringResolver), so passwords never need hand escaping.
+  Database__Host: postgres
+  Database__Port: "5432"
+  Database__Name: ${POSTGRES_DB:-seo}
+  Database__Username: ${POSTGRES_USER:-seo}
+  Database__Password: ${POSTGRES_PASSWORD:-seo_dev_password}
+  # Suppress Npgsql 10 optional GSS credential discovery logging.
+  Database__GssEncryptionMode: Disable
+  Redis__ConnectionString: redis:6379
+  Hangfire__Storage: PostgreSQL
+  Storage__Provider: Local
+  Storage__BasePath: /data/storage
 
 services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: seo
-      POSTGRES_USER: seo
-      POSTGRES_PASSWORD: seo_dev_password
-    ports:
-      - "5432:5432"
+      POSTGRES_DB: ${POSTGRES_DB:-seo}
+      POSTGRES_USER: ${POSTGRES_USER:-seo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-seo_dev_password}
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U seo -d seo"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
     volumes:
       - postgres-data:/var/lib/postgresql/data
+    restart: unless-stopped
+    logging: *service-logging
 
   redis:
     image: redis:7-alpine
     command: ["redis-server", "--appendonly", "yes"]
-    ports:
-      - "6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
     volumes:
       - redis-data:/data
+    restart: unless-stopped
+    logging: *service-logging
 
-  minio:
-    image: minio/minio:latest
-    command: ["server", "/data", "--console-address", ":9001"]
+  migrate:
+    # Run explicitly before starting api/worker on first setup and after adding
+    # migrations; api /readyz reports pending migrations until this has run.
+    profiles: ["tools"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: migrate
+    image: seo-intelligence-migrate
     environment:
-      MINIO_ROOT_USER: seo_dev
-      MINIO_ROOT_PASSWORD: seo_dev_password
-    ports:
-      - "9000:9000"
-      - "9001:9001"
-    volumes:
-      - minio-data:/data
-
-  minio-init:
-    image: minio/mc:latest
+      <<: *backend-environment
     depends_on:
-      minio:
-        condition: service_started
-    entrypoint:
-      - /bin/sh
-      - -c
-      - >
-        until mc alias set local http://minio:9000 seo_dev seo_dev_password; do
-          sleep 2;
-        done;
-        mc mb --ignore-existing local/seo-intelligence;
-        mc anonymous set none local/seo-intelligence
+      postgres:
+        condition: service_healthy
+    logging: *service-logging
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: api
+    image: seo-intelligence-api
+    env_file:
+      - path: ${APP_ENV_FILE:-.env}
+        required: false
+    environment:
+      <<: *backend-environment
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--output", "/dev/null", "http://localhost:8080/readyz"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - seo-storage:/data/storage
+    restart: unless-stopped
+    stop_grace_period: 30s
+    logging: *service-logging
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: worker
+    image: seo-intelligence-worker
+    env_file:
+      - path: ${APP_ENV_FILE:-.env}
+        required: false
+    environment:
+      <<: *backend-environment
+      Hangfire__WorkerCount: ${HANGFIRE_WORKER_COUNT:-4}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - seo-storage:/data/storage
+    restart: unless-stopped
+    stop_grace_period: 60s
+    logging: *service-logging
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: web
+    image: seo-intelligence-web
+    environment:
+      DOTNET_ENVIRONMENT: ${DOTNET_ENVIRONMENT:-Development}
+      Api__BaseUrl: http://api:8080
+      # Must match the volume target below; the application reads this key.
+      DataProtection__KeysPath: /app/.data/data-protection-keys
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--output", "/dev/null", "http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    depends_on:
+      api:
+        condition: service_healthy
+    volumes:
+      - web-data-protection:/app/.data/data-protection-keys
+    restart: unless-stopped
+    stop_grace_period: 30s
+    logging: *service-logging
 
 volumes:
   postgres-data:
   redis-data:
-  minio-data:
+  seo-storage:
+  web-data-protection:

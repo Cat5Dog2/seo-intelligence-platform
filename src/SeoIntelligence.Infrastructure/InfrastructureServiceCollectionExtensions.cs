@@ -66,7 +66,7 @@ public static class InfrastructureServiceCollectionExtensions
     private static DatabaseOptions BindDatabaseOptions(IConfiguration configuration)
         => new()
         {
-            ConnectionString = configuration.GetConnectionString(DatabaseOptions.DefaultConnectionName)
+            ConnectionString = DatabaseConnectionStringResolver.Resolve(configuration)
         };
 
     private static TOptions BindOptions<TOptions>(IConfiguration configuration, string sectionName)
