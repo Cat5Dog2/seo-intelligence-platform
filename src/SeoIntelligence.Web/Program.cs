@@ -35,7 +35,11 @@ builder.Services.AddSingleton(SeoIntelligenceDiagnostics.ActivitySource);
 builder.Services.AddSingleton(SeoIntelligenceDiagnostics.Meter);
 builder.Services.Configure<SeoIntelligenceApiOptions>(builder.Configuration.GetSection(SeoIntelligenceApiOptions.SectionName));
 builder.Services.AddScoped<ProjectSelectionState>();
-var dataProtectionKeysPath = Path.Combine(builder.Environment.ContentRootPath, ".data", "data-protection-keys");
+var dataProtectionKeysPath = builder.Configuration["DataProtection:KeysPath"];
+if (string.IsNullOrWhiteSpace(dataProtectionKeysPath))
+{
+    dataProtectionKeysPath = Path.Combine(builder.Environment.ContentRootPath, ".data", "data-protection-keys");
+}
 Directory.CreateDirectory(dataProtectionKeysPath);
 builder.Services
     .AddDataProtection()

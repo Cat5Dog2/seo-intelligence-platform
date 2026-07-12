@@ -43,10 +43,25 @@ internal sealed class InfrastructureReadinessProbe(
             var factory = serviceProvider.GetRequiredService<IDbContextFactory<SeoIntelligenceDbContext>>();
             await using var context = await factory.CreateDbContextAsync(cancellationToken);
             var canConnect = await context.Database.CanConnectAsync(cancellationToken);
+            if (!canConnect)
+            {
+                return Unhealthy("db", "Database connection failed.");
+            }
 
-            return canConnect
-                ? Healthy("db", "Database connection succeeded.")
-                : Unhealthy("db", "Database connection failed.");
+            // Migrations are applied by the one-shot migrate step, not at startup;
+            // readiness must fail when the schema lags the deployed application.
+            if (context.Database.IsRelational())
+            {
+                var pendingMigrations = (await context.Database.GetPendingMigrationsAsync(cancellationToken)).ToList();
+                if (pendingMigrations.Count > 0)
+                {
+                    return Unhealthy(
+                        "db",
+                        $"Database has {pendingMigrations.Count} pending migration(s): {string.Join(", ", pendingMigrations)}. Apply migrations before serving traffic.");
+                }
+            }
+
+            return Healthy("db", "Database connection succeeded and schema is up to date.");
         }
         catch (Exception exception)
         {

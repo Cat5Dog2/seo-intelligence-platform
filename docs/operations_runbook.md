@@ -9,7 +9,7 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | 文書ID | OPS-RKSEO-001 |
 | 作成日 | 2026-05-30 |
 | 対象 | API/Worker/DB/Redis/Storage/Secret/外部API/通知の運用 |
-| 関連文書 | requirements.md / basic_design.md / job_design.md / external_api_design.md / environment_setup.md |
+| 関連文書 | requirements.md / basic_design.md / job_design.md / external_api_design.md / environment_setup.md / docker_deployment.md |
 
 ## 改訂履歴
 
@@ -17,6 +17,8 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | --- | --- | --- | --- |
 | 1.0 | 2026-05-30 | 初版作成。日次確認、障害対応、クレジット、外部API、バックアップ復元を定義。 | ChatGPT |
 | 1.1 | 2026-06-02 | MVP運用メトリクス、管理画面/API確認導線、Runbookスモークコマンドを追記。 | Codex |
+| 1.2 | 2026-07-11 | Docker ComposeによるVPSデプロイ、更新、再起動、永続Volume運用を追記。 | Codex |
+| 1.3 | 2026-07-12 | レビュー反映。VPS手順を`docker_deployment.md`へ一本化し、Compose overlay構成、`/readyz`の未適用Migration検知、`container-smoke.sh`を反映。 | Claude |
 
 ## 1. 目的
 
@@ -114,6 +116,7 @@ OpenTelemetry Meter名は `SeoIntelligence`。MVPで記録する運用メトリ�
 | --- | --- |
 | PostgreSQL | 日次フルバックアップ、WAL/PITR有効化。 |
 | Storage | ローデータ、レポート、CSV/Excelを冗長化。 |
+| Web Data Protection keys | `web-data-protection` Volumeを保持し、Web再作成時も継続利用する。 |
 | Secret | Key Vault等でバージョン管理。実値はRunbookに書かない。 |
 | 復元検証 | 四半期ごとにステージング相当へ復元し、主要APIをスモークテストする。 |
 
@@ -130,9 +133,29 @@ OpenTelemetry Meter名は `SeoIntelligence`。MVPで記録する運用メトリ�
 | Worker設定変更 | 同時実行数、キュー、ポーリング間隔を変更し、ジョブ成功率を監視。 |
 | 保持期間変更 | `workspaces.retention_settings_json`更新、削除対象確認、監査情報保持確認。 |
 
+### 7.1 単一利用者向け暫定VPSの運用
+
+VPSの初回デプロイ・更新・バックアップの正本手順は `docs/docker_deployment.md` とする（コマンド列は本書へ複製しない）。これはアプリ内認証実装前の個人利用向け暫定構成であり、PostgreSQL、Redis、APIのホストポートを公開せず、Web/APIだけを共通Caddyの専用external networkへ接続する。
+
+運用上の注意（正本手順に加えて守ること）:
+
+- `.env.production`は`chmod 600`で権限を制限し、`POSTGRES_PASSWORD`、APIキー、Webhook URL等をGit、Dockerfile、build引数、ログへ含めない。
+- Migration前にDB/Storageのバックアップを確認する。更新時はWeb/API/Worker停止中にバックアップとMigrationを行う（メンテナンス時間）。
+- API `/readyz`は未適用Migrationを検知してunhealthyを返す。apiが`unhealthy`のときは`migrate`の実行有無を最初に確認する。
+- `restart worker`は同じimage/設定での再起動、`up -d --force-recreate worker`はCompose環境変数またはimage変更の反映に使う。
+- 通常停止は`down`までとし、`down -v`は使用しない。`-v`はPostgreSQL、Redis、共有Storage、Data Protection keysを削除する。アプリimageを戻す場合も、適用済みDB schemaとの互換性を確認し、Migrationを安易に逆適用しない。
+
+### 7.2 公開境界
+
+認証・認可は未実装のため、Caddy Basic認証、VPN、Cloudflare Access等の認証ゲートなしで公開しない。共有URLで使う`/api/*`は同じ認証ゲート配下で`seo-api:8080`へ、それ以外は`seo-web:8080`へproxyする。Blazorの`/_blazor` WebSocketもCaddy経由とする。
+
 ## 8. スモークテスト
 
-Runbookスモークは依存サービスReady、DB migration適用、API/Worker/Web起動、プロジェクト一覧、監査ログ検索、マスタ同期ジョブ完了、CSV出力ジョブ完了を確認する。Discordテスト通知はSecret参照が設定済みの通知チャンネルIDを `SMOKE_DISCORD_CHANNEL_ID` に渡した場合だけ実行する。
+Runbookスモークは依存サービスReady、DB migration適用、API/Worker/Web起動、プロジェクト一覧、監査ログ検索、マスタ同期ジョブ完了、CSV出力ジョブ完了を確認する。Discordテスト通知はSecret参照が設定済みの場合だけ実行する。
+
+### 8.1 ローカル/CIスモーク
+
+`scripts/smoke-local.ps1`は開発用Composeとホストの.NET SDK/PowerShellを使う。Docker-only VPS上や、VPS用Composeが稼働中の状態では実行しない。コンテナ版スタックのスモークはCIと同一の `bash scripts/container-smoke.sh` を使う（隔離Compose projectで実行され、開発スタックへ影響しない）。
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-local.ps1
@@ -157,6 +180,21 @@ Playwrightで画面操作まで含める場合:
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-local.ps1 -RunBrowserTests -InstallPlaywrightBrowsers
 ```
+
+### 8.2 VPSスモーク
+
+Caddy Basic認証を使う例では、passwordをコマンドへ直接書かず、`curl --user admin`の対話入力を使う。VPNやAccessを使う場合は、その認証方式で同じURLを確認する。
+
+```bash
+curl --fail --silent --show-error --user admin https://seo.example.com/healthz
+curl --fail --silent --show-error --user admin https://seo.example.com/api-healthz
+curl --fail --silent --show-error --user admin https://seo.example.com/api-readyz
+curl --fail --silent --show-error --user admin "https://seo.example.com/api/projects?page=1&pageSize=5"
+docker compose --env-file .env.production -f compose.yaml -f compose.production.yaml ps
+docker compose --env-file .env.production -f compose.yaml -f compose.production.yaml logs --tail 200 web api worker
+```
+
+続けて管理画面またはAPIから小さいMockジョブを1件登録し、Workerにより`succeeded`へ進むことを確認する。Real APIモードやDiscord通知のスモークはクレジット、契約スコープ、Secretを確認した場合だけ行う。
 
 | 対象 | 確認 |
 | --- | --- |

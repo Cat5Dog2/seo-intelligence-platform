@@ -81,29 +81,22 @@ Hangfire / Worker
 
 ### セットアップと起動
 
-依存サービスを起動します。
+Dockerだけで全スタックを起動する場合は、初回にMigrationを適用してからAPI、Worker、Webを起動します（`compose.override.yaml`が自動で読み込まれ、`127.0.0.1`へポート公開されます）。
 
 ```powershell
-docker compose up -d postgres redis minio minio-init
+docker compose up -d postgres redis
+docker compose --profile tools run --rm --build migrate
+docker compose up -d --build --wait api worker web
 docker compose ps
 ```
 
-EF Coreツールを復元してMigrationを適用します。
+既定のHTTP URLはAPIが `http://localhost:5251`、Webが `http://localhost:5295` です。IDEデバッグ・Hot Reload・依存サービスのみの起動を含む詳細な手順の正本は [`docs/environment_setup.md`](docs/environment_setup.md) を参照してください。
 
-```powershell
-dotnet tool restore
-dotnet tool run dotnet-ef database update --project src/SeoIntelligence.Infrastructure/SeoIntelligence.Infrastructure.csproj --startup-project src/SeoIntelligence.Api/SeoIntelligence.Api.csproj
-```
+## VPSデプロイ（暫定・個人利用）
 
-API、Web、Workerを別ターミナルで起動します。
+VPSでは `compose.yaml` に [`compose.production.yaml`](compose.production.yaml) をoverlayとして重ねます。DB、Redis、APIはホストへポート公開せず、Web/APIだけを共通Caddyの専用external networkへ接続します。アプリ内認証が未実装のため、これは外部認証ゲートで保護する単一利用者向けの暫定構成です。
 
-```powershell
-dotnet run --project src/SeoIntelligence.Api
-dotnet run --project src/SeoIntelligence.Web
-dotnet run --project src/SeoIntelligence.Worker
-```
-
-既定のHTTP URLはAPIが `http://localhost:5251`、Webが `http://localhost:5295` です。詳細は [`docs/environment_setup.md`](docs/environment_setup.md) を参照してください。
+初回デプロイ、更新、バックアップ、Caddy設定を含む手順の正本は [`docs/docker_deployment.md`](docs/docker_deployment.md) を参照してください。`.env.production`の`POSTGRES_PASSWORD`を必ず設定し、Gitへ追加しないでください。
 
 ### 外部APIモード
 
@@ -146,8 +139,9 @@ BrowserE2EはAPI/Webと依存サービスが起動した状態で実行します
 1. .NET 10でrestoreし、`scripts/build.sh` でRelease buildします。
 2. `scripts/test.sh` でRelease testを実行します。
 3. `scripts/migration-dry-run.sh` でEF Coreの冪等Migration SQLを生成します。
-4. `scripts/smoke-local.ps1` で依存サービス、Migration、API/Worker/Web、Health/Readiness、マスタ同期、CSV出力までを確認します。BrowserE2Eはリポジトリ変数 `RUN_BROWSER_E2E=true` の場合だけ追加実行します。
-5. PostgreSQL、Redis、MinIO、MinIO Clientの利用イメージをTrivyでスキャンし、未修正脆弱性を除くHIGH/CRITICALを表示します。現在の `exit-code: "0"` 設定では検出結果はレポートのみで、CIを失敗させません。
+4. 開発用/VPS用Composeの構文を検証し、Web/API/Worker/Migration imageをGitHub Actionsレイヤーキャッシュ付きでbuildして、`scripts/container-smoke.sh`で隔離Compose project上のMigration、HTTP、非root、Storage共有、Data Protection keys永続化をスモーク確認します。同スクリプトはローカルでも `bash scripts/container-smoke.sh` で実行できます。
+5. `scripts/smoke-local.ps1` で依存サービス、Migration、API/Worker/Web、Health/Readiness、マスタ同期、CSV出力までを確認します。BrowserE2Eはリポジトリ変数 `RUN_BROWSER_E2E=true` の場合だけ追加実行します。
+6. PostgreSQL、Redis、MinIO、MinIO Clientの利用イメージをTrivyでスキャンし、未修正脆弱性を除くHIGH/CRITICALを表示します。現在の `exit-code: "0"` 設定では検出結果はレポートのみで、CIを失敗させません。
 
 ## セキュリティと運用上の前提
 
@@ -173,6 +167,7 @@ BrowserE2EはAPI/Webと依存サービスが起動した状態で実行します
 | [`docs/external_api_design.md`](docs/external_api_design.md) | 外部API、Secret、クレジット、キャッシュ |
 | [`docs/operations_runbook.md`](docs/operations_runbook.md) | 運用、障害対応、スモークテスト |
 | [`docs/environment_setup.md`](docs/environment_setup.md) | ローカル環境、設定、起動確認 |
+| [`docs/docker_deployment.md`](docs/docker_deployment.md) | Docker Compose、VPS、共通Caddy、更新手順 |
 | [`docs/adr/`](docs/adr/) | 技術選定記録 |
 | [`todo.md`](todo.md) | Issue単位の実装状況と完了条件 |
 

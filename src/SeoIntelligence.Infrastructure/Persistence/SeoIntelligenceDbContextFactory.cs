@@ -25,8 +25,7 @@ public sealed class SeoIntelligenceDbContextFactory
             return explicitConnectionString;
         }
 
-        var environmentConnectionString = Environment.GetEnvironmentVariable(
-            $"ConnectionStrings__{DatabaseOptions.DefaultConnectionName}");
+        var environmentConnectionString = DatabaseConnectionStringResolver.ResolveFromEnvironment();
         if (!string.IsNullOrWhiteSpace(environmentConnectionString))
         {
             return environmentConnectionString;

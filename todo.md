@@ -1097,6 +1097,55 @@ ISSUE-MVP-00X の続きから再開してください。
 - `SeoIntelligenceApiClient` の管理/運用系メソッドを partial ファイルへ分割し、公開インターフェースとURL/レスポンス契約は変更していない。
 - 検証結果: `dotnet build SeoIntelligence.sln`、`dotnet test --filter "Category!=BrowserE2E"`、`scripts/smoke-local.ps1 -RunBrowserTests -SkipBuild -SkipMigration` が成功。
 
+## 横断運用基盤
+
+### ISSUE-OPS-001 Web/API/WorkerをDocker Composeで運用可能にする
+
+参照ドキュメント: `docs/basic_design.md`, `docs/environment_setup.md`, `docs/operations_runbook.md`, `docs/docker_deployment.md`, `docs/test_plan.md`
+
+目的:
+
+- [x] VPSへ.NET SDKを直接導入せず、Web、API、Worker、PostgreSQL、RedisをDocker Composeで再現可能に起動・更新する。
+
+範囲:
+
+- [x] .NET 10のmulti-stage DockerfileでWeb/API/Workerを個別imageとしてbuildし、非rootユーザーで実行する。
+- [x] ローカル用ComposeへWeb/API/Workerとone-shot Migrationを追加し、従来の依存サービスだけを起動する開発フローも維持する。
+- [x] VPS用ComposeでDB/Redisのホストポートを公開せず、共通Caddy用の専用external networkへWeb/APIだけを接続する。
+- [x] API/WorkerのLocal StorageとWebのData Protection keysをnamed Volumeへ永続化する。
+- [x] MinIOを任意profileにし、現行adapterの対応範囲に合わせてLocal Storageを既定にする。
+- [x] `.env`をbuild contextから除外し、VPS用Secret雛形、ログローテーション、認証ゲート、バックアップ注意点を文書化する。
+- [x] CIでCompose構文、Web/API/Worker/Migration imageのbuild、隔離Volume上のコンテナ起動を検証する。
+
+受入条件:
+
+- [x] 開発用/VPS用Composeの`config --quiet`が成功する。
+- [x] Web/API/Worker/Migrationの全targetがbuildできる。
+- [x] 隔離したComposeスタックで3件のMigration、API Health/Readiness、DB利用API、Web表示が成功する。
+- [x] API/Workerが同じStorage Volumeを参照し、WebのData Protection keysが再起動後も保持される。
+- [x] Web/API/Workerが非rootで起動し、Worker単独再起動後も稼働する。
+
+検証:
+
+- [x] `docker compose -f compose.yaml config --quiet`
+- [x] `docker compose --env-file .env.production.example -f compose.yaml -f compose.production.yaml config --quiet`（検証用`POSTGRES_PASSWORD`を環境変数で指定）
+- [x] `docker compose -f compose.yaml build api web worker migrate`
+- [x] 隔離Compose projectでMigration、Web/API/Worker起動、HTTP 200、Volume共有/永続化、非root実行を確認
+- [x] `dotnet build SeoIntelligence.sln --configuration Release`
+- [x] `dotnet test SeoIntelligence.sln --configuration Release --no-build --filter "Category!=BrowserE2E"`
+
+レビュー反映（2026-07-12）:
+
+- [x] `/readyz`が未適用Migrationを検知してunhealthyを返す（`InfrastructureReadinessProbe`。InMemoryプロバイダーではskip）。
+- [x] 接続文字列をアプリ側で`Database__*`個別キーから組み立てる（`DatabaseConnectionStringResolver`、design-time factory対応、ContractTests追加）。Composeの手書きエスケープを廃止。
+- [x] Composeをbase（`compose.yaml`）+開発overlay（`compose.override.yaml`）+VPS overlay（差分のみ、project name `seo-intelligence-prod`）へ再編。環境切替は`DOTNET_ENVIRONMENT`一本化。
+- [x] api/webへコンテナhealthcheckを追加（runtime imageへcurl導入）し、webは`service_healthy`でゲート。`up -d --wait`をデプロイ完了シグナルとする。
+- [x] Dockerfileを共有buildステージ+NuGetキャッシュmountへ再編（共有プロジェクトのコンパイルを1回に）。`migrate`をEF migration bundleの小型runtime imageへ変更。
+- [x] CIのコンテナスモークを`scripts/container-smoke.sh`へ切り出し（隔離Compose project、リトライ関数統合、失敗時ログダンプ共通化）。image buildへGitHub Actionsレイヤーキャッシュ（docker/bake-action + type=gha）を導入。
+- [x] WebのData Protection keysパスを`DataProtection__KeysPath`設定キーで指定可能にし、Composeのvolume targetと同一ソース化。
+- [x] `smoke-local.ps1`のpg_isreadyをコンテナ内`$POSTGRES_USER`/`$POSTGRES_DB`参照へ修正。
+- [x] VPS手順を`docker_deployment.md`へ一本化し、README/runbookは参照化（`chmod 600`のdrift解消）。
+
 ## Phase 4
 
 ### ISSUE-P4-001 エンタープライズ拡張を設計する
