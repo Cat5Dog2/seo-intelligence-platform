@@ -529,6 +529,68 @@ public sealed class SearchVolumeIntegrationTests
         }
     }
 
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task SearchVolumeInvalidExternalResponseFailsFatallyWithoutRetryingBilledRegistration()
+    {
+        await using var factory = new SearchVolumeApiFactory();
+        using var client = CreateClient(factory);
+        var projectId = await SeedProjectAsync(factory);
+        factory.RakkoKeywordClient.FailRegistrationWithInvalidResponse = true;
+
+        try
+        {
+            using var response = await client.PostAsJsonAsync(
+                $"/api/projects/{projectId}/search-volume/jobs",
+                new
+                {
+                    keywords = new[] { "seo" },
+                    location = "Japan",
+                    language = "Japanese",
+                    aggregationPeriodMonths = 12
+                });
+            using var document = await ReadJsonAsync(response);
+            var jobId = document.RootElement.GetProperty("data").GetProperty("jobId").GetGuid();
+
+            await using (var scope = factory.Services.CreateAsyncScope())
+            {
+                var dispatcher = scope.ServiceProvider.GetRequiredService<IJobDispatcher>();
+                await dispatcher.DispatchAsync(jobId);
+            }
+
+            await using (var scope = factory.Services.CreateAsyncScope())
+            {
+                var dbContext = scope.ServiceProvider.GetRequiredService<SeoIntelligenceDbContext>();
+                var job = await dbContext.Jobs.AsNoTracking().SingleAsync(entity => entity.Id == jobId);
+
+                // 課金される登録POSTは契約違反レスポンスでは再試行しない。
+                Assert.Equal(StatusValues.FailedFatal, job.Status);
+                Assert.Equal(0, job.RetryCount);
+                Assert.Null(job.NextRunAt);
+                Assert.NotNull(job.CompletedAt);
+
+                using var error = JsonDocument.Parse(job.ErrorJson!);
+                Assert.Equal("invalid_response", error.RootElement.GetProperty("errorCode").GetString());
+                Assert.False(error.RootElement.GetProperty("retryable").GetBoolean());
+            }
+
+            Assert.Equal(1, factory.RakkoKeywordClient.RegisterCallCount);
+
+            // 再ディスパッチしても終端ジョブは外部APIを再度呼ばない。
+            await using (var scope = factory.Services.CreateAsyncScope())
+            {
+                var dispatcher = scope.ServiceProvider.GetRequiredService<IJobDispatcher>();
+                await dispatcher.DispatchAsync(jobId);
+            }
+
+            Assert.Equal(1, factory.RakkoKeywordClient.RegisterCallCount);
+        }
+        finally
+        {
+            DeleteTempStoragePath(factory.StoragePath);
+        }
+    }
+
     private static async Task SeedMasterDataAsync(
         SearchVolumeApiFactory factory,
         string? activeLocationName = "Japan",
@@ -1008,11 +1070,28 @@ public sealed class SearchVolumeIntegrationTests
 
         public int ResultsCallCount { get; private set; }
 
+        public int RegisterCallCount { get; private set; }
+
+        /// <summary>
+        /// requestIdを解釈できない契約違反レスポンス(invalid_response)を再現する。
+        /// </summary>
+        public bool FailRegistrationWithInvalidResponse { get; set; }
+
         public Task<RakkoKeywordCallResult<RakkoSearchVolumeRegistration>> RegisterSearchVolumeAsync(
             RakkoKeywordClientContext context,
             RakkoSearchVolumeRegistrationRequest request,
             CancellationToken cancellationToken = default)
         {
+            RegisterCallCount++;
+            if (FailRegistrationWithInvalidResponse)
+            {
+                return Task.FromResult(RakkoKeywordCallResult<RakkoSearchVolumeRegistration>.Failure(
+                    500,
+                    ["Rakko Keyword API returned an invalid response."],
+                    RakkoKeywordFailureKind.Fatal,
+                    ExternalCall("/v1/search-volume", "invalid_response")));
+            }
+
             var requestId = nextRequestId++;
             requests[requestId] = request.Keywords.ToArray();
             return Task.FromResult(RakkoKeywordCallResult<RakkoSearchVolumeRegistration>.Success(

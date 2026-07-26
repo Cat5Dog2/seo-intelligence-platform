@@ -1206,7 +1206,17 @@ internal sealed class RegisterSearchVolumeJob(
     {
         var statusCode = TryReadStatusCode(error) ??
             (error.Code is ErrorCode.ExternalTemporaryFailure or ErrorCode.RateLimited ? 429 : 400);
-        return JobFailure.FromHttpStatusCode(statusCode, TryReadDetail(error, "errorCode"), error.Message);
+        var errorCode = TryReadDetail(error, "errorCode");
+
+        // 契約違反レスポンス(invalid_response等)はHTTPステータスが5xxでも再試行しない。
+        // POST /v1/search-volumeは1回あたり最低15クレジットを消費し、requestIdを取得できていない
+        // ため外部登録を再利用できず、再試行はクレジットを二重に消費するだけになる。
+        if (error.Code is ErrorCode.ExternalFatalFailure)
+        {
+            return JobFailure.ExternalFatal(statusCode, errorCode, error.Message);
+        }
+
+        return JobFailure.FromHttpStatusCode(statusCode, errorCode, error.Message);
     }
 
     private static int? TryReadStatusCode(Error error)
@@ -1280,7 +1290,17 @@ internal sealed class PollSearchVolumeStatusJob(
     {
         var statusCode = TryReadStatusCode(error) ??
             (error.Code is ErrorCode.ExternalTemporaryFailure or ErrorCode.RateLimited ? 429 : 400);
-        return JobFailure.FromHttpStatusCode(statusCode, TryReadDetail(error, "errorCode"), error.Message);
+        var errorCode = TryReadDetail(error, "errorCode");
+
+        // 契約違反レスポンス(invalid_response等)はHTTPステータスが5xxでも再試行しない。
+        // POST /v1/search-volumeは1回あたり最低15クレジットを消費し、requestIdを取得できていない
+        // ため外部登録を再利用できず、再試行はクレジットを二重に消費するだけになる。
+        if (error.Code is ErrorCode.ExternalFatalFailure)
+        {
+            return JobFailure.ExternalFatal(statusCode, errorCode, error.Message);
+        }
+
+        return JobFailure.FromHttpStatusCode(statusCode, errorCode, error.Message);
     }
 
     private static int? TryReadStatusCode(Error error)
@@ -1385,7 +1405,17 @@ internal sealed class FetchSearchVolumeResultsJob(
     {
         var statusCode = TryReadStatusCode(error) ??
             (error.Code is ErrorCode.ExternalTemporaryFailure or ErrorCode.RateLimited ? 429 : 400);
-        return JobFailure.FromHttpStatusCode(statusCode, TryReadDetail(error, "errorCode"), error.Message);
+        var errorCode = TryReadDetail(error, "errorCode");
+
+        // 契約違反レスポンス(invalid_response等)はHTTPステータスが5xxでも再試行しない。
+        // POST /v1/search-volumeは1回あたり最低15クレジットを消費し、requestIdを取得できていない
+        // ため外部登録を再利用できず、再試行はクレジットを二重に消費するだけになる。
+        if (error.Code is ErrorCode.ExternalFatalFailure)
+        {
+            return JobFailure.ExternalFatal(statusCode, errorCode, error.Message);
+        }
+
+        return JobFailure.FromHttpStatusCode(statusCode, errorCode, error.Message);
     }
 
     private static int? TryReadStatusCode(Error error)

@@ -53,6 +53,16 @@ public sealed class RakkoKeywordClientContractTests
               "data": {},
               "errors": []
             }
+            """,
+            // 型付きDTOへの逆シリアライズ自体が失敗するケース。
+            // 生JSONからクレジットを抽出しているため監査値は他ケースと同じになる。
+            """
+            {
+              "result": true,
+              "meta": { "consumedCredit": 15 },
+              "data": { "requestId": "invalid" },
+              "errors": []
+            }
             """
         };
 
@@ -250,6 +260,10 @@ public sealed class RakkoKeywordClientContractTests
         Assert.Equal(500, result.StatusCode);
         Assert.Equal("invalid_response", result.ExternalCall.ErrorCode);
         Assert.NotEmpty(result.Errors);
+
+        // 契約違反は再試行しない。課金される登録POSTを繰り返さないため。
+        Assert.Equal(RakkoKeywordFailureKind.Fatal, result.FailureKind);
+        Assert.False(result.IsRetryable);
 
         // 監査は実際の通信結果を残す。外部APIは200を返しクレジットを消費しているため、
         // 内部の失敗分類(500)ではなく実HTTPステータスと消費クレジットを記録する。

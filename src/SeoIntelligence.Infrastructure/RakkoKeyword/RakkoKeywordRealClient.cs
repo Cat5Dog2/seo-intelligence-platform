@@ -398,6 +398,10 @@ internal sealed class RakkoKeywordRealClient(
                     cancellationToken);
             }
 
+            // 型付き変換より前にクレジットを確保する。DTOの型不一致で例外になっても、
+            // 外部APIが消費したクレジットを監査へ残せるようにするため。
+            consumedCredit = TryReadConsumedCredit(responseBytes);
+
             var responseDto = JsonSerializer.Deserialize<TResponse>(responseBytes, RakkoKeywordJson.SerializerOptions);
             if (responseDto is null)
             {
@@ -412,10 +416,11 @@ internal sealed class RakkoKeywordRealClient(
                     stopwatch,
                     responseBytes,
                     cancellationToken,
-                    httpStatusCode);
+                    httpStatusCode,
+                    consumedCredit,
+                    Application.RakkoKeyword.RakkoKeywordFailureKind.Fatal);
             }
 
-            consumedCredit = responseDto.Meta.ConsumedCredit;
             var applicationData = map(responseDto);
             var externalCall = await recorder.RecordAsync(
                 new RakkoKeywordCallRecordRequest(
@@ -478,8 +483,41 @@ internal sealed class RakkoKeywordRealClient(
                 responseBytes,
                 cancellationToken,
                 httpStatusCode,
-                consumedCredit);
+                consumedCredit,
+                Application.RakkoKeyword.RakkoKeywordFailureKind.Fatal);
         }
+    }
+
+    /// <summary>
+    /// 型付きDTOへの変換に失敗しても消費クレジットを監査へ残せるよう、
+    /// 生レスポンスから<c>meta.consumedCredit</c>だけをベストエフォートで抽出する。
+    /// </summary>
+    private static decimal TryReadConsumedCredit(byte[]? responseBody)
+    {
+        if (responseBody is null || responseBody.Length == 0)
+        {
+            return 0m;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(responseBody);
+            if (document.RootElement.ValueKind == JsonValueKind.Object &&
+                document.RootElement.TryGetProperty("meta", out var meta) &&
+                meta.ValueKind == JsonValueKind.Object &&
+                meta.TryGetProperty("consumedCredit", out var credit) &&
+                credit.ValueKind == JsonValueKind.Number &&
+                credit.TryGetDecimal(out var value))
+            {
+                return value;
+            }
+        }
+        catch (JsonException)
+        {
+            // レスポンスがJSONとして壊れている場合は監査上0クレジットとして扱う。
+        }
+
+        return 0m;
     }
 
     private HttpRequestMessage CreateHttpRequest<TRequest>(
@@ -510,7 +548,8 @@ internal sealed class RakkoKeywordRealClient(
         byte[]? responseBody,
         CancellationToken cancellationToken,
         int? auditStatusCode = null,
-        decimal consumedCredit = 0m)
+        decimal consumedCredit = 0m,
+        Application.RakkoKeyword.RakkoKeywordFailureKind? failureKind = null)
     {
         // statusCodeは内部の失敗分類(再試行可否)に使い、監査には外部APIが返した
         // 実際のHTTPステータスと消費クレジットを残す。通信前に失敗した場合は両者が一致する。
@@ -531,7 +570,7 @@ internal sealed class RakkoKeywordRealClient(
         return RakkoKeywordCallResult<TApplication>.Failure(
             statusCode,
             errors,
-            RakkoKeywordClientSupport.ToFailureKind(statusCode),
+            failureKind ?? RakkoKeywordClientSupport.ToFailureKind(statusCode),
             externalCall);
     }
 

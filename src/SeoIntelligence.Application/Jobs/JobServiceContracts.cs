@@ -93,6 +93,13 @@ public sealed record JobFailure(
     public static JobFailure FromHttpStatusCode(int statusCode, string? errorCode = null, string? message = null)
         => new(JobFailureKind.HttpStatusCode, statusCode, errorCode, message ?? $"External API returned HTTP {statusCode}.");
 
+    /// <summary>
+    /// 外部APIの契約違反など、再試行しても解消しない失敗。HTTPステータスは監査のために保持するが、
+    /// 再試行判定には使わない。課金される呼び出しを無駄に繰り返さないために用いる。
+    /// </summary>
+    public static JobFailure ExternalFatal(int? statusCode, string? errorCode = null, string? message = null)
+        => new(JobFailureKind.ExternalFatal, statusCode, errorCode, message ?? "External API returned a fatal failure.");
+
     public static JobFailure Timeout(string? message = null)
         => new(JobFailureKind.Timeout, null, "timeout", message ?? "The job timed out while waiting for an external dependency.");
 
@@ -107,6 +114,7 @@ public sealed record JobCompletion(
 public enum JobFailureKind
 {
     HttpStatusCode,
+    ExternalFatal,
     Timeout,
     DatabaseTransient,
     Unexpected
