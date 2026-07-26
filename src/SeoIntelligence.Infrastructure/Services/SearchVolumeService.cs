@@ -1209,8 +1209,7 @@ internal sealed class RegisterSearchVolumeJob(
         var errorCode = TryReadDetail(error, "errorCode");
 
         // 契約違反レスポンス(invalid_response等)はHTTPステータスが5xxでも再試行しない。
-        // POST /v1/search-volumeは1回あたり最低15クレジットを消費し、requestIdを取得できていない
-        // ため外部登録を再利用できず、再試行はクレジットを二重に消費するだけになる。
+        // 再試行しても解消せず、登録経路では課金される呼び出しを繰り返すだけになる。
         if (error.Code is ErrorCode.ExternalFatalFailure)
         {
             return JobFailure.ExternalFatal(statusCode, errorCode, error.Message);
@@ -1293,8 +1292,7 @@ internal sealed class PollSearchVolumeStatusJob(
         var errorCode = TryReadDetail(error, "errorCode");
 
         // 契約違反レスポンス(invalid_response等)はHTTPステータスが5xxでも再試行しない。
-        // POST /v1/search-volumeは1回あたり最低15クレジットを消費し、requestIdを取得できていない
-        // ため外部登録を再利用できず、再試行はクレジットを二重に消費するだけになる。
+        // 再試行しても解消せず、登録経路では課金される呼び出しを繰り返すだけになる。
         if (error.Code is ErrorCode.ExternalFatalFailure)
         {
             return JobFailure.ExternalFatal(statusCode, errorCode, error.Message);
@@ -1408,8 +1406,7 @@ internal sealed class FetchSearchVolumeResultsJob(
         var errorCode = TryReadDetail(error, "errorCode");
 
         // 契約違反レスポンス(invalid_response等)はHTTPステータスが5xxでも再試行しない。
-        // POST /v1/search-volumeは1回あたり最低15クレジットを消費し、requestIdを取得できていない
-        // ため外部登録を再利用できず、再試行はクレジットを二重に消費するだけになる。
+        // 再試行しても解消せず、登録経路では課金される呼び出しを繰り返すだけになる。
         if (error.Code is ErrorCode.ExternalFatalFailure)
         {
             return JobFailure.ExternalFatal(statusCode, errorCode, error.Message);

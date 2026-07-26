@@ -371,7 +371,7 @@ internal sealed class RakkoKeywordRealClient(
         // 消費クレジットを記録し、内部的な失敗分類とは切り離す。
         byte[]? responseBytes = null;
         int? httpStatusCode = null;
-        var consumedCredit = 0m;
+        decimal? consumedCredit = null;
         try
         {
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -398,10 +398,6 @@ internal sealed class RakkoKeywordRealClient(
                     cancellationToken);
             }
 
-            // 型付き変換より前にクレジットを確保する。DTOの型不一致で例外になっても、
-            // 外部APIが消費したクレジットを監査へ残せるようにするため。
-            consumedCredit = TryReadConsumedCredit(responseBytes);
-
             var responseDto = JsonSerializer.Deserialize<TResponse>(responseBytes, RakkoKeywordJson.SerializerOptions);
             if (responseDto is null)
             {
@@ -417,10 +413,11 @@ internal sealed class RakkoKeywordRealClient(
                     responseBytes,
                     cancellationToken,
                     httpStatusCode,
-                    consumedCredit,
+                    TryReadConsumedCredit(responseBytes),
                     Application.RakkoKeyword.RakkoKeywordFailureKind.Fatal);
             }
 
+            consumedCredit = responseDto.Meta.ConsumedCredit;
             var applicationData = map(responseDto);
             var externalCall = await recorder.RecordAsync(
                 new RakkoKeywordCallRecordRequest(
@@ -483,7 +480,9 @@ internal sealed class RakkoKeywordRealClient(
                 responseBytes,
                 cancellationToken,
                 httpStatusCode,
-                consumedCredit,
+                // 型付き変換に成功していればその値を使い、変換前に失敗した場合だけ
+                // 生JSONから抽出する。正常系でレスポンス全体を二重解析しないため。
+                consumedCredit ?? TryReadConsumedCredit(responseBytes),
                 Application.RakkoKeyword.RakkoKeywordFailureKind.Fatal);
         }
     }
@@ -491,6 +490,7 @@ internal sealed class RakkoKeywordRealClient(
     /// <summary>
     /// 型付きDTOへの変換に失敗しても消費クレジットを監査へ残せるよう、
     /// 生レスポンスから<c>meta.consumedCredit</c>だけをベストエフォートで抽出する。
+    /// 正常系ではレスポンス全体の二重解析を避けるため呼び出さない。
     /// </summary>
     private static decimal TryReadConsumedCredit(byte[]? responseBody)
     {
