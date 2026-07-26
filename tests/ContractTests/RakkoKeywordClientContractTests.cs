@@ -250,6 +250,12 @@ public sealed class RakkoKeywordClientContractTests
         Assert.Equal(500, result.StatusCode);
         Assert.Equal("invalid_response", result.ExternalCall.ErrorCode);
         Assert.NotEmpty(result.Errors);
+
+        // 監査は実際の通信結果を残す。外部APIは200を返しクレジットを消費しているため、
+        // 内部の失敗分類(500)ではなく実HTTPステータスと消費クレジットを記録する。
+        Assert.Equal(200, recorder.LastRequest!.StatusCode);
+        Assert.Equal(15m, recorder.LastRequest.ConsumedCredit);
+        Assert.Equal("invalid_response", recorder.LastRequest.ErrorCode);
     }
 
     [Fact]

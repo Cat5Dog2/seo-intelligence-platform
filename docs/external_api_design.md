@@ -75,7 +75,7 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 
 | 項目 | 設計 |
 | --- | --- |
-| 消費記録 | 全外部APIレスポンスの`meta.consumedCredit`を`external_api_calls.consumed_credit`へ保存する。 |
+| 消費記録 | 全外部APIレスポンスの`meta.consumedCredit`を`external_api_calls.consumed_credit`へ保存する。レスポンス受信後に解析・変換で失敗した場合も、`status_code`と`consumed_credit`には外部APIが実際に返した値を記録し、内部の失敗分類は`error_code`と呼び出し結果で表す。 |
 | 集計単位 | 全体、プロジェクト、APIキー、ジョブ、日次、月次。 |
 | 集計境界 | 日次はAsia/Tokyo 0:00、月次はAsia/Tokyo 毎月1日0:00で区切る。 |
 | 予算管理 | 日次/月次予算、予算上限、承認制、予算超過による事前停止はアプリ内では管理しない。 |

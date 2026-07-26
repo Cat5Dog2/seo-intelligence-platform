@@ -366,7 +366,12 @@ internal sealed class RakkoKeywordRealClient(
         httpRequest.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         httpRequest.Headers.UserAgent.ParseAdd(BuildUserAgent());
 
+        // 監査(external_api_calls)は実際の通信結果を正本として残す。
+        // レスポンス受信後に解析・変換で失敗した場合も、外部APIが返したHTTPステータスと
+        // 消費クレジットを記録し、内部的な失敗分類とは切り離す。
         byte[]? responseBytes = null;
+        int? httpStatusCode = null;
+        var consumedCredit = 0m;
         try
         {
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -375,6 +380,7 @@ internal sealed class RakkoKeywordRealClient(
             using var response = await httpClient.SendAsync(httpRequest, timeoutCts.Token);
             responseBytes = await response.Content.ReadAsByteArrayAsync(timeoutCts.Token);
             stopwatch.Stop();
+            httpStatusCode = (int)response.StatusCode;
 
             if (!response.IsSuccessStatusCode)
             {
@@ -405,9 +411,11 @@ internal sealed class RakkoKeywordRealClient(
                     "invalid_response",
                     stopwatch,
                     responseBytes,
-                    cancellationToken);
+                    cancellationToken,
+                    httpStatusCode);
             }
 
+            consumedCredit = responseDto.Meta.ConsumedCredit;
             var applicationData = map(responseDto);
             var externalCall = await recorder.RecordAsync(
                 new RakkoKeywordCallRecordRequest(
@@ -468,7 +476,9 @@ internal sealed class RakkoKeywordRealClient(
                 "invalid_response",
                 stopwatch,
                 responseBytes,
-                cancellationToken);
+                cancellationToken,
+                httpStatusCode,
+                consumedCredit);
         }
     }
 
@@ -498,8 +508,12 @@ internal sealed class RakkoKeywordRealClient(
         string errorCode,
         Stopwatch stopwatch,
         byte[]? responseBody,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        int? auditStatusCode = null,
+        decimal consumedCredit = 0m)
     {
+        // statusCodeは内部の失敗分類(再試行可否)に使い、監査には外部APIが返した
+        // 実際のHTTPステータスと消費クレジットを残す。通信前に失敗した場合は両者が一致する。
         var externalCall = await recorder.RecordAsync(
             new RakkoKeywordCallRecordRequest(
                 context,
@@ -507,8 +521,8 @@ internal sealed class RakkoKeywordRealClient(
                 method,
                 requestBody,
                 responseBody,
-                statusCode,
-                ConsumedCredit: 0m,
+                auditStatusCode ?? statusCode,
+                consumedCredit,
                 Convert.ToInt32(stopwatch.ElapsedMilliseconds),
                 CacheHit: false,
                 errorCode),
