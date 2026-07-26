@@ -52,7 +52,7 @@
 {
   "name": "自社メディアSEO",
   "defaultLocation": "Japan",
-  "defaultLanguage": "ja",
+  "defaultLanguage": "Japanese",
   "kpi": {
     "organicSessions": 100000,
     "conversions": 500
@@ -70,7 +70,7 @@
     "workspaceId": "018fd8a8-0000-7000-9000-000000000001",
     "name": "自社メディアSEO",
     "defaultLocation": "Japan",
-    "defaultLanguage": "ja",
+    "defaultLanguage": "Japanese",
     "status": "active",
     "createdAt": "2026-05-31T00:00:00Z",
     "updatedAt": "2026-05-31T00:00:00Z"
@@ -222,7 +222,7 @@
     "ranking"
   ],
   "location": "Japan",
-  "language": "ja",
+  "language": "Japanese",
   "limit": 100,
   "filter": {
     "include": [
@@ -313,7 +313,7 @@ CSVファイル本体は送らない。Blazor UIでパース済みの`keywords`�
     "検索順位 チェック"
   ],
   "location": "Japan",
-  "language": "ja",
+  "language": "Japanese",
   "seoDifficulty": true,
   "aggregationPeriodMonths": 12
 }
@@ -391,7 +391,7 @@ CSVファイル本体は送らない。Blazor UIでパース済みの`keywords`�
         "keywordId": "018fd8a8-5100-7000-9000-000000000001",
         "keyword": "seo ツール",
         "location": "Japan",
-        "language": "ja",
+        "language": "Japanese",
         "searchVolume": 5400,
         "seoDifficulty": 58.2,
         "cpc": 240.0,
@@ -615,8 +615,8 @@ POST /api/projects/{projectId}/exports/csv
 ```json
 {
   "name": "Runbook smoke 20260602000000",
-  "defaultLocation": "JP",
-  "defaultLanguage": "ja",
+  "defaultLocation": "Japan",
+  "defaultLanguage": "Japanese",
   "kpi": {},
   "memo": "Created by scripts/smoke-test.ps1"
 }

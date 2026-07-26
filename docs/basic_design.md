@@ -10,7 +10,7 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | 作成日 | 2026-05-30 |
 | 対象システム | ラッコキーワードAPIを中核にしたSEO・コンテンツ・競合分析・順位監視プラットフォーム |
 | 想定技術 | .NET 10 LTS / ASP.NET Core / Blazor Web App / PostgreSQL / Redis / Worker Service |
-| 入力仕様 | rakko-keyword-api-docs.json（OpenAPI 3.0、API v1.4.1） |
+| 入力仕様 | rakko-keyword-api-docs.json（OpenAPI 3.1、API v1.12.0） |
 | 関連設計 | requirements.md / api_design.md / db_design.md / screen_design.md / job_design.md / test_plan.md / external_api_design.md / operations_runbook.md / environment_setup.md / adr/ |
 | 作成方針 | 上記で列挙した全ユースケースを、API連携・DB・非同期ジョブ・AI支援・外部連携を組み合わせて実現する。 |
 
@@ -23,6 +23,7 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | 1.0 | 2026-05-30 | 初版作成。要件定義書に対応した基本設計。 | ChatGPT |
 | 1.1 | 2026-05-30 | API設計書・DB設計書を追加し、基本設計の正本範囲と詳細設計への参照を整理。 | ChatGPT |
 | 1.2 | 2026-05-30 | 画面設計、ジョブ設計、テスト計画、外部API連携、運用、環境構築、ADRへの参照を追加。 | ChatGPT |
+| 1.3 | 2026-07-26 | ラッコキーワードAPI v1.12.0（OpenAPI 3.1）へ追随。地域/言語マスタを`/v1/metadata/*`へ移行。 | Claude |
 
 ## 目次
 
@@ -546,8 +547,8 @@ public interface IRakkoKeywordClient
 | POST | /v1/search-volume | 一括キーワード調査登録 | SearchVolumeHistoryDto | 最大50,000語の一括需要調査登録 |
 | GET | /v1/search-volume/{requestId}/status | 一括キーワード調査ステータス取得 | - | 一括調査ジョブの完了監視 |
 | POST | /v1/search-volume/{requestId}/results | 一括キーワード調査データ取得 | SearchVolumeResultsDto | 検索ボリューム、SEO難易度、CPC、トレンド取得 |
-| GET | /v1/search-volume/locations | 地域一覧取得 | - | 地域マスタ同期 |
-| GET | /v1/search-volume/languages | 言語一覧取得 | - | 言語マスタ同期 |
+| GET | /v1/metadata/locations | 地域一覧取得（クレジット消費なし・認証不要） | - | 地域マスタ同期 |
+| GET | /v1/metadata/languages | 言語一覧取得（クレジット消費なし・認証不要） | - | 言語マスタ同期 |
 | POST | /v1/influx-keywords | 獲得キーワード調査取得 | InfluxKeywordsKeywordDto | 自社/競合の獲得キーワード、ギャップ分析 |
 | POST | /v1/influx-pages | 獲得ページ調査取得 | InfluxPagesDto | 獲得ページ、稼ぎ頭ページ、リライト候補 |
 | POST | /v1/competitive | 競合サイト抽出 | CompetitiveDto | 競合ドメイン抽出、重複率、競合独自キーワード数 |
@@ -818,8 +819,8 @@ Observability__OtlpEndpoint=...
 | OtherKeywordsDto | keyword | keyword: 1文字以上。<br>sortBy: importance / seoDifficulty / searchVolume / cpc / competition / firstSeenRange。省略時は importance。<br>orderBy: asc / desc。省略時は desc。 |
 | SearchQuestionDto | keyword | keyword: 1文字以上。<br>limit: 1〜200。省略時は 100。 |
 | RankingKeywordsDto | keyword | keyword: 1文字以上。<br>searchTop: 3 / 5 / 10 / 20 / 30 / 50。省略時は 20。<br>searchRange: 10 / 20 / 30 / 50 / 100。省略時は 50。<br>filter: キーワード、SEO難易度、検索ボリューム、CPC、競合性、関連度等。<br>sortBy: seoDifficulty / searchVolume / cpc / competition / relevance。省略時は relevance。<br>orderBy: asc / desc。省略時は desc。<br>limit: 1〜5000。省略時は 500。 |
-| SearchVolumeHistoryDto | keywords | keywords: 1〜50000件。<br>seoDifficulty: 省略時は false。<br>dataCompletion: 省略時は true。<br>location: Google Ads API LocationCriterion 準拠。省略時は Japan。<br>language: Google Ads API LanguageCriterion 準拠。省略時は Japanese。<br>deduplicate: 省略時は true。<br>aggregationPeriodMonths: 12 / 24 / 36 / 48。省略時は 12。 |
-| SearchVolumeResultsDto | - | noiseReduction: 省略時は true。<br>filter: キーワード、SEO難易度、検索ボリューム、CPC、競合性等。<br>sortBy: keyword / seoDifficulty / searchVolume / rateOfChange / cpc / competition。省略時は searchVolume。<br>orderBy: asc / desc。省略時は desc。<br>limit: 1〜50000。省略時は 100。 |
+| SearchVolumeHistoryDto | keywords | keywords: 1〜50000件。<br>seoDifficulty: 省略時は false。<br>dataCompletion: 省略時は true。<br>location: 地域名（`/v1/metadata/locations`の一覧参照。市区町村レベルはカンマ区切り正式名）。省略時は Japan。<br>language: 言語名（`/v1/metadata/languages`の一覧参照）。省略時は Japanese。<br>deduplicate: 省略時は true。<br>aggregationPeriodMonths: 12 / 24 / 36 / 48。省略時は 12。 |
+| SearchVolumeResultsDto | - | noiseReduction: 省略時は true。<br>filter: キーワード、SEO難易度、検索ボリューム、CPC、競合性等。<br>sortBy: keyword / seoDifficulty / searchVolume / rateOfChange / cpc / competition / firstSeenRange。省略時は searchVolume。<br>orderBy: asc / desc。省略時は desc。<br>limit: 1〜50000。省略時は 100。 |
 | InfluxKeywordsKeywordDto | targets | targets: 1〜20件。対象ドメインまたはURLとマッチタイプの配列。<br>keywordCollapse: 省略時は false。<br>filter: キーワード、SEO難易度、検索順位、検索ボリューム、CPC、競合性、推定流入数等。<br>sortBy: keyword / seoDifficulty / rank / searchVolume / cpc / competition / etv。省略時は etv。<br>orderBy: asc / desc。省略時は desc。<br>limit: 1〜10000。省略時は 100。 |
 | InfluxPagesDto | targets | targets: 1〜20件。対象ドメインまたはURLとマッチタイプの配列。<br>topKeywordCollapse: 省略時は false。<br>filter: 合計推定流入数、キーワード数、合計集客価値、タイトル、URL、トップキーワード、SEO難易度等。<br>sortBy: totalEtv / totalTrafficValue / keywordCount。省略時は totalEtv。<br>orderBy: asc / desc。省略時は desc。<br>limit: 1〜10000。省略時は 100。 |
 | CompetitiveDto | url | url: 対象ドメインURL。<br>sortBy: duplicate / duplicateRate / competitorUnique / targetUnique / etv / keywordCount / trafficValue / pageCount。省略時は etv。<br>orderBy: asc / desc。省略時は desc。 |
@@ -848,7 +849,7 @@ API別の保存先、カラム、リレーション、インデックスの正�
 
 ## 付録D. 参照資料
 
-- rakko-keyword-api-docs.json（OpenAPI 3.0、ラッコキーワードAPI v1.4.1、アップロードファイル）
+- rakko-keyword-api-docs.json（OpenAPI 3.1、ラッコキーワードAPI v1.12.0、アップロードファイル）
 
 - requirements.md
 

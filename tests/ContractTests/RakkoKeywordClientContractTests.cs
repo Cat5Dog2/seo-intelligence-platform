@@ -19,6 +19,43 @@ namespace ContractTests;
 
 public sealed class RakkoKeywordClientContractTests
 {
+    public static TheoryData<string> InvalidSearchVolumeRequestIdResponses =>
+        new()
+        {
+            """
+            {
+              "result": true,
+              "meta": { "consumedCredit": 15 },
+              "data": { "requestId": 123.5 },
+              "errors": []
+            }
+            """,
+            """
+            {
+              "result": true,
+              "meta": { "consumedCredit": 15 },
+              "data": { "requestId": 0 },
+              "errors": []
+            }
+            """,
+            """
+            {
+              "result": true,
+              "meta": { "consumedCredit": 15 },
+              "data": { "requestId": 9223372036854775808 },
+              "errors": []
+            }
+            """,
+            """
+            {
+              "result": true,
+              "meta": { "consumedCredit": 15 },
+              "data": {},
+              "errors": []
+            }
+            """
+        };
+
     [Fact]
     [Trait("Category", "Contract")]
     public async Task GeneratedDtoMetadataMatchesVendorOpenApiSpec()
@@ -62,7 +99,7 @@ public sealed class RakkoKeywordClientContractTests
 
             Assert.True(result.IsSuccess);
             Assert.Equal(200, result.StatusCode);
-            Assert.Equal(1m, result.ConsumedCredit);
+            Assert.Equal(1.5m, result.ConsumedCredit);
             Assert.NotNull(result.Data);
             var item = Assert.Single(result.Data!.Items);
             Assert.Equal("suggest", result.Data.Source);
@@ -145,8 +182,8 @@ public sealed class RakkoKeywordClientContractTests
                 new RakkoSearchVolumeRegistrationRequest(
                     ["seo", "content marketing"],
                     SeoDifficulty: true,
-                    Location: "JP",
-                    Language: "ja"));
+                    Location: "Japan",
+                    Language: "Japanese"));
             var status = await client.GetSearchVolumeStatusAsync(context, registration.Data!.RequestId);
             var results = await client.GetSearchVolumeResultsAsync(
                 context,
@@ -162,7 +199,8 @@ public sealed class RakkoKeywordClientContractTests
             Assert.Equal("completed", status.Data.Statuses["overall"]);
 
             Assert.True(results.IsSuccess);
-            Assert.Equal(5m, results.ConsumedCredit);
+            Assert.Equal(0m, results.ConsumedCredit);
+            Assert.Equal(15m, registration.ConsumedCredit);
             var item = Assert.Single(results.Data!.Items);
             Assert.Equal("sample keyword", item.Keyword);
             Assert.Equal(1300, item.Metrics.SearchVolume);
@@ -174,6 +212,87 @@ public sealed class RakkoKeywordClientContractTests
         {
             DeleteTempStoragePath(storagePath);
         }
+    }
+
+    [Theory]
+    [MemberData(nameof(InvalidSearchVolumeRequestIdResponses))]
+    [Trait("Category", "Contract")]
+    public async Task RealClientRejectsInvalidSearchVolumeRequestIds(string responseJson)
+    {
+        var handler = new CapturingHandler(responseJson);
+        using var httpClient = new HttpClient(handler)
+        {
+            BaseAddress = new Uri("https://api.example.test")
+        };
+        var recorder = new CapturingRecorder();
+        var client = new RakkoKeywordRealClient(
+            httpClient,
+            new FakeSecretStore("secret-value"),
+            recorder,
+            Options.Create(new RakkoKeywordOptions
+            {
+                Mode = RakkoKeywordOptions.RealMode,
+                BaseUrl = "https://api.example.test",
+                ApiKeySecretRef = "rakko-keyword-api-key-dev",
+                EnvironmentName = "Testing"
+            }),
+            NullLogger<RakkoKeywordRealClient>.Instance);
+
+        var result = await client.RegisterSearchVolumeAsync(
+            CreateContext(apiKeySecretRef: "rakko-keyword-api-key-dev", correlationId: "corr-invalid-request-id"),
+            new RakkoSearchVolumeRegistrationRequest(
+                ["seo"],
+                SeoDifficulty: false,
+                Location: "Japan",
+                Language: "Japanese"));
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(500, result.StatusCode);
+        Assert.Equal("invalid_response", result.ExternalCall.ErrorCode);
+        Assert.NotEmpty(result.Errors);
+    }
+
+    [Fact]
+    [Trait("Category", "Contract")]
+    public async Task RealClientAcceptsPositiveIntegralSearchVolumeRequestId()
+    {
+        var handler = new CapturingHandler("""
+            {
+              "result": true,
+              "meta": { "consumedCredit": 15 },
+              "data": { "requestId": 9223372036854775807 },
+              "errors": []
+            }
+            """);
+        using var httpClient = new HttpClient(handler)
+        {
+            BaseAddress = new Uri("https://api.example.test")
+        };
+        var recorder = new CapturingRecorder();
+        var client = new RakkoKeywordRealClient(
+            httpClient,
+            new FakeSecretStore("secret-value"),
+            recorder,
+            Options.Create(new RakkoKeywordOptions
+            {
+                Mode = RakkoKeywordOptions.RealMode,
+                BaseUrl = "https://api.example.test",
+                ApiKeySecretRef = "rakko-keyword-api-key-dev",
+                EnvironmentName = "Testing"
+            }),
+            NullLogger<RakkoKeywordRealClient>.Instance);
+
+        var result = await client.RegisterSearchVolumeAsync(
+            CreateContext(apiKeySecretRef: "rakko-keyword-api-key-dev", correlationId: "corr-valid-request-id"),
+            new RakkoSearchVolumeRegistrationRequest(
+                ["seo"],
+                SeoDifficulty: false,
+                Location: "Japan",
+                Language: "Japanese"));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(long.MaxValue, result.Data!.RequestId);
+        Assert.Null(result.ExternalCall.ErrorCode);
     }
 
     [Fact]

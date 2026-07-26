@@ -11,8 +11,8 @@ namespace SeoIntelligence.Infrastructure.RakkoKeyword.Generated;
 internal static class RakkoKeywordOpenApiMetadata
 {
     public const string SourcePath = "docs/rakko-keyword-api-docs.json";
-    public const string OpenApiVersion = "1.4.1";
-    public const string SourceSha256 = "42ad755cb9ad5b93a844c30b54ac85b9cd8ec6ce7f880cda5289dcc8d6d611bc";
+    public const string OpenApiVersion = "1.12.0";
+    public const string SourceSha256 = "1baa6d5a2731a69135a67b3df46abd7b5b32e435dd8c13dbefc7f12cb22bba7e";
 
     public static readonly IReadOnlySet<string> MvpSchemaNames = new HashSet<string>(StringComparer.Ordinal)
     {
@@ -31,8 +31,8 @@ internal static class RakkoKeywordOpenApiMetadata
         "SearchVolumeStatusResponseDto",
         "SearchVolumeResultsDto",
         "SearchVolumeResultsResponseDto",
-        "LocationsResponseDto",
-        "LanguagesResponseDto"
+        "MetadataLocationsResponseDto",
+        "MetadataLanguagesResponseDto"
     };
 }
 
@@ -188,11 +188,11 @@ internal sealed class SearchVolumeResultsResponseDto : RakkoKeywordResponseDto<R
 {
 }
 
-internal sealed class LocationsResponseDto : RakkoKeywordResponseDto<LocationsDataDto>
+internal sealed class MetadataLocationsResponseDto : RakkoKeywordResponseDto<LocationsDataDto>
 {
 }
 
-internal sealed class LanguagesResponseDto : RakkoKeywordResponseDto<LanguagesDataDto>
+internal sealed class MetadataLanguagesResponseDto : RakkoKeywordResponseDto<LanguagesDataDto>
 {
 }
 
@@ -360,8 +360,9 @@ internal sealed class SuggestEnginesDto
 
 internal sealed class SearchVolumeHistoryDataDto
 {
+    // スキーマ上はtype: numberのためdecimalで受け、業務DTO変換時に正のInt64整数であることを検証する。
     [JsonPropertyName("requestId")]
-    public long RequestId { get; init; }
+    public decimal RequestId { get; init; }
 }
 
 internal sealed class SearchVolumeStatusDataDto
@@ -401,12 +402,39 @@ internal sealed class SearchVolumeMetricsDto
 
     [JsonPropertyName("competition")]
     public decimal? Competition { get; init; }
+
+    [JsonPropertyName("firstSeenRange")]
+    public string? FirstSeenRange { get; init; }
 }
 
 internal sealed class SearchVolumeTrendsDto
 {
+    [JsonPropertyName("changeRate")]
+    public SearchVolumeChangeRateDto? ChangeRate { get; init; }
+
     [JsonPropertyName("monthlySearchVolume")]
     public Dictionary<string, decimal?>? MonthlySearchVolume { get; init; }
+}
+
+internal sealed class SearchVolumeChangeRateDto
+{
+    [JsonPropertyName("12m")]
+    public decimal? TwelveMonths { get; init; }
+
+    [JsonPropertyName("6m")]
+    public decimal? SixMonths { get; init; }
+
+    [JsonPropertyName("3m")]
+    public decimal? ThreeMonths { get; init; }
+
+    [JsonPropertyName("yoy1y")]
+    public decimal? YearOverYear1 { get; init; }
+
+    [JsonPropertyName("yoy2y")]
+    public decimal? YearOverYear2 { get; init; }
+
+    [JsonPropertyName("yoy3y")]
+    public decimal? YearOverYear3 { get; init; }
 }
 
 internal sealed class LocationsDataDto
@@ -419,9 +447,6 @@ internal sealed class LocationItemDto
 {
     [JsonPropertyName("name")]
     public string Name { get; init; } = string.Empty;
-
-    [JsonPropertyName("code")]
-    public long Code { get; init; }
 
     [JsonPropertyName("countryIsoCode")]
     public string CountryIsoCode { get; init; } = string.Empty;
@@ -437,7 +462,4 @@ internal sealed class LanguageItemDto
 {
     [JsonPropertyName("name")]
     public string Name { get; init; } = string.Empty;
-
-    [JsonPropertyName("code")]
-    public string Code { get; init; } = string.Empty;
 }

@@ -66,8 +66,8 @@ internal sealed class BrowserSmokeFlow(
             browser smoke keyword
             browser smoke keyword 2
             """);
-        await page.GetByTestId("search-volume-location-input").FillAsync("JP");
-        await page.GetByTestId("search-volume-language-input").FillAsync("ja");
+        await page.GetByTestId("search-volume-location-input").FillAsync("Japan");
+        await page.GetByTestId("search-volume-language-input").FillAsync("Japanese");
         await WaitForEnabledAsync("search-volume-register-button");
         await page.GetByTestId("search-volume-register-button").ClickAsync();
         await WaitForInputValueAsync("search-volume-job-id-input");

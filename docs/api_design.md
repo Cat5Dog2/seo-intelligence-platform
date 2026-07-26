@@ -11,13 +11,14 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | 対象システム | SEO・コンテンツ・競合分析・順位監視プラットフォーム |
 | 前提技術 | ASP.NET Core Web API / Minimal APIs / OpenAPI / Hangfire / PostgreSQL |
 | 関連文書 | requirements.md / basic_design.md / db_design.md |
-| 外部仕様 | rakko-keyword-api-docs.json（OpenAPI 3.0、ラッコキーワードAPI v1.4.1） |
+| 外部仕様 | rakko-keyword-api-docs.json（OpenAPI 3.1、ラッコキーワードAPI v1.12.0） |
 
 ## 改訂履歴
 
 | 版 | 日付 | 内容 | 作成/更新 |
 | --- | --- | --- | --- |
 | 1.0 | 2026-05-30 | 初版作成。内部API、共通仕様、外部API連携、主要DTO制約を定義。 | ChatGPT |
+| 1.1 | 2026-07-26 | ラッコキーワードAPI v1.12.0対応。地域/言語マスタ取得を`/v1/metadata/*`へ移行。 | Claude |
 
 ## 1. 目的
 
@@ -338,7 +339,7 @@ ISSUE-P3-001では、上記Phase 3 APIのContracts/DTO、ルートグループ�
 | --- | --- |
 | キーワード | 前後空白を除去し、Unicode正規化後に1文字以上。登録時は言語別`text_hash`で重複排除する。 |
 | URL/ドメイン | `http`または`https`を許可し、保存時は正規化URLとドメインを分離する。 |
-| 一括検索ボリューム | `keywords`は1から50,000件。重複排除後の件数でクレジット消費見込みを表示し、予算上限による停止は行わない。 |
+| 一括検索ボリューム | `keywords`は1から50,000件。重複排除後の件数でクレジット消費見込みを表示し、予算上限による停止は行わない。`location`/`language`はactiveなマスタ名(例: Japan / Japanese)と大文字小文字を無視して照合する。旧アプリ既定値`JP`/`ja`と旧マスタコード(例: 2392 / ja)は、変換先の名前がactiveな場合だけ正準名へ変換し、正規化後にrequest hashを計算する。provider行が1件もない完全な未同期時だけ照合を省略し、同期済みだがactive 0件、変換先がinactive、不明値の場合はバリデーションエラー(400)とする。 |
 | 順位チェック | `targets`は1から50件。各targetはURLまたはドメインと`targetType`を持つ。`depth`は30/40/50/60/70/80/90/100。 |
 | ページング | `pageSize`は1から200。外部API結果の大容量取得はジョブまたはエクスポートに寄せる。 |
 | 共有URL | `shareExpiresAt`は未来日時のみ。共有トークンは十分なランダム値をレスポンスへ一度だけ返し、DBにはハッシュのみ保存する。未知または改ざんトークンは404、期限切れまたは明示失効済みトークンは410を返す。 |
@@ -371,8 +372,8 @@ MVPの一括検索ボリューム画面でCSVファイルを選択した場合�
 | POST | `/v1/search-volume` | `SearchVolumeHistoryDto` | 一括検索ボリューム調査登録 |
 | GET | `/v1/search-volume/{requestId}/status` | なし | 一括調査ステータス確認 |
 | POST | `/v1/search-volume/{requestId}/results` | `SearchVolumeResultsDto` | 検索ボリューム、難易度、CPC、月別推移取得 |
-| GET | `/v1/search-volume/locations` | なし | 地域マスタ同期 |
-| GET | `/v1/search-volume/languages` | なし | 言語マスタ同期 |
+| GET | `/v1/metadata/locations` | なし | 地域マスタ同期（クレジット消費なし・認証不要） |
+| GET | `/v1/metadata/languages` | なし | 言語マスタ同期（クレジット消費なし・認証不要） |
 | POST | `/v1/influx-keywords` | `InfluxKeywordsKeywordDto` | 獲得キーワード、競合ギャップ |
 | POST | `/v1/influx-pages` | `InfluxPagesDto` | 獲得ページ、リライト候補 |
 | POST | `/v1/competitive` | `CompetitiveDto` | 競合サイト抽出 |
@@ -400,7 +401,7 @@ MVPの一括検索ボリューム画面でCSVファイルを選択した場合�
 | `ContentSearchDto` | `keyword` | `limit`は最大5,000。 |
 | `HeadlineDto` | `keyword` | `limit`は最大20。 |
 | `CoOccurrenceDto` | `keyword` | URL別詳細は`getDetails=true`を既定とする。 |
-| `SearchRankHistoryDto` | `keywords`, `urls` | `urls`は1から50件。`matchType`はurl/forward_url/domain/sub_domain。 |
+| `SearchRankHistoryDto` | `keywords`, `urls` | `urls`は1から50件。`matchType`はurl/forward_url/domain/sub_domain。`depth`は30/40/50/60/70/80/90/100。 |
 | `SearchRankResultsDto` | なし | `withAggregation`は必要時のみtrue。 |
 
 ## 11. 監査・ログ

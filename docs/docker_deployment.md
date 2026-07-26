@@ -142,7 +142,7 @@ docker compose --env-file .env.production -f compose.yaml -f compose.production.
 docker compose --env-file .env.production -f compose.yaml -f compose.production.yaml logs --tail 200 web api worker
 ```
 
-build成功後にWeb/API/Workerを停止し、書き込みを止めてからバックアップとMigrationを行う。この間はメンテナンス時間となる。Migrationが失敗した場合は新imageを起動せず、ログとDBバックアップを確認する。`up -d --wait`が成功し`ps`が`healthy`を示し、後述のURLが成功するまでデプロイ完了と判定しない。
+build成功後にWeb/API/Workerを停止し、書き込みを止めてからバックアップとMigrationを行う。この間はメンテナンス時間となる。停止後からMigration完了まで旧imageのAPI/Workerを起動してはならない。実行中Workerによるjob statusの上書きと、旧APIによる旧形式ジョブの再登録を防ぐため、この順序は`RakkoKeywordV1120DataBackfill`の必須適用条件である。Migrationが失敗した場合は新imageを起動せず、ログとDBバックアップを確認する。`up -d --wait`が成功し`ps`が`healthy`を示し、後述のURLが成功するまでデプロイ完了と判定しない。
 
 Workerだけを再起動する場合:
 

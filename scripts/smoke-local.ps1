@@ -12,14 +12,20 @@ param(
     [string]$DiscordChannelId = $env:SMOKE_DISCORD_CHANNEL_ID,
     [switch]$SkipBuild,
     [switch]$SkipMigration,
+    [switch]$SkipMigrationVerification,
     [switch]$SkipDependencies,
     [switch]$SkipWeb,
     [switch]$RunBrowserTests,
     [switch]$InstallPlaywrightBrowsers,
-    [switch]$StopDependencies
+    [switch]$StopDependencies,
+    [switch]$RemoveDependencyVolumes
 )
 
 $ErrorActionPreference = "Stop"
+
+if ($RemoveDependencyVolumes -and -not $StopDependencies) {
+    throw "-RemoveDependencyVolumes requires -StopDependencies."
+}
 
 . (Join-Path $PSScriptRoot "load-dotenv.ps1")
 Import-DotEnvFile -Path (Join-Path $PSScriptRoot "..\.env")
@@ -420,6 +426,13 @@ try {
             Invoke-ExternalCommand -FileName "dotnet" -Arguments @("tool", "restore")
         }
 
+        if (-not $SkipMigrationVerification) {
+            & (Join-Path $PSScriptRoot "verify-rakko-v1120-migration.ps1") `
+                -InfrastructureProject $InfrastructureProject `
+                -StartupProject $ApiProject `
+                -Configuration $Configuration
+        }
+
         Invoke-ExternalCommand -FileName "dotnet" -Arguments @(
             "tool",
             "run",
@@ -474,8 +487,8 @@ try {
             -Path "/api/projects" `
             -Body @{
                 name = "Comprehensive smoke $stamp"
-                defaultLocation = "JP"
-                defaultLanguage = "ja"
+                defaultLocation = "Japan"
+                defaultLanguage = "Japanese"
                 kpi = @{}
                 memo = "Created by scripts/smoke-local.ps1"
             }
@@ -509,7 +522,12 @@ finally {
     }
 
     if ($StopDependencies -and -not $SkipDependencies) {
-        Invoke-DockerCompose -Arguments @("down", "--volumes", "--remove-orphans")
+        $downArguments = @("down", "--remove-orphans")
+        if ($RemoveDependencyVolumes) {
+            $downArguments += "--volumes"
+        }
+
+        Invoke-DockerCompose -Arguments $downArguments
     }
 
     foreach ($name in $previousEnvironment.Keys) {

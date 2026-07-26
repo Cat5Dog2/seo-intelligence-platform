@@ -68,9 +68,9 @@ public sealed class MasterDataIntegrationTests
             {
                 var dbContext = scope.ServiceProvider.GetRequiredService<SeoIntelligenceDbContext>();
                 var job = await dbContext.Jobs.AsNoTracking().SingleAsync(entity => entity.Id == jobId);
-                var japan = await dbContext.Locations.AsNoTracking().SingleAsync(entity => entity.LocationCode == "2392");
+                var japan = await dbContext.Locations.AsNoTracking().SingleAsync(entity => entity.LocationCode == "Japan");
                 var removedLocation = await dbContext.Locations.AsNoTracking().SingleAsync(entity => entity.LocationCode == "9999");
-                var japanese = await dbContext.Languages.AsNoTracking().SingleAsync(entity => entity.LanguageCode == "ja");
+                var japanese = await dbContext.Languages.AsNoTracking().SingleAsync(entity => entity.LanguageCode == "Japanese");
                 var removedLanguage = await dbContext.Languages.AsNoTracking().SingleAsync(entity => entity.LanguageCode == "zz");
                 var externalCalls = await dbContext.ExternalApiCalls
                     .AsNoTracking()
@@ -93,7 +93,7 @@ public sealed class MasterDataIntegrationTests
                 Assert.Equal(StatusValues.Archived, removedLanguage.Status);
 
                 Assert.Equal(
-                    ["/v1/search-volume/languages", "/v1/search-volume/locations"],
+                    ["/v1/metadata/languages", "/v1/metadata/locations"],
                     externalCalls.Select(entity => entity.Endpoint).ToArray());
                 Assert.All(externalCalls, call =>
                 {
@@ -107,7 +107,7 @@ public sealed class MasterDataIntegrationTests
             {
                 Assert.Equal(HttpStatusCode.OK, locationsResponse.StatusCode);
                 var location = Assert.Single(locationsDocument.RootElement.GetProperty("data").EnumerateArray());
-                Assert.Equal("2392", location.GetProperty("code").GetString());
+                Assert.Equal("Japan", location.GetProperty("code").GetString());
                 Assert.Equal(StatusValues.Active, location.GetProperty("status").GetString());
             }
 
@@ -116,7 +116,7 @@ public sealed class MasterDataIntegrationTests
             {
                 Assert.Equal(HttpStatusCode.OK, languagesResponse.StatusCode);
                 var language = Assert.Single(languagesDocument.RootElement.GetProperty("data").EnumerateArray());
-                Assert.Equal("ja", language.GetProperty("code").GetString());
+                Assert.Equal("Japanese", language.GetProperty("code").GetString());
                 Assert.Equal(StatusValues.Active, language.GetProperty("status").GetString());
             }
         }

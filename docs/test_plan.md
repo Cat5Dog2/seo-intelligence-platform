@@ -184,7 +184,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-test.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-local.ps1
 ```
 
-包括Runbookスモークは、依存サービス起動、ready待機、DB migration適用、API/Worker/Web起動、マスタ同期ジョブ完了、CSV出力ジョブ完了をまとめて確認する。
+包括Runbookスモークは、依存サービス起動、ready待機、DB migration適用、API/Worker/Web起動、マスタ同期ジョブ完了、CSV出力ジョブ完了をまとめて確認する。ラッコキーワードAPI v1.12.0のデータ移行は`scripts/verify-rakko-v1120-migration.ps1`をスモーク内で実行し、一時PostgreSQL DBの合成データに対して旧コードの非終端ジョブだけがキャンセルされること、正準値・terminal・別種別が維持されること、子request・業務status・監査ログの整合、および既適用初版からの補正後に同じ正準入力を再登録できることを検証する。
 
 ```text
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-local.ps1

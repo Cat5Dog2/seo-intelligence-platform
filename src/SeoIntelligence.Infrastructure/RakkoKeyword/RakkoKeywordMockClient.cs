@@ -21,7 +21,7 @@ internal sealed class RakkoKeywordMockClient(
         var response = new SuggestKeywordsResponseDto
         {
             Result = true,
-            Meta = new RakkoKeywordMetaDto { ConsumedCredit = 1m },
+            Meta = new RakkoKeywordMetaDto { ConsumedCredit = 1.5m },
             Data = new RakkoKeywordItemsDataDto<SuggestKeywordItemDto>
             {
                 Items =
@@ -57,7 +57,7 @@ internal sealed class RakkoKeywordMockClient(
         var response = new RelatedKeywordsResponseDto
         {
             Result = true,
-            Meta = new RakkoKeywordMetaDto { ConsumedCredit = 1m },
+            Meta = new RakkoKeywordMetaDto { ConsumedCredit = 1.5m },
             Data = new RakkoKeywordItemsDataDto<RelatedKeywordItemDto>
             {
                 Items =
@@ -91,7 +91,7 @@ internal sealed class RakkoKeywordMockClient(
         var response = new OtherKeywordsResponseDto
         {
             Result = true,
-            Meta = new RakkoKeywordMetaDto { ConsumedCredit = 1m },
+            Meta = new RakkoKeywordMetaDto { ConsumedCredit = 22.5m },
             Data = new RakkoKeywordItemsDataDto<OtherKeywordItemDto>
             {
                 Items =
@@ -135,7 +135,7 @@ internal sealed class RakkoKeywordMockClient(
         var response = new SearchQuestionResponseDto
         {
             Result = true,
-            Meta = new RakkoKeywordMetaDto { ConsumedCredit = 1m },
+            Meta = new RakkoKeywordMetaDto { ConsumedCredit = 3m },
             Data = new RakkoKeywordItemsDataDto<QuestionItemDto>
             {
                 Items =
@@ -165,7 +165,7 @@ internal sealed class RakkoKeywordMockClient(
         var response = new RankingKeywordsResponseDto
         {
             Result = true,
-            Meta = new RakkoKeywordMetaDto { ConsumedCredit = 2m },
+            Meta = new RakkoKeywordMetaDto { ConsumedCredit = 4.5m },
             Data = new RakkoKeywordItemsDataDto<RankingKeywordItemDto>
             {
                 Items =
@@ -204,10 +204,13 @@ internal sealed class RakkoKeywordMockClient(
         CancellationToken cancellationToken = default)
     {
         var dto = RakkoKeywordDtoMapper.ToDto(request);
+        // 0.03クレジット/キーワード(seoDifficulty有効時は+0.75/キーワード)、1リクエスト最低15クレジット。
+        var creditPerKeyword = 0.03m + (request.SeoDifficulty ? 0.75m : 0m);
+        var registrationCredit = Math.Max(15m, request.Keywords.Count * creditPerKeyword);
         var response = new SearchVolumeHistoryResponseDto
         {
             Result = true,
-            Meta = new RakkoKeywordMetaDto { ConsumedCredit = 0m },
+            Meta = new RakkoKeywordMetaDto { ConsumedCredit = registrationCredit },
             Data = new SearchVolumeHistoryDataDto { RequestId = 1000001 },
             Errors = []
         };
@@ -262,7 +265,7 @@ internal sealed class RakkoKeywordMockClient(
         var response = new SearchVolumeResultsResponseDto
         {
             Result = true,
-            Meta = new RakkoKeywordMetaDto { ConsumedCredit = 5m },
+            Meta = new RakkoKeywordMetaDto { ConsumedCredit = 0m },
             Data = new RakkoKeywordItemsDataDto<SearchVolumeResultItemDto>
             {
                 Items =
@@ -306,7 +309,7 @@ internal sealed class RakkoKeywordMockClient(
         RakkoKeywordClientContext context,
         CancellationToken cancellationToken = default)
     {
-        var response = new LocationsResponseDto
+        var response = new MetadataLocationsResponseDto
         {
             Result = true,
             Meta = new RakkoKeywordMetaDto { ConsumedCredit = 0m },
@@ -314,7 +317,7 @@ internal sealed class RakkoKeywordMockClient(
             {
                 Locations =
                 [
-                    new LocationItemDto { Name = "Japan", Code = 2392, CountryIsoCode = "JP" }
+                    new LocationItemDto { Name = "Japan", CountryIsoCode = "JP" }
                 ]
             },
             Errors = []
@@ -334,7 +337,7 @@ internal sealed class RakkoKeywordMockClient(
         RakkoKeywordClientContext context,
         CancellationToken cancellationToken = default)
     {
-        var response = new LanguagesResponseDto
+        var response = new MetadataLanguagesResponseDto
         {
             Result = true,
             Meta = new RakkoKeywordMetaDto { ConsumedCredit = 0m },
@@ -342,7 +345,7 @@ internal sealed class RakkoKeywordMockClient(
             {
                 Languages =
                 [
-                    new LanguageItemDto { Name = "Japanese", Code = "ja" }
+                    new LanguageItemDto { Name = "Japanese" }
                 ]
             },
             Errors = []
@@ -367,7 +370,7 @@ internal sealed class RakkoKeywordMockClient(
         var response = new InfluxKeywordsKeywordResponseDto
         {
             Result = true,
-            Meta = new RakkoKeywordMetaDto { ConsumedCredit = 3m },
+            Meta = new RakkoKeywordMetaDto { ConsumedCredit = 4.5m },
             Data = new RakkoKeywordItemsDataDto<JsonElement>
             {
                 Items =
@@ -403,7 +406,7 @@ internal sealed class RakkoKeywordMockClient(
         var response = new InfluxPagesResponseDto
         {
             Result = true,
-            Meta = new RakkoKeywordMetaDto { ConsumedCredit = 3m },
+            Meta = new RakkoKeywordMetaDto { ConsumedCredit = 4.5m },
             Data = new RakkoKeywordItemsDataDto<JsonElement>
             {
                 Items =
@@ -439,7 +442,7 @@ internal sealed class RakkoKeywordMockClient(
         var response = new CompetitiveResponseDto
         {
             Result = true,
-            Meta = new RakkoKeywordMetaDto { ConsumedCredit = 2m },
+            Meta = new RakkoKeywordMetaDto { ConsumedCredit = 4.5m },
             Data = new RakkoKeywordItemsDataDto<JsonElement>
             {
                 Items =
@@ -483,7 +486,7 @@ internal sealed class RakkoKeywordMockClient(
         var response = new ContentSearchResponseDto
         {
             Result = true,
-            Meta = new RakkoKeywordMetaDto { ConsumedCredit = 2m },
+            Meta = new RakkoKeywordMetaDto { ConsumedCredit = 4.5m },
             Data = new RakkoKeywordItemsDataDto<JsonElement>
             {
                 Items =
@@ -524,7 +527,7 @@ internal sealed class RakkoKeywordMockClient(
         var response = new HeadlineResponseDto
         {
             Result = true,
-            Meta = new RakkoKeywordMetaDto { ConsumedCredit = 2m },
+            Meta = new RakkoKeywordMetaDto { ConsumedCredit = 3m },
             Data = new RakkoKeywordItemsDataDto<JsonElement>
             {
                 Items =
@@ -568,7 +571,7 @@ internal sealed class RakkoKeywordMockClient(
         var response = new CoOccurrenceResponseDto
         {
             Result = true,
-            Meta = new RakkoKeywordMetaDto { ConsumedCredit = 2m },
+            Meta = new RakkoKeywordMetaDto { ConsumedCredit = 3m },
             Data = new RakkoKeywordItemsDataDto<JsonElement>
             {
                 Items =
@@ -620,10 +623,13 @@ internal sealed class RakkoKeywordMockClient(
         CancellationToken cancellationToken = default)
     {
         var dto = RakkoKeywordDtoMapper.ToDto(request);
+        // 0.9クレジット/キーワード(1〜30位)+ 取得範囲10位追加ごとに0.3クレジット/キーワード。
+        var creditPerKeyword = 0.9m + 0.3m * ((request.Depth - 30) / 10);
+        var registrationCredit = request.Keywords.Count * creditPerKeyword;
         var response = new SearchRankHistoryResponseDto
         {
             Result = true,
-            Meta = new RakkoKeywordMetaDto { ConsumedCredit = 0m },
+            Meta = new RakkoKeywordMetaDto { ConsumedCredit = registrationCredit },
             Data = new SearchRankHistoryDataDto { RequestId = "rank-request-1000001" },
             Errors = []
         };
@@ -678,7 +684,7 @@ internal sealed class RakkoKeywordMockClient(
         var response = new SearchRankResultsResponseDto
         {
             Result = true,
-            Meta = new RakkoKeywordMetaDto { ConsumedCredit = 4m },
+            Meta = new RakkoKeywordMetaDto { ConsumedCredit = 0m },
             Data = new RakkoKeywordItemsDataDto<JsonElement>
             {
                 Items =

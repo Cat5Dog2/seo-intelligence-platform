@@ -11,8 +11,8 @@ namespace SeoIntelligence.Infrastructure.RakkoKeyword.Generated;
 internal static class RakkoKeywordPhase2OpenApiMetadata
 {
     public const string SourcePath = "docs/rakko-keyword-api-docs.json";
-    public const string OpenApiVersion = "1.4.1";
-    public const string SourceSha256 = "42ad755cb9ad5b93a844c30b54ac85b9cd8ec6ce7f880cda5289dcc8d6d611bc";
+    public const string OpenApiVersion = "1.12.0";
+    public const string SourceSha256 = "1baa6d5a2731a69135a67b3df46abd7b5b32e435dd8c13dbefc7f12cb22bba7e";
 
     public static readonly IReadOnlySet<string> SchemaNames = new HashSet<string>(StringComparer.Ordinal)
     {
@@ -202,6 +202,22 @@ internal sealed class SearchRankHistoryDto
 
     [JsonPropertyName("deduplicate")]
     public bool Deduplicate { get; init; } = true;
+
+    [JsonPropertyName("location")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Location { get; init; }
+
+    [JsonPropertyName("language")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Language { get; init; }
+
+    [JsonPropertyName("device")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Device { get; init; }
+
+    [JsonPropertyName("os")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Os { get; init; }
 }
 
 internal sealed class SearchRankResultsDto

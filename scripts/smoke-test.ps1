@@ -152,8 +152,8 @@ try {
             -Path "/api/projects" `
             -Body @{
                 name = "Runbook smoke $stamp"
-                defaultLocation = "JP"
-                defaultLanguage = "ja"
+                defaultLocation = "Japan"
+                defaultLanguage = "Japanese"
                 kpi = @{}
                 memo = "Created by scripts/smoke-test.ps1"
             }

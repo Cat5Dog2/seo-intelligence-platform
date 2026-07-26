@@ -10,13 +10,14 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | 作成日 | 2026-05-30 |
 | 対象 | ラッコキーワードAPI、Discord、AI、将来GSC/GA4/CMS/BIコネクタ |
 | 関連文書 | api_design.md / job_design.md / db_design.md / operations_runbook.md |
-| 外部仕様 | rakko-keyword-api-docs.json（OpenAPI 3.0、API v1.4.1） |
+| 外部仕様 | rakko-keyword-api-docs.json（OpenAPI 3.1、API v1.12.0） |
 
 ## 改訂履歴
 
 | 版 | 日付 | 内容 | 作成/更新 |
 | --- | --- | --- | --- |
 | 1.0 | 2026-05-30 | 初版作成。外部API認証、クライアント、クレジット、キャッシュ、契約テストを定義。 | ChatGPT |
+| 1.1 | 2026-07-26 | ラッコキーワードAPI v1.12.0対応。地域/言語マスタを`/v1/metadata/*`へ移行、消費クレジット料率を反映。 | Claude |
 
 ## 1. 目的
 
@@ -58,8 +59,8 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | `/v1/search-volume` | 一括検索ボリューム登録 | `search_volume_jobs`、`job_external_requests` |
 | `/v1/search-volume/{requestId}/status` | 調査ステータス | `job_external_requests` |
 | `/v1/search-volume/{requestId}/results` | 検索ボリューム結果 | `search_volume_results`、`keyword_metrics`、`keyword_monthly_volumes` |
-| `/v1/search-volume/locations` | 地域マスタ | `locations` |
-| `/v1/search-volume/languages` | 言語マスタ | `languages` |
+| `/v1/metadata/locations` | 地域マスタ（クレジット消費なし・認証不要） | `locations` |
+| `/v1/metadata/languages` | 言語マスタ（クレジット消費なし・認証不要） | `languages` |
 | `/v1/influx-keywords` | 獲得キーワード | `influx_keyword_results` |
 | `/v1/influx-pages` | 獲得ページ | `influx_page_results` |
 | `/v1/competitive` | 競合サイト | `competitive_results`、`competitor_sites` |
@@ -78,7 +79,7 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | 集計単位 | 全体、プロジェクト、APIキー、ジョブ、日次、月次。 |
 | 集計境界 | 日次はAsia/Tokyo 0:00、月次はAsia/Tokyo 毎月1日0:00で区切る。 |
 | 予算管理 | 日次/月次予算、予算上限、承認制、予算超過による事前停止はアプリ内では管理しない。 |
-| 実行前表示 | 推定消費クレジットを表示・監査できるようにするが、アプリ内の予算上限設定は持たない。 |
+| 実行前表示 | 推定消費クレジットを表示・監査できるようにするが、アプリ内の予算上限設定は持たない。検索ボリューム登録は0.03/キーワード（seoDifficulty有効時は追加0.75/キーワード）、外部リクエスト単位で最低15クレジットとして見積る。 |
 | 402処理 | 再試行せずfailed_fatal。クレジット不足としてDiscord通知し、契約側の残量確認を運用手順へ誘導する。 |
 
 ## 6. キャッシュ・再利用
@@ -112,7 +113,7 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | 生成物 | Infrastructure層に外部DTOを生成する。外部DTOを内部API/画面公開用のContractsへ直接配置しない。 |
 | 業務DTO | Application層で内部DTOへ変換し、外部仕様変更の影響を閉じ込める。 |
 | 互換性 | 追加フィールドは許容、必須フィールド削除/型変更は破壊的変更として扱う。 |
-| 契約テスト | 主要DTO、必須項目、エラー形式、requestId型、consumedCreditを検証する。 |
+| 契約テスト | 主要DTO、必須項目、エラー形式、requestId型、consumedCreditを検証する。生成DTOの形状はスキーマと再帰照合し、プロパティの削除/改名とrequired欠落を検知する。 |
 
 ## 9. Discord連携
 

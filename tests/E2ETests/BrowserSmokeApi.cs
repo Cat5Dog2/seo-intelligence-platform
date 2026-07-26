@@ -17,8 +17,8 @@ internal sealed class BrowserSmokeApi(string apiUrl)
             new
             {
                 name = $"Browser smoke {stamp}",
-                defaultLocation = "JP",
-                defaultLanguage = "ja",
+                defaultLocation = "Japan",
+                defaultLanguage = "Japanese",
                 kpi = new { },
                 memo = "Created by BrowserSmokeTests"
             },

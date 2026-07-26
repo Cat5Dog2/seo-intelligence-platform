@@ -3,6 +3,7 @@ using System;
 using System.Net;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using SeoIntelligence.Infrastructure.Persistence;
@@ -12,9 +13,11 @@ using SeoIntelligence.Infrastructure.Persistence;
 namespace SeoIntelligence.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(SeoIntelligenceDbContext))]
-    partial class SeoIntelligenceDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260726021810_RakkoKeywordV1120Alignment")]
+    partial class RakkoKeywordV1120Alignment
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

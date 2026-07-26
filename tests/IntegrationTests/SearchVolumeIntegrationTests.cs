@@ -37,8 +37,8 @@ public sealed class SearchVolumeIntegrationTests
                 new
                 {
                     keywords,
-                    location = "JP",
-                    language = "ja",
+                    location = "Japan",
+                    language = "Japanese",
                     aggregationPeriodMonths = 12,
                     seoDifficulty = true
                 });
@@ -54,7 +54,7 @@ public sealed class SearchVolumeIntegrationTests
                 var searchVolumeJob = await dbContext.SearchVolumeJobs.AsNoTracking().SingleAsync(entity => entity.JobId == jobId);
                 using var options = JsonDocument.Parse(searchVolumeJob.RequestOptionsJson);
                 Assert.Equal(1005, options.RootElement.GetProperty("normalizedKeywordCount").GetInt32());
-                Assert.Equal(1005m, options.RootElement.GetProperty("estimatedCredit").GetDecimal());
+                Assert.Equal(783.9m, options.RootElement.GetProperty("estimatedCredit").GetDecimal());
             }
 
             await using (var scope = factory.Services.CreateAsyncScope())
@@ -194,8 +194,8 @@ public sealed class SearchVolumeIntegrationTests
                 new
                 {
                     keywords = new[] { "seo", "content marketing" },
-                    location = "JP",
-                    language = "ja",
+                    location = "Japan",
+                    language = "Japanese",
                     aggregationPeriodMonths = 12
                 });
             using var document = await ReadJsonAsync(response);
@@ -234,6 +234,367 @@ public sealed class SearchVolumeIntegrationTests
         }
     }
 
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task SearchVolumeRegistrationNormalizesLegacyLocationAndLanguageCodes()
+    {
+        await using var factory = new SearchVolumeApiFactory();
+        using var client = CreateClient(factory);
+        var projectId = await SeedProjectAsync(factory);
+
+        try
+        {
+            await SeedMasterDataAsync(factory);
+
+            using var response = await client.PostAsJsonAsync(
+                $"/api/projects/{projectId}/search-volume/jobs",
+                new
+                {
+                    keywords = new[] { "seo" },
+                    location = "2392",
+                    language = "ja",
+                    aggregationPeriodMonths = 12
+                });
+            using var document = await ReadJsonAsync(response);
+
+            Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+            var jobId = document.RootElement.GetProperty("data").GetProperty("jobId").GetGuid();
+
+            await using var scope = factory.Services.CreateAsyncScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<SeoIntelligenceDbContext>();
+            var searchVolumeJob = await dbContext.SearchVolumeJobs.AsNoTracking().SingleAsync(entity => entity.JobId == jobId);
+            Assert.Equal("Japan", searchVolumeJob.Location);
+            Assert.Equal("Japanese", searchVolumeJob.Language);
+            using var options = JsonDocument.Parse(searchVolumeJob.RequestOptionsJson);
+            Assert.Equal("Japan", options.RootElement.GetProperty("location").GetString());
+            Assert.Equal("Japanese", options.RootElement.GetProperty("language").GetString());
+        }
+        finally
+        {
+            DeleteTempStoragePath(factory.StoragePath);
+        }
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task SearchVolumeRegistrationTreatsAliasesCaseDifferencesAndCanonicalNamesAsSameJob()
+    {
+        await using var factory = new SearchVolumeApiFactory();
+        using var client = CreateClient(factory);
+        var projectId = await SeedProjectAsync(factory);
+
+        try
+        {
+            await SeedMasterDataAsync(factory);
+            var inputs = new[]
+            {
+                (Location: "JP", Language: "Japanese"),
+                (Location: "JP", Language: "ja"),
+                (Location: "japan", Language: "japanese"),
+                (Location: "2392", Language: "ja"),
+                (Location: "Japan", Language: "Japanese"),
+                (Location: "Japan", Language: "Japanese")
+            };
+            var jobIds = new List<Guid>();
+
+            foreach (var input in inputs)
+            {
+                using var response = await client.PostAsJsonAsync(
+                    $"/api/projects/{projectId}/search-volume/jobs",
+                    new
+                    {
+                        keywords = new[] { "seo" },
+                        location = input.Location,
+                        language = input.Language,
+                        aggregationPeriodMonths = 12
+                    });
+                using var document = await ReadJsonAsync(response);
+
+                Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+                jobIds.Add(document.RootElement.GetProperty("data").GetProperty("jobId").GetGuid());
+            }
+
+            Assert.Single(jobIds.Distinct());
+            await using var scope = factory.Services.CreateAsyncScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<SeoIntelligenceDbContext>();
+            Assert.Equal(1, await dbContext.Jobs.CountAsync(entity => entity.ProjectId == projectId));
+        }
+        finally
+        {
+            DeleteTempStoragePath(factory.StoragePath);
+        }
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task SearchVolumeRegistrationCreatesCanonicalJobAfterLegacyJobWasCanceled()
+    {
+        await using var factory = new SearchVolumeApiFactory();
+        using var client = CreateClient(factory);
+        var projectId = await SeedProjectAsync(factory);
+
+        try
+        {
+            using var legacyResponse = await client.PostAsJsonAsync(
+                $"/api/projects/{projectId}/search-volume/jobs",
+                new
+                {
+                    keywords = new[] { "seo" },
+                    location = "JP",
+                    language = "ja",
+                    aggregationPeriodMonths = 12
+                });
+            using var legacyDocument = await ReadJsonAsync(legacyResponse);
+            Assert.Equal(HttpStatusCode.Accepted, legacyResponse.StatusCode);
+            var legacyJobId = legacyDocument.RootElement.GetProperty("data").GetProperty("jobId").GetGuid();
+
+            await using (var scope = factory.Services.CreateAsyncScope())
+            {
+                var dbContext = scope.ServiceProvider.GetRequiredService<SeoIntelligenceDbContext>();
+                var legacyJob = await dbContext.Jobs.SingleAsync(entity => entity.Id == legacyJobId);
+                legacyJob.Status = StatusValues.Canceled;
+                legacyJob.CompletedAt = DateTime.UtcNow;
+                await dbContext.SaveChangesAsync();
+            }
+
+            await SeedMasterDataAsync(factory);
+            using var canonicalResponse = await client.PostAsJsonAsync(
+                $"/api/projects/{projectId}/search-volume/jobs",
+                new
+                {
+                    keywords = new[] { "seo" },
+                    location = "Japan",
+                    language = "Japanese",
+                    aggregationPeriodMonths = 12
+                });
+            using var canonicalDocument = await ReadJsonAsync(canonicalResponse);
+
+            Assert.Equal(HttpStatusCode.Accepted, canonicalResponse.StatusCode);
+            var canonicalJobId = canonicalDocument.RootElement.GetProperty("data").GetProperty("jobId").GetGuid();
+            Assert.NotEqual(legacyJobId, canonicalJobId);
+            await using var verificationScope = factory.Services.CreateAsyncScope();
+            var verificationDbContext = verificationScope.ServiceProvider.GetRequiredService<SeoIntelligenceDbContext>();
+            Assert.Equal(2, await verificationDbContext.Jobs.CountAsync(entity => entity.ProjectId == projectId));
+        }
+        finally
+        {
+            DeleteTempStoragePath(factory.StoragePath);
+        }
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task SearchVolumeRegistrationRejectsLegacyCodesWhoseNamesAreInactive()
+    {
+        await using var factory = new SearchVolumeApiFactory();
+        using var client = CreateClient(factory);
+        var projectId = await SeedProjectAsync(factory);
+
+        try
+        {
+            await SeedMasterDataAsync(factory, activeLocationName: "Canada", activeLanguageName: "English");
+
+            using var response = await client.PostAsJsonAsync(
+                $"/api/projects/{projectId}/search-volume/jobs",
+                new
+                {
+                    keywords = new[] { "seo" },
+                    location = "2392",
+                    language = "ja",
+                    aggregationPeriodMonths = 12
+                });
+            using var document = await ReadJsonAsync(response);
+
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            var targets = document.RootElement
+                .GetProperty("errors")
+                .EnumerateArray()
+                .Select(error => error.GetProperty("target").GetString())
+                .ToArray();
+            Assert.Contains("location", targets);
+            Assert.Contains("language", targets);
+        }
+        finally
+        {
+            DeleteTempStoragePath(factory.StoragePath);
+        }
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task SearchVolumeRegistrationRejectsValuesWhenSynchronizedMasterHasNoActiveEntries()
+    {
+        await using var factory = new SearchVolumeApiFactory();
+        using var client = CreateClient(factory);
+        var projectId = await SeedProjectAsync(factory);
+
+        try
+        {
+            await SeedMasterDataAsync(factory, activeLocationName: null, activeLanguageName: null);
+
+            using var response = await client.PostAsJsonAsync(
+                $"/api/projects/{projectId}/search-volume/jobs",
+                new
+                {
+                    keywords = new[] { "seo" },
+                    location = "Japan",
+                    language = "Japanese",
+                    aggregationPeriodMonths = 12
+                });
+            using var document = await ReadJsonAsync(response);
+
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            var targets = document.RootElement
+                .GetProperty("errors")
+                .EnumerateArray()
+                .Select(error => error.GetProperty("target").GetString())
+                .ToArray();
+            Assert.Contains("location", targets);
+            Assert.Contains("language", targets);
+        }
+        finally
+        {
+            DeleteTempStoragePath(factory.StoragePath);
+        }
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task SearchVolumeRegistrationSkipsMasterValidationOnlyWhenProviderHasNoEntries()
+    {
+        await using var factory = new SearchVolumeApiFactory();
+        using var client = CreateClient(factory);
+        var projectId = await SeedProjectAsync(factory);
+
+        try
+        {
+            using var response = await client.PostAsJsonAsync(
+                $"/api/projects/{projectId}/search-volume/jobs",
+                new
+                {
+                    keywords = new[] { "seo" },
+                    location = "Unlisted location",
+                    language = "Unlisted language",
+                    aggregationPeriodMonths = 12
+                });
+            using var document = await ReadJsonAsync(response);
+
+            Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+            await using var scope = factory.Services.CreateAsyncScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<SeoIntelligenceDbContext>();
+            Assert.Equal(1, await dbContext.Jobs.CountAsync(entity => entity.ProjectId == projectId));
+        }
+        finally
+        {
+            DeleteTempStoragePath(factory.StoragePath);
+        }
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task SearchVolumeRegistrationRejectsUnknownLocationAndLanguageWhenMasterIsSynchronized()
+    {
+        await using var factory = new SearchVolumeApiFactory();
+        using var client = CreateClient(factory);
+        var projectId = await SeedProjectAsync(factory);
+
+        try
+        {
+            await SeedMasterDataAsync(factory);
+
+            using var response = await client.PostAsJsonAsync(
+                $"/api/projects/{projectId}/search-volume/jobs",
+                new
+                {
+                    keywords = new[] { "seo" },
+                    location = "Atlantis",
+                    language = "Klingon",
+                    aggregationPeriodMonths = 12
+                });
+            using var document = await ReadJsonAsync(response);
+
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            var errors = document.RootElement.GetProperty("errors").EnumerateArray().ToArray();
+            Assert.Contains(errors, error => error.GetProperty("target").GetString() == "location");
+            Assert.Contains(errors, error => error.GetProperty("target").GetString() == "language");
+            Assert.All(errors, error => Assert.Equal("Validation.Failed", error.GetProperty("code").GetString()));
+
+            await using var scope = factory.Services.CreateAsyncScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<SeoIntelligenceDbContext>();
+            Assert.Equal(0, await dbContext.Jobs.CountAsync(entity => entity.ProjectId == projectId));
+        }
+        finally
+        {
+            DeleteTempStoragePath(factory.StoragePath);
+        }
+    }
+
+    private static async Task SeedMasterDataAsync(
+        SearchVolumeApiFactory factory,
+        string? activeLocationName = "Japan",
+        string? activeLanguageName = "Japanese")
+    {
+        await using var scope = factory.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<SeoIntelligenceDbContext>();
+        var locations = new List<LocationEntity>
+        {
+            new LocationEntity
+            {
+                Id = Guid.NewGuid(),
+                Provider = SeoIntelligenceSeedData.RakkoKeywordProvider,
+                LocationCode = "2392",
+                LocationName = "Japan",
+                CountryCode = "JP",
+                Status = StatusValues.Archived,
+                SyncedAt = DateTime.UtcNow
+            }
+        };
+        if (activeLocationName is not null)
+        {
+            locations.Add(
+            new LocationEntity
+            {
+                Id = Guid.NewGuid(),
+                Provider = SeoIntelligenceSeedData.RakkoKeywordProvider,
+                LocationCode = activeLocationName,
+                LocationName = activeLocationName,
+                CountryCode = activeLocationName == "Japan" ? "JP" : "CA",
+                Status = StatusValues.Active,
+                SyncedAt = DateTime.UtcNow
+            });
+        }
+
+        var languages = new List<LanguageEntity>
+        {
+            new LanguageEntity
+            {
+                Id = Guid.NewGuid(),
+                Provider = SeoIntelligenceSeedData.RakkoKeywordProvider,
+                LanguageCode = "ja",
+                LanguageName = "Japanese",
+                Status = StatusValues.Archived,
+                SyncedAt = DateTime.UtcNow
+            }
+        };
+        if (activeLanguageName is not null)
+        {
+            languages.Add(
+            new LanguageEntity
+            {
+                Id = Guid.NewGuid(),
+                Provider = SeoIntelligenceSeedData.RakkoKeywordProvider,
+                LanguageCode = activeLanguageName,
+                LanguageName = activeLanguageName,
+                Status = StatusValues.Active,
+                SyncedAt = DateTime.UtcNow
+            });
+        }
+
+        dbContext.Locations.AddRange(locations);
+        dbContext.Languages.AddRange(languages);
+        await dbContext.SaveChangesAsync();
+    }
+
     private static async Task<Guid> SeedProjectAsync(SearchVolumeApiFactory factory)
     {
         var projectId = Guid.NewGuid();
@@ -244,8 +605,8 @@ public sealed class SearchVolumeIntegrationTests
             Id = projectId,
             WorkspaceId = SeoIntelligenceSeedData.DefaultWorkspaceId,
             Name = $"Search Volume {projectId:N}",
-            DefaultLocation = "JP",
-            DefaultLanguage = "ja",
+            DefaultLocation = "Japan",
+            DefaultLanguage = "Japanese",
             KpiJson = "{}",
             Status = StatusValues.Active,
             CreatedAt = DateTime.UtcNow,

@@ -132,7 +132,7 @@ public sealed class InfrastructureCommonFoundationTests
             Assert.Equal("/v1/related-keywords", call.Endpoint);
             Assert.Equal(SeoIntelligenceSeedData.RakkoKeywordScopeKey, call.ContractScopeKey);
             Assert.Equal(200, call.StatusCode);
-            Assert.Equal(1m, call.ConsumedCredit);
+            Assert.Equal(1.5m, call.ConsumedCredit);
             Assert.False(call.CacheHit);
             Assert.Null(call.ErrorCode);
             Assert.Equal(result.ExternalCall.RequestHash, call.RequestHash);

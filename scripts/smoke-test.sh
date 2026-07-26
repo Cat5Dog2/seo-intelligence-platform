@@ -81,7 +81,7 @@ request_json POST "/api/admin/master-data/sync" >/dev/null
 
 if [ -z "$smoke_project_id" ]; then
   stamp="$(date -u +%Y%m%d%H%M%S)"
-  project_body="{\"name\":\"Runbook smoke ${stamp}\",\"defaultLocation\":\"JP\",\"defaultLanguage\":\"ja\",\"kpi\":{},\"memo\":\"Created by scripts/smoke-test.sh\"}"
+  project_body="{\"name\":\"Runbook smoke ${stamp}\",\"defaultLocation\":\"Japan\",\"defaultLanguage\":\"Japanese\",\"kpi\":{},\"memo\":\"Created by scripts/smoke-test.sh\"}"
   project_response="$(request_json POST "/api/projects" "$project_body")"
   smoke_project_id="$(printf '%s' "$project_response" | extract_json_string "projectId")"
   if [ -z "$smoke_project_id" ]; then

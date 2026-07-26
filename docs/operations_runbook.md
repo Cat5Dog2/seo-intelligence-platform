@@ -128,7 +128,7 @@ OpenTelemetry Meter名は `SeoIntelligence`。MVPで記録する運用メトリ�
 | --- | --- |
 | API仕様更新 | `rakko-keyword-api-docs.json`差分確認、DTO再生成、契約テスト、影響確認。 |
 | API契約変更 | 管理画面/APIでは契約スコープを変更しない。SeedDataまたはマイグレーション相当の保守手順で旧`api_contract_scopes`をarchivedにし、新しい`scope_key`を追加する。 |
-| DBマイグレーション | dry-run、バックアップ確認、適用、スモークテスト。 |
+| DBマイグレーション | dry-run、Web/API/Worker停止、バックアップ確認、適用、新imageで再開、スモークテスト。 |
 | Secretローテーション | 新Secret登録、credential rotate、疎通確認、旧Secret無効化。 |
 | Worker設定変更 | 同時実行数、キュー、ポーリング間隔を変更し、ジョブ成功率を監視。 |
 | 保持期間変更 | `workspaces.retention_settings_json`更新、削除対象確認、監査情報保持確認。 |
@@ -141,6 +141,9 @@ VPSの初回デプロイ・更新・バックアップの正本手順は `docs/d
 
 - `.env.production`は`chmod 600`で権限を制限し、`POSTGRES_PASSWORD`、APIキー、Webhook URL等をGit、Dockerfile、build引数、ログへ含めない。
 - Migration前にDB/Storageのバックアップを確認する。更新時はWeb/API/Worker停止中にバックアップとMigrationを行う（メンテナンス時間）。
+- `RakkoKeywordV1120DataBackfill`を含む更新では、停止前に非終端ジョブを確認し、停止後は旧imageのAPI/Workerを再起動しない。Migrationは旧コード値を保持する非終端の検索ボリューム登録ジョブだけを`canceled`へ同期し、`audit_logs`へ`job.canceled`を記録する。`waiting_external`の外部requestId自体は取り消せず、消費済みクレジットは返却されない。
+- 開発・CIでは`scripts/verify-rakko-v1120-migration.ps1`が一時DBへ合成データを投入し、対象限定、子request、業務status、監査ログ、既適用環境の補正と再登録可否を検証する。通常は`scripts/smoke-local.ps1`から自動実行される。
+- ローカルで`scripts/smoke-local.ps1 -StopDependencies`を指定しても永続ボリュームは保持する。`-RemoveDependencyVolumes`は`-StopDependencies`との併用が必須で、PostgreSQL/Redisのデータを削除するため、使い捨てのCI環境以外では指定しない。
 - API `/readyz`は未適用Migrationを検知してunhealthyを返す。apiが`unhealthy`のときは`migrate`の実行有無を最初に確認する。
 - `restart worker`は同じimage/設定での再起動、`up -d --force-recreate worker`はCompose環境変数またはimage変更の反映に使う。
 - 通常停止は`down`までとし、`down -v`は使用しない。`-v`はPostgreSQL、Redis、共有Storage、Data Protection keysを削除する。アプリimageを戻す場合も、適用済みDB schemaとの互換性を確認し、Migrationを安易に逆適用しない。

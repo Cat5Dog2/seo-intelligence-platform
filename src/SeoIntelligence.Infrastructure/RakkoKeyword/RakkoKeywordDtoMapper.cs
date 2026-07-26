@@ -153,7 +153,11 @@ internal static class RakkoKeywordDtoMapper
             MatchType = request.MatchType,
             Depth = request.Depth,
             IsSearchVolumeAndSeoDifficultyEnabled = request.WithMetrics,
-            Deduplicate = request.Deduplicate
+            Deduplicate = request.Deduplicate,
+            Location = request.Location,
+            Language = request.Language,
+            Device = request.Device,
+            Os = request.Os
         };
 
     public static SearchRankResultsDto ToDto(RakkoSearchRankResultsRequest request)
@@ -242,7 +246,7 @@ internal static class RakkoKeywordDtoMapper
                 .ToArray());
 
     public static RakkoSearchVolumeRegistration ToApplication(SearchVolumeHistoryResponseDto response)
-        => new(response.Data.RequestId);
+        => new(ToSearchVolumeRequestId(response.Data.RequestId));
 
     public static RakkoSearchVolumeStatus ToApplication(SearchVolumeStatusResponseDto response)
         => new(response.Data.IsCompleted, response.Data.Statuses);
@@ -257,7 +261,7 @@ internal static class RakkoKeywordDtoMapper
                     item.Metrics.SearchVolume,
                     item.Metrics.Cpc,
                     item.Metrics.Competition,
-                    FirstSeenRange: null);
+                    item.Metrics.FirstSeenRange);
 
             var monthlySearchVolume = item.Trends?.MonthlySearchVolume?
                 .Where(pair => pair.Value.HasValue)
@@ -301,14 +305,14 @@ internal static class RakkoKeywordDtoMapper
     public static RakkoExternalSearchResults ToApplication(SearchRankResultsResponseDto response)
         => ToExternalSearchResults("search_rank_results", response.Data);
 
-    public static RakkoLocationCatalog ToApplication(LocationsResponseDto response)
+    public static RakkoLocationCatalog ToApplication(MetadataLocationsResponseDto response)
         => new(response.Data.Locations
-            .Select(item => new RakkoLocation(item.Name, item.Code.ToString("D", CultureInfo.InvariantCulture), item.CountryIsoCode))
+            .Select(item => new RakkoLocation(item.Name, item.CountryIsoCode))
             .ToArray());
 
-    public static RakkoLanguageCatalog ToApplication(LanguagesResponseDto response)
+    public static RakkoLanguageCatalog ToApplication(MetadataLanguagesResponseDto response)
         => new(response.Data.Languages
-            .Select(item => new RakkoLanguage(item.Name, item.Code))
+            .Select(item => new RakkoLanguage(item.Name))
             .ToArray());
 
     private static RakkoKeywordMetrics? ToApplication(KeywordMetricsDto? metrics)
@@ -439,6 +443,20 @@ internal static class RakkoKeywordDtoMapper
             decimal.TryParse(property.GetString(), NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed)
             ? parsed
             : null;
+    }
+
+    private static long ToSearchVolumeRequestId(decimal requestId)
+    {
+        if (requestId <= 0m ||
+            requestId != decimal.Truncate(requestId) ||
+            requestId > long.MaxValue)
+        {
+            throw new JsonException(
+                "Rakko Keyword API returned an invalid search-volume requestId. " +
+                "requestId must be a positive Int64 integer.");
+        }
+
+        return decimal.ToInt64(requestId);
     }
 
     private static string? ToRawJson(JsonElement? element)

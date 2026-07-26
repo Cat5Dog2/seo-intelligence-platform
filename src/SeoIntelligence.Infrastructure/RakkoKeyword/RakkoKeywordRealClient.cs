@@ -143,7 +143,7 @@ internal sealed class RakkoKeywordRealClient(
     public Task<RakkoKeywordCallResult<RakkoLocationCatalog>> ListLocationsAsync(
         RakkoKeywordClientContext context,
         CancellationToken cancellationToken = default)
-        => SendAsync<object, LocationsResponseDto, RakkoLocationCatalog>(
+        => SendAsync<object, MetadataLocationsResponseDto, RakkoLocationCatalog>(
             context,
             RakkoKeywordClientSupport.LocationsEndpoint,
             RakkoKeywordClientSupport.LocationsEndpoint,
@@ -157,7 +157,7 @@ internal sealed class RakkoKeywordRealClient(
     public Task<RakkoKeywordCallResult<RakkoLanguageCatalog>> ListLanguagesAsync(
         RakkoKeywordClientContext context,
         CancellationToken cancellationToken = default)
-        => SendAsync<object, LanguagesResponseDto, RakkoLanguageCatalog>(
+        => SendAsync<object, MetadataLanguagesResponseDto, RakkoLanguageCatalog>(
             context,
             RakkoKeywordClientSupport.LanguagesEndpoint,
             RakkoKeywordClientSupport.LanguagesEndpoint,
@@ -366,13 +366,14 @@ internal sealed class RakkoKeywordRealClient(
         httpRequest.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         httpRequest.Headers.UserAgent.ParseAdd(BuildUserAgent());
 
+        byte[]? responseBytes = null;
         try
         {
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeoutCts.CancelAfter(TimeSpan.FromSeconds(useLongTimeout ? options.Value.LongTimeoutSeconds : options.Value.TimeoutSeconds));
 
             using var response = await httpClient.SendAsync(httpRequest, timeoutCts.Token);
-            var responseBytes = await response.Content.ReadAsByteArrayAsync(timeoutCts.Token);
+            responseBytes = await response.Content.ReadAsByteArrayAsync(timeoutCts.Token);
             stopwatch.Stop();
 
             if (!response.IsSuccessStatusCode)
@@ -407,6 +408,7 @@ internal sealed class RakkoKeywordRealClient(
                     cancellationToken);
             }
 
+            var applicationData = map(responseDto);
             var externalCall = await recorder.RecordAsync(
                 new RakkoKeywordCallRecordRequest(
                     context,
@@ -422,7 +424,7 @@ internal sealed class RakkoKeywordRealClient(
                 cancellationToken);
 
             return RakkoKeywordCallResult<TApplication>.Success(
-                map(responseDto),
+                applicationData,
                 responseDto.Meta.ConsumedCredit,
                 (int)response.StatusCode,
                 externalCall);
@@ -445,6 +447,27 @@ internal sealed class RakkoKeywordRealClient(
                 "timeout",
                 stopwatch,
                 responseBody: null,
+                cancellationToken);
+        }
+        catch (JsonException exception)
+        {
+            stopwatch.Stop();
+            logger.LogWarning(
+                exception,
+                "Rakko Keyword API returned an invalid response for {endpoint} with correlation_id {correlation_id}.",
+                endpoint,
+                context.CorrelationId);
+
+            return await CompleteFailureAsync<TApplication>(
+                context,
+                endpoint,
+                method.Method,
+                requestBody,
+                statusCode: 500,
+                ["Rakko Keyword API returned an invalid response."],
+                "invalid_response",
+                stopwatch,
+                responseBytes,
                 cancellationToken);
         }
     }

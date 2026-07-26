@@ -1,9 +1,9 @@
 {
-  "openapi": "3.0.0",
+  "openapi": "3.1.1",
   "paths": {
     "/v1/suggest-keywords": {
       "post": {
-        "description": "検索したキーワードに対して、複数の検索エンジンから取得したサジェストキーワードを一括取得します。サジェストキーワードに加えて、SEO難易度、月間検索数、CPC（$）、競合性のデータを返却します。",
+        "description": "サジェストキーワード取得。\n\nあるキーワードの関連語を広く集めたいときにまず使う。\nGoogle/YouTube/Amazon/楽天/Bing等から、modesパラメータで指定（複数可）した検索エンジンのサジェストを返す。\n\nGoogleは汎用的、SEO目的に適する。Bingは汎用的だがユーザー層が高齢者層寄り。\nYouTube,Google動画は動画リサーチに、Amazonや楽天はECにおすすめ。\n\nサジェストには、検索エンジンが元キーワードを入力した人の検索意図を汲み取って提案する「関連性の高い複合キーワード」が表示される。\n\nキーワードリサーチの最初期に使用すると、ユーザーがどのような掛け合わせワードで検索しているのか、市場需要や検索意図を幅広く把握できる。\n\nサジェスト候補は通常最大1,000件前後、increaseKeyword=trueで最大10,000件前後存在する。\n\n月間検索数・SEO難易度・CPC・競合性などのSEO指標付き。\nSEO難易度はデータがない場合が多い。またSEO指標は最新でない可能性がある。\nこの指標を重要視する用途なら、データ取得後にPOST /v1/search-volumeで最新のSEO指標を取得すること。\n\nさらに大量のキーワードが必要な場合は POST /v1/related-keywordsを使う。\n元キーワードと検索意図の近いキーワードを取得したい場合は POST /v1/ranking-keywordsを使う。\n検索意図を深掘りしたい場合は、元キーワードを調べた人が次に調べるKW・抱えている疑問を取得できるPOST /v1/other-keywordsを併用する。\n\n1リクエストあたり1.5クレジットを消費。",
         "operationId": "SuggestKeywordsController_search",
         "parameters": [],
         "requestBody": {
@@ -220,7 +220,7 @@
     },
     "/v1/related-keywords": {
       "post": {
-        "description": "ラッコキーワードのキーワードデータベースから検索条件にマッチしたキーワードを一括取得します。関連キーワードに加えてSEO難易度、月間検索数、CPC（$）、競合性のデータを返却します。",
+        "description": "関連キーワード取得。\n\n指定キーワードに部分一致するキーワードをラッコのDBから大量に取得する。\n関連語が欲しい場合はまずPOST /v1/suggest-keywordsを使い、さらに大量にKWを取得したい場合にのみ当機能を使う。\n\n最大25,000件を取得。月間検索数・SEO難易度・CPC・競合性などのSEO指標付きで返却。\nSEO難易度はデータがない場合が多い。またSEO指標は最新でない可能性がある。\nこの指標を重要視する用途なら、データ取得後にPOST /v1/search-volumeで最新のSEO指標を取得すること。\n\n検索意図の近いキーワードを取得したい場合はPOST /v1/ranking-keywordsを、\nLSIキーワードを取得したい場合はPOST /v1/other-keywordsを使う。\n\n1リクエストあたり1.5クレジットを消費。",
         "operationId": "RelatedKeywordsController_search",
         "parameters": [],
         "requestBody": {
@@ -437,7 +437,7 @@
     },
     "/v1/other-keywords": {
       "post": {
-        "description": "潜在的な検索キーワード/質問（LSI/PAA）を取得します。",
+        "description": "潜在的な検索キーワード/質問（LSI/PAA）取得。\n\nそのキーワードで検索する人の次の検索行動・疑問を予測したり、SEO記事設計やユーザーニーズの深掘りに役立つ。\n\n潜在的な検索キーワード（LSI・Google検索結果の「他の人はこちらも検索」に表示されるキーワード）と「他の人はこちらも質問」（PAA）を最大2階層まで、それぞれ数十件程度を再帰取得する。\nLSIには月間検索数・SEO難易度・CPC・競合性などのSEO指標が付く。\nSEO難易度はデータがない場合が多い。またSEO指標は最新でない可能性がある。\nこの指標を重要視する用途なら、データ取得後にPOST /v1/search-volumeで最新のSEO指標を取得すること。\n\nimportance(high/medium/low)は再帰取得中の出現回数で決まる。\n多く登場するほど高く、Googleがより広く提示しているキーワード/質問であることを示す。\n\nLSIはGoogleがそのキーワードを調べた人が次に調べると予測するキーワード。\nPAAはGoogleがそのキーワードを調べた人が気になっていると予測する質問文・悩み。\n\nimportanceの高いLSI/PAAは、元の検索キーワードを調べる人にとって関心の高い・重要な事柄である可能性が高い。\n\n関連語をより多く取得したい場合は POST /v1/suggest-keywords を使う。\n指定キーワードを含む質問を大量に取得したい場合はPOST /v1/question-searchを使う。\n\n1リクエストあたり22.5クレジットを消費。",
         "operationId": "OtherKeywordsController_search",
         "parameters": [],
         "requestBody": {
@@ -654,7 +654,7 @@
     },
     "/v1/question-search": {
       "post": {
-        "description": "キーワードに関連するよくある質問を取得します。",
+        "description": "よくある質問検索。\n指定キーワードを含む質問を、出現頻度順に最大200件取得する。\nQ&A/SEO記事作成や、AIO/GEO/LLMO対策の際、質問サンプルを得るのに有用。\n\nラッコキーワードのDBに蓄積した質問文を、出現頻度の高い順に返却する。\nユーザーがGoogle検索AIモードや、チャットAIに入力する可能性の高い質問・疑問を網羅的に集められる。\n\nそのキーワードを検索したときにGoogle検索結果に表示される質問を取得したい場合はPOST /v1/other-keywordsを使う。\n\n1リクエストあたり3クレジットを消費。",
         "operationId": "QuestionSearchController_search",
         "parameters": [],
         "requestBody": {
@@ -871,7 +871,7 @@
     },
     "/v1/ranking-keywords": {
       "post": {
-        "description": "指定キーワードのGoogle検索結果の上位{searchTop}件のURLが、{searchRange}以内にランクインしているキーワードを取得します。",
+        "description": "同時ランクインキーワード取得。\nGoogle検索上位ページが他にSEO流入を獲得しているKWを抽出。検索意図の近い・遠い関連語の発見に使う。\n\n最大5,000件取得。月間検索数・SEO難易度・CPC・競合性などのSEO指標付き。\n\nSEO指標は最新でない可能性がある。\nこの指標を重要視する用途なら、データ取得後にPOST /v1/search-volumeで最新のSEO指標を取得すること。\n\n指定キーワードで上位ページ群がランクインしている他のキーワードを集めるため、検索意図の近いキーワードを発見できる。\nsearchTop / searchRangeの範囲を狭めれば検索意図の近いキーワードが、広げれば検索意図の遠いキーワードの抽出が行える。\n\nrelevanceの高いキーワードは、検索意図が近い可能性が高いため、一つのSEO記事で同時にGoogle上位ランクインを狙える可能性が高い。\nrelevanceの低いキーワードは、検索意図が遠い可能性が高いため、元キーワードとは別の記事として上位ランクインを狙うことが望ましい。\nsearchTop / searchRangeを広げると、relevanceの低いキーワードを多く取得できるため、既存キーワードと被りづらい・新しいキーワードを発見するのに役立つ。\n\n特定サイト・ページがSEO流入を獲得しているキーワードを調べたい場合は POST /v1/influx-keywords を、\nより多くの関連語を取得したい場合は POST /v1/suggest-keywords を使う。\n\n1リクエストあたり4.5クレジットを消費。",
         "operationId": "RankingKeywordsController_search",
         "parameters": [],
         "requestBody": {
@@ -1088,7 +1088,7 @@
     },
     "/v1/search-volume": {
       "post": {
-        "description": "一括キーワード調査を登録するAPIです。最大50,000件のキーワードを一括登録できます。",
+        "description": "一括キーワード調査を登録する。\nキーワードリストを渡すと非同期で月間検索数・SEO難易度・CPC・競合性などを調査開始する。\n\n処理はバックグラウンドで行われるため、以下の手順で結果を取得すること:\n1. 戻り値の requestId を控える\n2. GET /v1/search-volume/{requestId}/status で完了を待つ（ポーリング推奨: 初回は30秒後、以降30秒間隔）\n3. isCompleted=true になったら POST /v1/search-volume/{requestId}/results で結果を取得する\n\n通常は10秒程度で取得完了するが、seoDifficultyをONにした場合、最大60分程度時間がかかる。\nONの場合、一定の時間が経過してから処理ステータスを確認することを推奨する。\nSEO以外の目的で当機能を使う場合、時短のためseoDifficultyをOFFすることを推奨する。\n\n1キーワードあたり0.03クレジットを消費。seoDifficultyがONの場合、追加で1キーワードあたり0.75クレジットを消費する。ただし、1リクエストの消費クレジットの合計が15クレジットに満たない場合は15クレジットを消費する。",
         "operationId": "SearchVolumeHistoryController_register",
         "parameters": [],
         "requestBody": {
@@ -1302,16 +1302,200 @@
         ]
       }
     },
+    "/v1/search-volume/histories": {
+      "get": {
+        "description": "一括キーワード調査の過去リクエスト履歴一覧を取得する。取得結果から requestId を取り出し、GET /v1/search-volume/{requestId}/status で完了確認 / POST /v1/search-volume/{requestId}/results で結果取得が可能。\n- ソート順: createdAt 降順固定(新しい順)\n- 全体ステータス (status) は searchVolume と seoDifficulty の両方が processed なら completed(seoDifficulty=skip も完了扱い)。noiseReduction は判定対象外。\n\nクレジットは消費しない。",
+        "operationId": "SearchVolumeHistoryController_listHistories",
+        "parameters": [
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "取得件数。1〜100の整数を指定する。省略時は 100。",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 100,
+              "example": 100,
+              "type": "number"
+            }
+          },
+          {
+            "name": "offset",
+            "required": false,
+            "in": "query",
+            "description": "取得開始位置。0以上の整数を指定する。省略時は 0。offset + limit が 50000 を超える指定は不可。",
+            "schema": {
+              "minimum": 0,
+              "maximum": 9007199254740991,
+              "default": 0,
+              "example": 0,
+              "type": "number"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "description": "ステータスフィルタ。completed: 全処理完了 / processing: 処理中。省略時は全件取得。",
+            "schema": {
+              "$ref": "#/components/schemas/SearchVolumeHistoryOverallStatus"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "取得成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchVolumeHistoriesResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "バリデーションエラー",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "result": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "data": {
+                      "type": "object",
+                      "example": {}
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": [
+                        "Invalid query parameters"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "認証失敗",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "result": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "data": {
+                      "type": "object",
+                      "example": {}
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": [
+                        "Forbidden"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "レート制限超過",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "result": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "data": {
+                      "type": "object",
+                      "example": {}
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": [
+                        "Rate limit exceeded. Please try again later."
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "result": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "data": {
+                      "type": "object",
+                      "example": {}
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": [
+                        "500 Internal Server Error"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "X-API-Key": []
+          }
+        ],
+        "successDescription": "取得成功",
+        "summary": "一括キーワード調査履歴一覧取得",
+        "tags": [
+          "一括キーワード調査"
+        ],
+        "validationErrorExample": [
+          "Invalid query parameters"
+        ]
+      }
+    },
     "/v1/search-volume/{requestId}/status": {
       "get": {
-        "description": "一括キーワード調査のステータスを取得するAPIです。月間検索数取得、ノイズ除去、SEO難易度取得の各ステータスを確認できます。",
+        "description": "POST /v1/search-volume で登録した一括キーワード調査の処理ステータスを確認する。\nisCompleted が true になるまでポーリングすること（推奨間隔: 30秒）。\nisCompleted=true になったら POST /v1/search-volume/{requestId}/results で結果を取得できる。\n\n何回かステータスをチェックしてもisCompletedがtrueにならない場合は一定の時間が経ってから再度結果をチェックすることを推奨する。\n（利用が混雑している場合は、取得完了まで数時間以上時間がかかるケースがあるため）\n\nクレジットは消費しない。",
         "operationId": "SearchVolumeHistoryController_getStatus",
         "parameters": [
           {
             "name": "requestId",
             "required": true,
             "in": "path",
-            "description": "リクエストID",
+            "description": "POST /v1/search-volume で取得したリクエストID",
             "schema": {
               "example": 1234567,
               "type": "number"
@@ -1463,14 +1647,14 @@
     },
     "/v1/search-volume/{requestId}/results": {
       "post": {
-        "description": "一括キーワード調査データを取得するAPIです。フィルタやソート条件を指定できます。",
+        "description": "POST /v1/search-volume で登録した一括キーワード調査の結果を取得する。事前に GET /v1/search-volume/{requestId}/status で処理完了を確認してから呼び出す。フィルタ・ソート・件数制限が可能。\n\nクレジットは消費しない。",
         "operationId": "SearchVolumeHistoryController_getResults",
         "parameters": [
           {
             "name": "requestId",
             "required": true,
             "in": "path",
-            "description": "リクエストID",
+            "description": "POST /v1/search-volume で取得したリクエストID",
             "schema": {
               "example": 1234567,
               "type": "number"
@@ -1630,18 +1814,86 @@
         ]
       }
     },
-    "/v1/search-volume/locations": {
+    "/v1/metadata/locations": {
       "get": {
-        "description": "一括キーワード調査で指定可能な地域（location）の一覧を取得するAPIです。認証は不要です。Google Ads API の LocationCriterion に準拠した地域名を返却します。",
+        "countryCodeDescription": "ISO 3166-1 alpha-2 国コードでの絞り込み（完全一致・大文字小文字無視 例: JP）。指定すると国レベルに加え市区町村など下位レベルの地域も返却する。locationName と併用した場合はAND条件。省略可。",
+        "description": "POST /v1/search-rank / POST /v1/search-volume の location パラメータに指定可能な地域名の一覧を取得する。未対応の地域名でエラーになった場合、この一覧から正しい地域名を確認する。一覧が多い場合は locationName（地域名・部分一致）/ countryCode（ISO 3166-1 alpha-2 国コード・完全一致）で絞り込める（複数指定時はAND条件）。フィルタ未指定時は国レベルのみ、フィルタ指定時は国レベルに加え市区町村レベルの地域も返る。\n\nクレジットは消費しない。認証は不要。",
+        "limitDescription": "取得件数。正の整数を指定。省略時は全件取得。",
+        "locationNameDescription": "地域名での絞り込み（部分一致・大文字小文字無視）。指定すると国レベルに加え市区町村など下位レベルの地域も返却する。省略可。",
         "operationId": "SearchVolumeMetadataController_getLocations",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "locationName",
+            "required": false,
+            "in": "query",
+            "description": "地域名での絞り込み（部分一致・大文字小文字無視）。指定すると国レベルに加え市区町村など下位レベルの地域も返却する。省略可。",
+            "x-nestjs_zod-parent-additional-properties": false,
+            "schema": {
+              "example": "Japan",
+              "type": "string"
+            }
+          },
+          {
+            "name": "countryCode",
+            "required": false,
+            "in": "query",
+            "description": "ISO 3166-1 alpha-2 国コードでの絞り込み（完全一致・大文字小文字無視 例: JP）。指定すると国レベルに加え市区町村など下位レベルの地域も返却する。locationName と併用した場合はAND条件。省略可。",
+            "x-nestjs_zod-parent-additional-properties": false,
+            "schema": {
+              "example": "JP",
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "取得件数。正の整数を指定。省略時は全件取得。",
+            "x-nestjs_zod-parent-additional-properties": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 9007199254740991,
+              "example": 300,
+              "type": "number"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "取得成功",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/LocationsResponseDto"
+                  "$ref": "#/components/schemas/MetadataLocationsResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "バリデーションエラー",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "result": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "data": {
+                      "type": "object",
+                      "example": {}
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": [
+                        "countryCode must be an ISO 3166-1 alpha-2 code (two letters)"
+                      ]
+                    }
+                  }
                 }
               }
             }
@@ -1708,13 +1960,16 @@
         "successDescription": "取得成功",
         "summary": "地域一覧取得",
         "tags": [
-          "一括キーワード調査メタデータ"
+          "メタデータ"
+        ],
+        "validationErrorExample": [
+          "countryCode must be an ISO 3166-1 alpha-2 code (two letters)"
         ]
       }
     },
-    "/v1/search-volume/languages": {
+    "/v1/metadata/languages": {
       "get": {
-        "description": "一括キーワード調査で指定可能な言語（language）の一覧を取得するAPIです。認証は不要です。Google Ads API の LanguageCriterion に準拠した言語名を返却します。",
+        "description": "POST /v1/search-rank / POST /v1/search-volume の language パラメータに指定可能な言語名の一覧を取得する。未対応の言語名でエラーになった場合、この一覧から正しい言語名を確認する。言語名は取得した一覧の値（例: Japanese）をそのまま指定する。件数が限られるため絞り込みフィルタは持たない。\n\nクレジットは消費しない。認証は不要。",
         "operationId": "SearchVolumeMetadataController_getLanguages",
         "parameters": [],
         "responses": {
@@ -1723,7 +1978,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/LanguagesResponseDto"
+                  "$ref": "#/components/schemas/MetadataLanguagesResponseDto"
                 }
               }
             }
@@ -1790,13 +2045,13 @@
         "successDescription": "取得成功",
         "summary": "言語一覧取得",
         "tags": [
-          "一括キーワード調査メタデータ"
+          "メタデータ"
         ]
       }
     },
     "/v1/influx-keywords": {
       "post": {
-        "description": "獲得キーワード調査のキーワード軸データを一括取得します。",
+        "description": "獲得キーワード調査。\n指定ドメイン/URLがGoogleからSEO流入を獲得しているキーワードを取得。競合のSEO調査・自サイト分析に使う。\n\n最大10,000件取得。\n対象サイト・ページが各キーワードで何位にランクインし、どれだけ推定流入数を得ているかを返す。\n\n検索順位やSEO指標は最新でない可能性がある。\nこの指標を重要視する用途なら、データ取得後にPOST /v1/search-volumeで最新のSEO指標を取得するか、POST /v1/search-rankで最新の検索順位を取得すること。\n\n競合がSEO流入を獲得している主要なキーワードを調査するのに有用。\nまた、コンテンツギャップの調査にも役立つ。\n自サイト・競合サイトのデータを比較することで、\n競合がランクインしているが、自サイトがランクインできていないキーワードを把握できる。\n\nページ単位で集計したい場合は POST /v1/influx-pages を、\n指定ドメインの競合サイトを抽出したい場合はPOST /v1/competitiveを使う。\n\n1リクエストあたり4.5クレジットを消費。",
         "operationId": "InfluxKeywordsController_searchKeyword",
         "parameters": [],
         "requestBody": {
@@ -2013,7 +2268,7 @@
     },
     "/v1/influx-pages": {
       "post": {
-        "description": "獲得キーワード調査のページ軸データを一括取得します。",
+        "description": "獲得ページ調査。\n\n指定ドメイン/URLがGoogleからSEO集客できているページを取得。\n競合や自サイトの主力集客ページの把握に有用。\n\n最大10,000件取得。\n指定ドメインの各ページの合計推定流入数・合計集客価値(USD)・ランクインキーワード数・最もSEO流入を集めているキーワードを返す。\n\n検索順位やSEO指標は最新でない可能性がある。\nこの指標を重要視する用途なら、データ取得後にPOST /v1/search-volumeで最新のSEO指標を取得するか、POST /v1/search-rankで最新の検索順位＋SEO指標を取得すること。\n\n競合がすでにSEOで集客できているページは、Google検索のユーザーから需要がある情報が掲載されていることが推定できる。\n\n当機能で発見したページの、2位以降のSEO流入キーワードを確認したい場合はPOST /v1/influx-keywordsをmatchType=urlで使う。\n\n1リクエストあたり4.5クレジットを消費。",
         "operationId": "InfluxPagesController_searchPage",
         "parameters": [],
         "requestBody": {
@@ -2230,7 +2485,7 @@
     },
     "/v1/competitive": {
       "post": {
-        "description": "特定ドメインの競合抽出データを取得します。",
+        "description": "競合サイト抽出。\n\n指定ドメインのSEOランクインキーワードが重複しているサイトを最大20件抽出する。\n競合サイトを把握するのに有用。\n\nキーワード重複率・推定流入数・集客価値・キーワード数・ページ数などの指標で競合サイトを比較分析できる。\n\n当機能で発見したサイトのSEO流入キーワードを調査したい場合はPOST /v1/influx-keywordsを、\n主要なSEO流入を獲得しているページを調査したい場合はPOST /v1/influx-pagesを使う。\n\n1リクエストあたり4.5クレジットを消費。",
         "operationId": "CompetitiveController_searchCompetitive",
         "parameters": [],
         "requestBody": {
@@ -2445,9 +2700,226 @@
         ]
       }
     },
+    "/v1/bulk-site-research": {
+      "post": {
+        "description": "一括サイト調査。\n\n複数URL（最大100件）をまとめて調査し、各サイトの推定流入数・獲得キーワード数・ページ数などの現在値と、その推移（0〜100の指数）を取得する。\nサイト群のSEO規模とトレンドを一括で把握するのに有用。\n\n推移データ（histories）は、現在値スカラー（metrics）とは別ソース・別量のため、系列内最大月を100とする指数（0〜100・小数第2位）に正規化して返す。\netv / keywordCount / pageCount の3系列を各々独立に指数化し、キー名は etvIndex / keywordCountIndex / pageCountIndex とする（現在値との誤読防止）。\n現在値・分布・変化率は実数のまま返す（指数化しない）。\n\nurlMatchTypeで調査単位を指定する（url: 完全一致 / forward_url: 前方一致 / domain: ドメイン一致 / sub_domain: サブドメイン一致）。\nitemsは入力urlsと同数・同順で返る。\n本機能はSTANDARD以上のプラン限定。対象URLは最大100件。\n\n入力URL1件あたり0.45クレジットを消費（最低4.5クレジット）。（例: 10URL→4.5クレジット、100URL→45クレジット）。",
+        "operationId": "BulkSiteResearchController_searchBulkSiteResearch",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkSiteResearchDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "検索成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkSiteResearchResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "バリデーションエラー",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "result": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "data": {
+                      "type": "object",
+                      "example": {}
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": [
+                        "urls must be a string"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "クレジット不足",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "result": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "data": {
+                      "type": "object",
+                      "example": {}
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": [
+                        "Insufficient credits. Required: 1, Available: 0"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "認証エラー",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "result": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "data": {
+                      "type": "object",
+                      "example": {}
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": [
+                        "Forbidden"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "レート制限超過",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "result": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "data": {
+                      "type": "object",
+                      "example": {}
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": [
+                        "Rate limit exceeded. Please try again later."
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "result": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "data": {
+                      "type": "object",
+                      "example": {}
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": [
+                        "500 Internal Server Error"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable - データベース接続エラーなど",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "result": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "data": {
+                      "type": "object",
+                      "example": {}
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": [
+                        "Service Unavailable"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "X-API-Key": []
+          }
+        ],
+        "successDescription": "検索成功",
+        "summary": "一括サイト調査",
+        "tag": "一括サイト調査",
+        "tags": [
+          "一括サイト調査"
+        ],
+        "validationErrorExample": [
+          "urls must be a string"
+        ]
+      }
+    },
     "/v1/content-search": {
       "post": {
-        "description": "SEO集客のあるWEBページをSEO集客力の高い順に取得",
+        "description": "集客コンテンツ検索。\n\n指定キーワードをタイトル/ディスクリプション/主なSEO流入キーワードに含むWEBページを検索する。\n寄稿/広告掲載先探しや、参考記事探し・競合コンテンツの把握に使う。\n\n最大5,000件取得。各ページの推定流入数・集客価値・ランクインキーワード数・トップキーワードなどのSEO指標を返す。\nSEO指標は最新でない可能性がある。\nこの指標を重要視する用途なら、データ取得後にPOST /v1/search-volumeで最新のSEO指標を取得すること。\n\ntopKeywordCollapseをtrueにした際のトップキーワードには、元キーワードをタイトル/ディスクリプションに含むページが、SEO流入を獲得している主要なキーワードが重複無しで抽出される。\n検索意図の近いキーワードを探したり、弱いサイトが意図せずランクインしているニッチキーワードを抽出したりするのに役立つ。\n\n当機能で発見したページの、2位以降のSEO流入キーワードを確認したい場合はPOST /v1/influx-keywordsをmatchType=urlで使う。\n\n1リクエストあたり4.5クレジットを消費。",
         "operationId": "ContentSearchController_search",
         "parameters": [],
         "requestBody": {
@@ -2664,7 +3136,7 @@
     },
     "/v1/headline": {
       "post": {
-        "description": "Google検索結果上位20ページの見出しを抽出します。",
+        "description": "見出し抽出。指定キーワードのGoogle検索上位ページの見出し（h1〜h6）を抽出する。\n\nそのキーワードでSEO上位表示するために必要な情報を分析したいときや、\n競合上位ページがどのようなオリジナルコンテンツを記事に含めているのかを把握するのに役立つ。\nSEO記事のタイトル/見出し/本文を作成する前に使うべき機能。\n\nページごと・上位ページ平均の文字数・見出し数なども返す。\n\nGoogleは、そのキーワードで検索するユーザーの悩みを解決できる可能性の高い記事を上位表示する。\nこのため上位ページ中で共通して出現する見出し/トピックは、そのキーワードを調べるユーザーにとって必要な情報である可能性が高い。\n\n上位ページの頻出単語（共起語）も欲しい場合はPOST /v1/co-occurrenceを併用する。\n\n1リクエストあたり3クレジットを消費。",
         "operationId": "HeadlineController_search",
         "parameters": [],
         "requestBody": {
@@ -2881,7 +3353,7 @@
     },
     "/v1/co-occurrence": {
       "post": {
-        "description": "検索したキーワードの共起語を一括取得します。",
+        "description": "共起語取得。\n指定キーワードのGoogle検索上位ページから共起語（一緒に使われることが多い語）を抽出する。\n\nSEO記事を上位表示させるために記事に含めるべき単語を把握できる。\nSEO記事タイトル/見出し/記事本文を作成する前に使う。\n\n検索上位表示できているページを対象に、本文・タイトル・見出しでの出現回数やサイト数などの指標付きで返す。\n\nGoogleは、そのキーワードで検索するユーザーの悩みを解決できる可能性の高い記事を上位表示する。\nこのため検索上位ページ中で共通して出現する単語は、上位表示のために記事に盛り込むべき単語である可能性が高い。\n\n上位ページの見出し情報も欲しい場合はPOST /v1/headlineを併用する。\n\n1リクエストあたり3クレジットを消費。",
         "operationId": "CoOccurrenceController_search",
         "parameters": [],
         "requestBody": {
@@ -3098,7 +3570,7 @@
     },
     "/v1/search-rank": {
       "post": {
-        "description": "検索順位チェックを登録するAPIです。キーワードとURLを指定して、検索順位チェックに登録します。",
+        "description": "検索順位チェックを登録する。\nGoogle検索における検索順位および、KWの月間検索数/SEO難易度を取得できる（isSearchVolumeAndSeoDifficultyEnabledがONの場合）。\nキーワードリストとURL/ドメインを渡すと非同期で検索順位を調査開始する。\n\n処理はバックグラウンドで行われるため、以下の手順で結果を取得すること:\n1. 戻り値の requestId を控える\n2. GET /v1/search-rank/{requestId}/status で完了を待つ（ポーリング推奨: 初回は30秒後、以降30秒間隔）\n3. isCompleted=true になったら POST /v1/search-rank/{requestId}/results で結果を取得する\n\n通常は10件以内は数分以内、それ以外は60分以内程度で取得される。\n混雑時は数時間以上かかる場合もあるため、数分経過しても処理が完了しない場合は、\n一定の時間を置いてから処理ステータスを確認することを推奨する。\n\n1キーワードあたり0.9クレジットを消費（1〜30位取得）。31〜100位まで取得範囲を拡張する場合は、取得範囲を10位追加するごとに、1キーワードあたり0.3クレジットを追加消費する。",
         "operationId": "SearchRankHistoryController_register",
         "parameters": [],
         "requestBody": {
@@ -3312,16 +3784,200 @@
         ]
       }
     },
+    "/v1/search-rank/histories": {
+      "get": {
+        "description": "検索順位チェックの過去リクエスト履歴一覧を取得する。取得結果から requestId を取り出し、GET /v1/search-rank/{requestId}/status で完了確認 / POST /v1/search-rank/{requestId}/results で結果取得が可能。\n- ソート順: createdAt 降順固定(新しい順)\n- 全体ステータス (status) は serp が processed かつ searchVolumeAndSeoDifficulty が processed（順位のみ取得＝isSearchVolumeAndSeoDifficultyEnabled が false の場合は serp のみ）なら completed、それ以外は processing。\n\nクレジットは消費しない。",
+        "operationId": "SearchRankHistoryController_listHistories",
+        "parameters": [
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "取得件数。1〜100の整数を指定する。省略時は 100。",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 100,
+              "example": 100,
+              "type": "number"
+            }
+          },
+          {
+            "name": "offset",
+            "required": false,
+            "in": "query",
+            "description": "取得開始位置。0以上の整数を指定する。省略時は 0。offset + limit が 50000 を超える指定は不可。",
+            "schema": {
+              "minimum": 0,
+              "maximum": 9007199254740991,
+              "default": 0,
+              "example": 0,
+              "type": "number"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "description": "ステータスフィルタ。completed: 全処理完了 / processing: 処理中。省略時は全件取得。",
+            "schema": {
+              "$ref": "#/components/schemas/SearchRankHistoryOverallStatus"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "取得成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchRankHistoriesResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "バリデーションエラー",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "result": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "data": {
+                      "type": "object",
+                      "example": {}
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": [
+                        "Invalid query parameters"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "認証失敗",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "result": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "data": {
+                      "type": "object",
+                      "example": {}
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": [
+                        "Forbidden"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "レート制限超過",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "result": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "data": {
+                      "type": "object",
+                      "example": {}
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": [
+                        "Rate limit exceeded. Please try again later."
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "result": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "data": {
+                      "type": "object",
+                      "example": {}
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": [
+                        "500 Internal Server Error"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "X-API-Key": []
+          }
+        ],
+        "successDescription": "取得成功",
+        "summary": "検索順位チェック履歴一覧取得",
+        "tags": [
+          "検索順位チェック"
+        ],
+        "validationErrorExample": [
+          "Invalid query parameters"
+        ]
+      }
+    },
     "/v1/search-rank/{requestId}/status": {
       "get": {
-        "description": "検索順位チェックのステータスを取得するAPIです。検索結果取得、月間検索数/SEO難易度取得の各ステータスを確認できます。",
+        "description": "POST /v1/search-rank で登録した検索順位チェックの処理ステータスを確認する。\nisCompleted が true になるまでポーリングすること（推奨間隔: 30秒）。\nisCompleted=true になったら POST /v1/search-rank/{requestId}/results で結果を取得できる。\n\n何回かステータスをチェックしてもisCompletedがtrueにならない場合は一定の時間が経ってから再度結果をチェックすることを推奨する。\n（利用が混雑している場合は、取得完了まで数時間以上時間がかかるケースがあるため）\n\nクレジットは消費しない。",
         "operationId": "SearchRankHistoryController_getStatus",
         "parameters": [
           {
             "name": "requestId",
             "required": true,
             "in": "path",
-            "description": "リクエストID",
+            "description": "POST /v1/search-rank で取得したリクエストID",
             "schema": {
               "example": "01HQZX5Y4JMQK8XNQ7WVZXZ5Y4",
               "type": "string"
@@ -3473,14 +4129,14 @@
     },
     "/v1/search-rank/{requestId}/results": {
       "post": {
-        "description": "検索順位チェック結果データを取得するAPIです。フィルタやソート条件を指定できます。",
+        "description": "POST /v1/search-rank で登録した検索順位チェックの結果を取得する。事前に GET /v1/search-rank/{requestId}/status で処理完了を確認してから呼び出す。フィルタ・ソート・件数制限が可能。\n※ 非同期API（登録 → ステータス確認 → 結果取得の3ステップ）\n\nクレジットは消費しない。",
         "operationId": "SearchRankHistoryController_getResults",
         "parameters": [
           {
             "name": "requestId",
             "required": true,
             "in": "path",
-            "description": "リクエストID",
+            "description": "POST /v1/search-rank で取得したリクエストID",
             "schema": {
               "example": "01HQZX5Y4JMQK8XNQ7WVZXZ5Y4",
               "type": "string"
@@ -3639,12 +4295,229 @@
           "Invalid request parameters"
         ]
       }
+    },
+    "/v1/site-search": {
+      "post": {
+        "description": "サイト検索。\nコンテンツ・ドメイン・各種指標で関連サイトを検索し、推定流入数が多い順に取得する。\n\n最大100件取得。各サイトの推定検索流入数・集客価値(USD)・ランクインキーワード数・ページ数を返す。\n\nコンテンツフィルタ（filter.keyword）を使った場合、まず関連サイトを検索流入が多い順に最大100件抽出した後に他のフィルタが適用される。\nそのため、フィルタを掛け合わせて101〜200件目を取得することはできない（フィルタは抽出済み100件に対して掛かるため）。\nコンテンツフィルタ指定時は、関連コンテンツの推定流入数（relatedContent.estimatedTraffic）とコンテンツ関連性スコア（relatedContent.relevanceScore）も返す。\n\n特定サイトがSEO流入を獲得しているキーワードを調べたい場合は POST /v1/influx-keywords を、\n指定ドメインの競合サイトを抽出したい場合は POST /v1/competitive を使う。\n\n1リクエストあたり1.5クレジットを消費。",
+        "operationId": "SiteSearchController_search",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SiteSearchDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "検索成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteSearchResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "バリデーションエラー",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "result": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "data": {
+                      "type": "object",
+                      "example": {}
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": [
+                        "filter must be an object"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "クレジット不足",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "result": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "data": {
+                      "type": "object",
+                      "example": {}
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": [
+                        "Insufficient credits. Required: 1, Available: 0"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "認証エラー",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "result": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "data": {
+                      "type": "object",
+                      "example": {}
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": [
+                        "Forbidden"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "レート制限超過",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "result": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "data": {
+                      "type": "object",
+                      "example": {}
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": [
+                        "Rate limit exceeded. Please try again later."
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "result": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "data": {
+                      "type": "object",
+                      "example": {}
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": [
+                        "500 Internal Server Error"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable - データベース接続エラーなど",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "result": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "data": {
+                      "type": "object",
+                      "example": {}
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": [
+                        "Service Unavailable"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "X-API-Key": []
+          }
+        ],
+        "successDescription": "検索成功",
+        "summary": "サイト検索",
+        "tag": "サイト検索",
+        "tags": [
+          "サイト検索"
+        ],
+        "validationErrorExample": [
+          "filter must be an object"
+        ]
+      }
     }
   },
   "info": {
     "title": "ラッコキーワードAPI",
-    "description": "ラッコキーワードAPIの仕様です。\nスタンダードプランでAPIキー（最大5個）を発行することで利用できます。\n取得データは社内利用の範囲でご利用いただけます。サービスへの組み込み等をご検討の際はAPI利用ガイドライン・利用規約を厳守の上ご利用ください。\nMCPの設定方法や接続手順については、MCP設定ガイドをご覧ください。\n\nAPI Docs（JSON / AI・プログラム向け）\nAPI Docs（Markdown / 人間向け）",
-    "version": "1.4.1",
+    "description": "ラッコキーワードAPIの仕様です。\nスタンダードプランでAPIキー（最大5個）を発行することで利用できます。\n取得データは社内利用の範囲でご利用いただけます。サービスへの組み込み等をご検討の際はAPI利用ガイドライン・利用規約を厳守の上ご利用ください。\nMCPの設定方法や接続手順については、MCP設定ガイドをご覧ください。\n\nAPI Docs（JSON（OpenAPI）/ AI・プログラム向け）\nAPI Docs（Markdown / 人間向け）",
+    "version": "1.12.0",
     "contact": {},
     "license": {
       "name": "License: Apache 2.0",
@@ -3703,15 +4576,15 @@
           },
           "increaseKeyword": {
             "default": false,
-            "description": "キーワード増量オプション。true にすると、より多くのサジェストキーワードを取得する（消費クレジットが増加する）。省略時は false。",
+            "description": "キーワード増量オプション。true にすると、より多くのサジェストキーワードを取得する。SEOキーワードを網羅的に取得したい場合は、trueにすること。省略時は false。",
             "type": "boolean"
           },
           "filter": {
-            "description": "結果のフィルタリング条件。検索ボリューム・SEO難易度・CPC・競合性・出現時期・サジェストクラスなどで絞り込む。",
+            "description": "結果のフィルタリング条件。月間検索数・SEO難易度・CPC・競合性・出現時期・サジェストクラスなどで絞り込む。",
             "type": "object",
             "properties": {
               "suggestClass": {
-                "description": "サジェストクラスフィルタ（0-3の配列）。0: ＋（サジェスト）, 1: ＋＋（サジェストのサジェスト）, 2: ＋α（拡張サジェスト）, 3: ＋＋＋（拡張/深掘りサジェスト）",
+                "description": "サジェストクラスフィルタ（0-3の配列）。0: ＋（サジェスト）, 1: ＋＋（サジェストのサジェスト）, 2: ＋α（元キーワードにあいうえお...・abcde...・12345...を付与した際に表示されるサジェスト）, 3: ＋＋＋（「＋＋」または「＋α」からさらに展開されたサジェスト）",
                 "example": [
                   0,
                   1
@@ -3728,7 +4601,7 @@
                 "type": "object",
                 "properties": {
                   "includes": {
-                    "description": "含む単語のリスト",
+                    "description": "含む単語のリスト（複数入力時はOR）",
                     "example": [
                       "水族館"
                     ],
@@ -3738,7 +4611,7 @@
                     }
                   },
                   "notIncludes": {
-                    "description": "含まない単語のリスト",
+                    "description": "含まない単語のリスト（複数入力時はOR）",
                     "example": [
                       "グッズ"
                     ],
@@ -3772,7 +4645,7 @@
                 "additionalProperties": false
               },
               "searchVolume": {
-                "description": "月間検索ボリュームフィルタ（範囲指定）",
+                "description": "月間検索数フィルタ（範囲指定）",
                 "type": "object",
                 "properties": {
                   "min": {
@@ -3904,8 +4777,8 @@
             "properties": {
               "consumedCredit": {
                 "type": "number",
-                "description": "このリクエストで消費されたクレジット数。取得対象の検索エンジン数に応じて増減する（1エンジンにつき1クレジット）。",
-                "example": 1
+                "description": "このリクエストで消費されたクレジット数。",
+                "example": 1.5
               }
             },
             "required": [
@@ -3983,49 +4856,79 @@
                     },
                     "suggestClass": {
                       "type": "string",
-                      "description": "サジェストキーワードの区分ラベル。＋（0: サジェスト）, ＋＋（1: サジェストのサジェスト）, ＋α（2: 拡張サジェスト）, ＋＋＋（3: 「＋＋」または「＋α」からさらに展開されたサジェスト）",
+                      "description": "サジェストキーワードの区分ラベル。＋（0: サジェスト）, ＋＋（1: サジェストのサジェスト）, ＋α（2: 元キーワードにあいうえお...・abcde...・12345...を付与した際に表示されるサジェスト）, ＋＋＋（3: 「＋＋」または「＋α」からさらに展開されたサジェスト）",
                       "example": "＋"
                     },
                     "metrics": {
                       "type": "object",
                       "properties": {
                         "seoDifficulty": {
-                          "type": "number",
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
                           "description": "SEO難易度。1–100で表し、高いほど難易度が高い（1–33:低 / 34–66:中 / 67–100:高）。不明な場合は null。",
-                          "example": 45,
-                          "nullable": true
+                          "example": 45
                         },
                         "searchVolume": {
-                          "type": "number",
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
                           "description": "月間検索数（年平均）",
-                          "example": 12000,
-                          "nullable": true
+                          "example": 12000
                         },
                         "cpc": {
-                          "type": "number",
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
                           "description": "推定クリック単価（USD）",
-                          "example": 1.5,
-                          "nullable": true
+                          "example": 1.5
                         },
                         "competition": {
-                          "type": "number",
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
                           "description": "広告競合性。0–100で表し、高いほど競合性が高い（0–33:低 / 34–66:中 / 67–100:高）。",
-                          "example": 2,
-                          "nullable": true
+                          "example": 2
                         },
                         "firstSeenRange": {
-                          "type": "string",
-                          "enum": [
-                            "last_7_days",
-                            "last_30_days",
-                            "last_90_days",
-                            "within_6_months",
-                            "within_1_year",
-                            "over_1_year"
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "enum": [
+                                "last_7_days",
+                                "last_30_days",
+                                "last_90_days",
+                                "within_6_months",
+                                "within_1_year",
+                                "over_1_year"
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
                           ],
-                          "description": "出現時期。キーワードが最初に検出された時期を日付範囲ラベルで表す。不明な場合は null。",
-                          "example": "last_30_days",
-                          "nullable": true
+                          "description": "出現時期。キーワードが最初にラッコキーワードデータベースで検出された時期を日付範囲ラベルで表す。不明な場合は null。",
+                          "example": "last_30_days"
                         }
                       },
                       "required": [
@@ -4129,15 +5032,15 @@
             ]
           },
           "filter": {
-            "description": "結果のフィルタリング条件。検索ボリューム・SEO難易度・CPC・競合性・出現時期などで絞り込む。",
+            "description": "結果のフィルタリング条件。月間検索数・SEO難易度・CPC・競合性・出現時期などで絞り込む。",
             "type": "object",
             "properties": {
               "keyword": {
-                "description": "キーワードフィルタ",
+                "description": "キーワードフィルタ（含む/含まないキーワード指定）",
                 "type": "object",
                 "properties": {
                   "includes": {
-                    "description": "含む単語のリスト",
+                    "description": "含む単語のリスト（複数入力時はOR）",
                     "example": [
                       "水族館"
                     ],
@@ -4147,7 +5050,7 @@
                     }
                   },
                   "notIncludes": {
-                    "description": "含まない単語のリスト",
+                    "description": "含まない単語のリスト（複数入力時はOR）",
                     "example": [
                       "グッズ"
                     ],
@@ -4181,7 +5084,7 @@
                 "additionalProperties": false
               },
               "searchVolume": {
-                "description": "月間検索ボリュームフィルタ（範囲指定）",
+                "description": "月間検索数フィルタ（範囲指定）",
                 "type": "object",
                 "properties": {
                   "min": {
@@ -4313,7 +5216,7 @@
               "consumedCredit": {
                 "type": "number",
                 "description": "このリクエストで消費されたクレジット数。",
-                "example": 1
+                "example": 1.5
               }
             },
             "required": [
@@ -4372,42 +5275,72 @@
                       "type": "object",
                       "properties": {
                         "seoDifficulty": {
-                          "type": "number",
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
                           "description": "SEO難易度。1–100で表し、高いほど難易度が高い（1–33:低 / 34–66:中 / 67–100:高）。不明な場合は null。",
-                          "example": 40,
-                          "nullable": true
+                          "example": 40
                         },
                         "searchVolume": {
-                          "type": "number",
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
                           "description": "月間検索数（年平均）",
-                          "example": 90500,
-                          "nullable": true
+                          "example": 90500
                         },
                         "cpc": {
-                          "type": "number",
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
                           "description": "推定クリック単価（USD）",
-                          "example": 0,
-                          "nullable": true
+                          "example": 0
                         },
                         "competition": {
-                          "type": "number",
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
                           "description": "広告競合性。0–100で表し、高いほど競合性が高い（0–33:低 / 34–66:中 / 67–100:高）。",
-                          "example": 1,
-                          "nullable": true
+                          "example": 1
                         },
                         "firstSeenRange": {
-                          "type": "string",
-                          "enum": [
-                            "last_7_days",
-                            "last_30_days",
-                            "last_90_days",
-                            "within_6_months",
-                            "within_1_year",
-                            "over_1_year"
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "enum": [
+                                "last_7_days",
+                                "last_30_days",
+                                "last_90_days",
+                                "within_6_months",
+                                "within_1_year",
+                                "over_1_year"
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
                           ],
-                          "description": "出現時期。キーワードが最初に検出された時期を日付範囲ラベルで表す。不明な場合は null。",
-                          "example": "last_30_days",
-                          "nullable": true
+                          "description": "出現時期。キーワードが最初にラッコキーワードデータベースで検出された時期を日付範囲ラベルで表す。不明な場合は null。",
+                          "example": "last_30_days"
                         }
                       },
                       "required": [
@@ -4502,7 +5435,7 @@
               "consumedCredit": {
                 "type": "number",
                 "description": "このリクエストで消費されたクレジット数。",
-                "example": 15
+                "example": 22.5
               }
             },
             "required": [
@@ -4591,42 +5524,72 @@
                       "type": "object",
                       "properties": {
                         "seoDifficulty": {
-                          "type": "number",
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
                           "description": "SEO難易度。1–100で表し、高いほど難易度が高い（1–33:低 / 34–66:中 / 67–100:高）。不明な場合は null。",
-                          "example": 30,
-                          "nullable": true
+                          "example": 30
                         },
                         "searchVolume": {
-                          "type": "number",
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
                           "description": "月間検索数（年平均）",
-                          "example": 33100,
-                          "nullable": true
+                          "example": 33100
                         },
                         "cpc": {
-                          "type": "number",
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
                           "description": "推定クリック単価（USD）",
-                          "example": 2.17,
-                          "nullable": true
+                          "example": 2.17
                         },
                         "competition": {
-                          "type": "number",
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
                           "description": "広告競合性。0–100で表し、高いほど競合性が高い（0–33:低 / 34–66:中 / 67–100:高）。",
-                          "example": 5,
-                          "nullable": true
+                          "example": 5
                         },
                         "firstSeenRange": {
-                          "type": "string",
-                          "enum": [
-                            "last_7_days",
-                            "last_30_days",
-                            "last_90_days",
-                            "within_6_months",
-                            "within_1_year",
-                            "over_1_year"
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "enum": [
+                                "last_7_days",
+                                "last_30_days",
+                                "last_90_days",
+                                "within_6_months",
+                                "within_1_year",
+                                "over_1_year"
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
                           ],
-                          "description": "出現時期。キーワードが最初に検出された時期を日付範囲ラベルで表す。不明な場合は null。",
-                          "example": "last_30_days",
-                          "nullable": true
+                          "description": "出現時期。キーワードが最初にラッコキーワードデータベースで検出された時期を日付範囲ラベルで表す。不明な場合は null。",
+                          "example": "last_30_days"
                         }
                       },
                       "required": [
@@ -4707,7 +5670,7 @@
               "consumedCredit": {
                 "type": "number",
                 "description": "このリクエストで消費されたクレジット数",
-                "example": 2
+                "example": 3
               }
             },
             "required": [
@@ -4804,81 +5767,59 @@
           },
           "searchTop": {
             "default": 20,
-            "description": "検索上位参照数。上位何件のURLを同時ランクイン判定に使用するかを指定する。選択肢: 3 / 5 / 10 / 20 / 30 / 50。省略時は 20。",
+            "description": "検索上位ページの参照数。そのキーワードでGoogle検索で上位表示できているページのうち、上位何件のURLを同時ランクイン判定に使用するかを指定する。選択肢: 3 / 5 / 10 / 20 / 30 / 50。省略時は 20。値を大きくすると、Google検索でより下位にランクインしている＝検索意図とズレのより大きいページが調査対象となる。値を小さくすると、Google検索でより上位にランクインしている＝検索意図に一致するページのみが調査対象となる。",
             "example": 20,
             "anyOf": [
               {
                 "type": "number",
-                "enum": [
-                  3
-                ]
+                "const": 3
               },
               {
                 "type": "number",
-                "enum": [
-                  5
-                ]
+                "const": 5
               },
               {
                 "type": "number",
-                "enum": [
-                  10
-                ]
+                "const": 10
               },
               {
                 "type": "number",
-                "enum": [
-                  20
-                ]
+                "const": 20
               },
               {
                 "type": "number",
-                "enum": [
-                  30
-                ]
+                "const": 30
               },
               {
                 "type": "number",
-                "enum": [
-                  50
-                ]
+                "const": 50
               }
             ]
           },
           "searchRange": {
             "default": 50,
-            "description": "検索順位範囲。この順位以内にランクインしているキーワードを対象にする。選択肢: 10 / 20 / 30 / 50 / 100。省略時は 50。",
+            "description": "検索順位範囲。searchTopで指定したページがGoogle上位表示できているキーワードのうち、この順位以内にランクインしているキーワードを対象にする。選択肢: 10 / 20 / 30 / 50 / 100。省略時は 50。",
             "example": 50,
             "anyOf": [
               {
                 "type": "number",
-                "enum": [
-                  10
-                ]
+                "const": 10
               },
               {
                 "type": "number",
-                "enum": [
-                  20
-                ]
+                "const": 20
               },
               {
                 "type": "number",
-                "enum": [
-                  30
-                ]
+                "const": 30
               },
               {
                 "type": "number",
-                "enum": [
-                  50
-                ]
+                "const": 50
               },
               {
                 "type": "number",
-                "enum": [
-                  100
-                ]
+                "const": 100
               }
             ]
           },
@@ -4891,7 +5832,7 @@
                 "type": "object",
                 "properties": {
                   "includes": {
-                    "description": "含む単語のリスト",
+                    "description": "含む単語のリスト（複数入力時はOR）",
                     "example": [
                       "水族館"
                     ],
@@ -4901,7 +5842,7 @@
                     }
                   },
                   "notIncludes": {
-                    "description": "含まない単語のリスト",
+                    "description": "含まない単語のリスト（複数入力時はOR）",
                     "example": [
                       "グッズ"
                     ],
@@ -4935,7 +5876,7 @@
                 "additionalProperties": false
               },
               "searchVolume": {
-                "description": "月間検索ボリュームフィルタ（範囲指定）",
+                "description": "月間検索数フィルタ（範囲指定）",
                 "type": "object",
                 "properties": {
                   "min": {
@@ -5068,7 +6009,7 @@
               "consumedCredit": {
                 "type": "number",
                 "description": "このリクエストで消費されたクレジット数。",
-                "example": 3
+                "example": 4.5
               }
             },
             "required": [
@@ -5132,10 +6073,16 @@
                       "type": "object",
                       "properties": {
                         "seoDifficulty": {
-                          "type": "number",
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
                           "description": "SEO難易度。1–100で表し、高いほど難易度が高い（1–33:低 / 34–66:中 / 67–100:高）。不明な場合は null。",
-                          "example": 30,
-                          "nullable": true
+                          "example": 30
                         },
                         "searchVolume": {
                           "type": "number",
@@ -5228,13 +6175,13 @@
           },
           "location": {
             "default": "Japan",
-            "description": "地域名。Google Ads API の LocationCriterion に準拠。省略時は Japan。",
+            "description": "地域名。省略時は Japan。\n\n- 指定可能な地域名は metadata の locations 一覧を参照（一覧は国レベルのみ）\n- 市区町村レベルの地域も指定可能。「市区町村名,上位地域名,国名」のようにカンマ区切りの正式名で指定する（例: Shibuya,Tokyo,Japan）\n- 途中の階層のみ（例: 都道府県のみ）の指定は未サポート",
             "example": "Japan",
             "type": "string"
           },
           "language": {
             "default": "Japanese",
-            "description": "言語名。Google Ads API の LanguageCriterion に準拠。省略時は Japanese。",
+            "description": "言語名。指定可能な言語名は metadata の languages 一覧を参照。省略時は Japanese。",
             "example": "Japanese",
             "type": "string"
           },
@@ -5249,27 +6196,19 @@
             "anyOf": [
               {
                 "type": "number",
-                "enum": [
-                  12
-                ]
+                "const": 12
               },
               {
                 "type": "number",
-                "enum": [
-                  24
-                ]
+                "const": 24
               },
               {
                 "type": "number",
-                "enum": [
-                  36
-                ]
+                "const": 36
               },
               {
                 "type": "number",
-                "enum": [
-                  48
-                ]
+                "const": 48
               }
             ]
           }
@@ -5328,6 +6267,256 @@
           "errors"
         ]
       },
+      "SearchVolumeHistoryOverallStatus": {
+        "type": "string",
+        "enum": [
+          "completed",
+          "processing"
+        ]
+      },
+      "SearchVolumeHistoriesResponseDto": {
+        "type": "object",
+        "properties": {
+          "result": {
+            "type": "boolean",
+            "description": "API 呼び出しの成否。正常時は true、エラー時は false。",
+            "example": true
+          },
+          "meta": {
+            "type": "object",
+            "properties": {
+              "consumedCredit": {
+                "type": "number",
+                "description": "このリクエストで消費されたクレジット数。",
+                "example": 0
+              }
+            },
+            "required": [
+              "consumedCredit"
+            ],
+            "description": "リクエストに関するメタ情報（課金・消費リソースなど）"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "object",
+                "properties": {
+                  "limit": {
+                    "type": "number",
+                    "description": "リクエストで指定された取得件数",
+                    "example": 100
+                  },
+                  "offset": {
+                    "type": "number",
+                    "description": "リクエストで指定された取得開始位置",
+                    "example": 0
+                  },
+                  "status": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "completed",
+                          "processing"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "リクエストで指定されたステータスフィルタ",
+                    "example": null
+                  }
+                },
+                "required": [
+                  "limit",
+                  "offset",
+                  "status"
+                ],
+                "description": "リクエストで指定されたクエリパラメータ"
+              },
+              "summary": {
+                "type": "object",
+                "properties": {
+                  "totalCount": {
+                    "type": "number",
+                    "description": "取得対象全体の件数",
+                    "example": 150
+                  },
+                  "returnedCount": {
+                    "type": "number",
+                    "description": "このレスポンスに含まれている件数",
+                    "example": 100
+                  }
+                },
+                "required": [
+                  "totalCount",
+                  "returnedCount"
+                ],
+                "description": "件数サマリ",
+                "example": {
+                  "totalCount": 1,
+                  "returnedCount": 1
+                }
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "requestId": {
+                      "type": "number",
+                      "description": "リクエストID",
+                      "example": 1500
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "リクエスト作成日時（ISO 8601、UTC）",
+                      "example": "2026-05-31T01:00:00.000Z"
+                    },
+                    "completedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "全処理完了日時（ISO 8601、UTC）。未完了時は null。",
+                      "example": null
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "completed",
+                        "processing"
+                      ],
+                      "description": "全体ステータス。statuses の searchVolume と seoDifficulty の両方が processed の場合に completed（seoDifficulty が skip の場合も完了扱い）、それ以外は processing。noiseReduction は判定対象外。",
+                      "example": "processing"
+                    },
+                    "statuses": {
+                      "type": "object",
+                      "properties": {
+                        "searchVolume": {
+                          "type": "string",
+                          "enum": [
+                            "unprocessed",
+                            "processing",
+                            "processed"
+                          ],
+                          "description": "月間検索数取得ステータス。unprocessed: 未処理 / processing: 処理中 / processed: 完了。",
+                          "example": "processed"
+                        },
+                        "seoDifficulty": {
+                          "type": "string",
+                          "enum": [
+                            "skip",
+                            "unprocessed",
+                            "processing",
+                            "processed"
+                          ],
+                          "description": "SEO難易度取得ステータス。unprocessed: 未処理 / processing: 処理中 / processed: 完了 / skip: スキップ（SEO難易度取得OFFの場合）。",
+                          "example": "unprocessed"
+                        },
+                        "noiseReduction": {
+                          "type": "string",
+                          "enum": [
+                            "unprocessed",
+                            "processing",
+                            "processed"
+                          ],
+                          "description": "ノイズ除去ステータス。unprocessed: 未処理 / processing: 処理中 / processed: 完了。ノイズ除去には時間がかかる可能性があります。",
+                          "example": "processing"
+                        }
+                      },
+                      "required": [
+                        "searchVolume",
+                        "seoDifficulty",
+                        "noiseReduction"
+                      ],
+                      "description": "各処理のステータス情報"
+                    },
+                    "keywordSummary": {
+                      "type": "string",
+                      "description": "キーワードのサマリ（カンマ区切り、先頭20件・255文字以内で切り詰め）",
+                      "example": "ラッコ,カワウソ"
+                    },
+                    "keywordCount": {
+                      "type": "number",
+                      "description": "キーワードの件数",
+                      "example": 2
+                    },
+                    "seoDifficulty": {
+                      "type": "boolean",
+                      "description": "SEO難易度取得が有効かどうか",
+                      "example": true
+                    },
+                    "location": {
+                      "type": "string",
+                      "description": "地域名。Google Ads API の LocationCriterion に準拠。",
+                      "example": "Japan"
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "言語名。Google Ads API の LanguageCriterion に準拠。",
+                      "example": "Japanese"
+                    },
+                    "aggregationPeriodMonths": {
+                      "type": "number",
+                      "description": "集計期間（月数）",
+                      "example": 12
+                    },
+                    "dataCompletion": {
+                      "type": "boolean",
+                      "description": "データ補完が有効かどうか",
+                      "example": true
+                    }
+                  },
+                  "required": [
+                    "requestId",
+                    "createdAt",
+                    "completedAt",
+                    "status",
+                    "statuses",
+                    "keywordSummary",
+                    "keywordCount",
+                    "seoDifficulty",
+                    "location",
+                    "language",
+                    "aggregationPeriodMonths",
+                    "dataCompletion"
+                  ]
+                },
+                "description": "一括キーワード調査履歴アイテムのリスト"
+              }
+            },
+            "required": [
+              "query",
+              "summary",
+              "items"
+            ],
+            "description": "一括キーワード調査履歴一覧データ"
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "エラーメッセージの配列。正常時は空配列。",
+            "example": []
+          }
+        },
+        "required": [
+          "result",
+          "meta",
+          "data",
+          "errors"
+        ]
+      },
       "SearchVolumeStatusResponseDto": {
         "type": "object",
         "properties": {
@@ -5354,7 +6543,7 @@
             "type": "object",
             "properties": {
               "isCompleted": {
-                "description": "全処理完了フラグ。searchVolume が processed かつ noiseReduction が processed かつ seoDifficulty が processed または skip の場合に true。",
+                "description": "全処理完了フラグ。searchVolume が processed かつ seoDifficulty が processed または skip の場合に true。noiseReduction は判定対象外。",
                 "example": true,
                 "type": "boolean"
               },
@@ -5373,7 +6562,7 @@
                     ]
                   },
                   "noiseReduction": {
-                    "description": "ノイズ除去ステータス。unprocessed: 未処理 / processing: 処理中 / processed: 完了。",
+                    "description": "ノイズ除去ステータス。unprocessed: 未処理 / processing: 処理中 / processed: 完了。ノイズ除去には時間がかかる可能性があります。",
                     "example": "processing",
                     "type": "string",
                     "enum": [
@@ -5431,7 +6620,7 @@
                 "type": "object",
                 "properties": {
                   "includes": {
-                    "description": "含む単語のリスト",
+                    "description": "含む単語のリスト（複数入力時はOR）",
                     "example": [
                       "水族館"
                     ],
@@ -5441,7 +6630,7 @@
                     }
                   },
                   "notIncludes": {
-                    "description": "含まない単語のリスト",
+                    "description": "含まない単語のリスト（複数入力時はOR）",
                     "example": [
                       "グッズ"
                     ],
@@ -5496,7 +6685,7 @@
                 "additionalProperties": false
               },
               "cpc": {
-                "description": "CPCフィルタ（範囲指定）",
+                "description": "CPC（$）フィルタ（範囲指定）",
                 "type": "object",
                 "properties": {
                   "min": {
@@ -5534,13 +6723,33 @@
                   }
                 },
                 "additionalProperties": false
+              },
+              "firstSeenRange": {
+                "description": "出現時期フィルタ",
+                "type": "object",
+                "properties": {
+                  "include": {
+                    "description": "出現時期の選択肢",
+                    "example": "last_30_days",
+                    "type": "string",
+                    "enum": [
+                      "last_7_days",
+                      "last_30_days",
+                      "last_90_days",
+                      "within_6_months",
+                      "within_1_year",
+                      "over_1_year"
+                    ]
+                  }
+                },
+                "additionalProperties": false
               }
             },
             "additionalProperties": false
           },
           "sortBy": {
             "default": "searchVolume",
-            "description": "ソート項目。keyword / seoDifficulty / searchVolume / rateOfChange / cpc / competition。省略時は searchVolume。",
+            "description": "ソート項目。keyword / seoDifficulty / searchVolume / rateOfChange / cpc / competition / firstSeenRange。省略時は searchVolume。",
             "type": "string",
             "enum": [
               "keyword",
@@ -5548,7 +6757,8 @@
               "searchVolume",
               "rateOfChange",
               "cpc",
-              "competition"
+              "competition",
+              "firstSeenRange"
             ]
           },
           "orderBy": {
@@ -5607,12 +6817,12 @@
                   },
                   "location": {
                     "type": "string",
-                    "description": "検索ボリューム取得対象の地域",
+                    "description": "月間検索数取得対象の地域",
                     "example": "Japan"
                   },
                   "language": {
                     "type": "string",
-                    "description": "検索ボリューム取得対象の言語",
+                    "description": "月間検索数取得対象の言語",
                     "example": "Japanese"
                   },
                   "aggregationPeriodMonths": {
@@ -5660,44 +6870,95 @@
                       "example": "ラッコ"
                     },
                     "dataSource": {
-                      "type": "string",
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
                       "description": "検索数データの取得元。取得できなかった場合は null。",
-                      "example": "GoogleLive",
-                      "nullable": true
+                      "example": "GoogleLive"
                     },
                     "metrics": {
                       "type": "object",
                       "properties": {
                         "seoDifficulty": {
-                          "type": "number",
-                          "description": "SEO難易度。1–100で表し、高いほど難易度が高い。不明な場合は null。",
-                          "example": 40,
-                          "nullable": true
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "description": "SEO難易度。1–100で表し、高いほど難易度が高い。（1–33:低 / 34–66:中 / 67–100:高）不明な場合は null。",
+                          "example": 40
                         },
                         "searchVolume": {
-                          "type": "number",
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
                           "description": "月間検索数（年平均）。無効な場合は null。",
-                          "example": 90500,
-                          "nullable": true
+                          "example": 90500
                         },
                         "cpc": {
-                          "type": "number",
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
                           "description": "推定クリック単価（USD）。無効な場合は null。",
-                          "example": 0,
-                          "nullable": true
+                          "example": 0
                         },
                         "competition": {
-                          "type": "number",
-                          "description": "広告競合性。0–100で表し、高いほど競合性が高い。無効な場合は null。",
-                          "example": 1,
-                          "nullable": true
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "description": "広告競合性。0–100で表し、高いほど競合性が高い。（0–33:低 / 34–66:中 / 67–100:高） 無効な場合は null。",
+                          "example": 1
+                        },
+                        "firstSeenRange": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "enum": [
+                                "last_7_days",
+                                "last_30_days",
+                                "last_90_days",
+                                "within_6_months",
+                                "within_1_year",
+                                "over_1_year"
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "description": "出現時期。キーワードが最初にラッコキーワードデータベースで検出された時期を日付範囲ラベルで表す。不明な場合は null。",
+                          "example": "last_30_days"
                         }
                       },
                       "required": [
                         "seoDifficulty",
                         "searchVolume",
                         "cpc",
-                        "competition"
+                        "competition",
+                        "firstSeenRange"
                       ],
                       "description": "各種指標（SEO難易度・月間検索数・CPC・広告競合性）"
                     },
@@ -5708,40 +6969,76 @@
                           "type": "object",
                           "properties": {
                             "12m": {
-                              "type": "number",
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ],
                               "description": "直近12か月に対する直近月の検索数増減率",
-                              "example": 0.4159,
-                              "nullable": true
+                              "example": 0.4159
                             },
                             "6m": {
-                              "type": "number",
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ],
                               "description": "直近6か月に対する直近月の検索数増減率",
-                              "example": 0.0796,
-                              "nullable": true
+                              "example": 0.0796
                             },
                             "3m": {
-                              "type": "number",
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ],
                               "description": "直近3か月に対する直近月の検索数増減率",
-                              "example": -0.0695,
-                              "nullable": true
+                              "example": -0.0695
                             },
                             "yoy1y": {
-                              "type": "number",
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ],
                               "description": "1年前同月比（集計期間24か月以上で算出）",
-                              "example": 0.1523,
-                              "nullable": true
+                              "example": 0.1523
                             },
                             "yoy2y": {
-                              "type": "number",
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ],
                               "description": "2年前同月比（集計期間36か月以上で算出）",
-                              "example": -0.0845,
-                              "nullable": true
+                              "example": -0.0845
                             },
                             "yoy3y": {
-                              "type": "number",
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ],
                               "description": "3年前同月比（集計期間48か月以上で算出）",
-                              "example": 0.2311,
-                              "nullable": true
+                              "example": 0.2311
                             }
                           },
                           "required": [
@@ -5755,19 +7052,25 @@
                           "description": "検索数の増減率（3か月・6か月・12か月）"
                         },
                         "monthlySearchVolume": {
-                          "type": "object",
-                          "propertyNames": {
-                            "type": "string"
-                          },
-                          "additionalProperties": {
-                            "type": "number"
-                          },
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "propertyNames": {
+                                "type": "string"
+                              },
+                              "additionalProperties": {
+                                "type": "number"
+                              }
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
                           "description": "月ごとの検索数。キーは YYYY-MM 形式。データがない場合は null。",
                           "example": {
                             "2025-01": 2740000,
                             "2025-02": 2240000
-                          },
-                          "nullable": true
+                          }
                         }
                       },
                       "required": [
@@ -5804,7 +7107,7 @@
           "errors"
         ]
       },
-      "LocationsResponseDto": {
+      "MetadataLocationsResponseDto": {
         "type": "object",
         "properties": {
           "result": {
@@ -5817,7 +7120,7 @@
             "properties": {
               "consumedCredit": {
                 "type": "number",
-                "description": "このリクエストで消費されたクレジット数。",
+                "description": "このリクエストで消費されたクレジット数。無料ツールのため常に 0。",
                 "example": 0
               }
             },
@@ -5836,13 +7139,8 @@
                   "properties": {
                     "name": {
                       "type": "string",
-                      "description": "地域名（Google Ads API の LocationCriterion 準拠）",
+                      "description": "地域名",
                       "example": "Japan"
-                    },
-                    "code": {
-                      "type": "number",
-                      "description": "Google Ads API の LocationCriterion ID",
-                      "example": 2392
                     },
                     "countryIsoCode": {
                       "type": "string",
@@ -5852,11 +7150,10 @@
                   },
                   "required": [
                     "name",
-                    "code",
                     "countryIsoCode"
                   ]
                 },
-                "description": "指定可能な地域の一覧"
+                "description": "指定可能な地域の一覧（フィルタ未指定時は国レベルのみ・フィルタ指定時は市区町村レベルも含む）"
               }
             },
             "required": [
@@ -5880,7 +7177,7 @@
           "errors"
         ]
       },
-      "LanguagesResponseDto": {
+      "MetadataLanguagesResponseDto": {
         "type": "object",
         "properties": {
           "result": {
@@ -5893,7 +7190,7 @@
             "properties": {
               "consumedCredit": {
                 "type": "number",
-                "description": "このリクエストで消費されたクレジット数。",
+                "description": "このリクエストで消費されたクレジット数。無料ツールのため常に 0。",
                 "example": 0
               }
             },
@@ -5912,18 +7209,12 @@
                   "properties": {
                     "name": {
                       "type": "string",
-                      "description": "言語名（Google Ads API の LanguageCriterion 準拠）",
+                      "description": "言語名",
                       "example": "Japanese"
-                    },
-                    "code": {
-                      "type": "string",
-                      "description": "言語コード（ISO 639-1）",
-                      "example": "ja"
                     }
                   },
                   "required": [
-                    "name",
-                    "code"
+                    "name"
                   ]
                 },
                 "description": "指定可能な言語の一覧"
@@ -5968,7 +7259,7 @@
                 },
                 "matchType": {
                   "default": "sub_domain",
-                  "description": "マッチタイプ。url / forward_url / domain / sub_domain。省略時は sub_domain。",
+                  "description": "マッチタイプ。url: 完全一致URL / forward_url: 前方一致URL / domain: ドメイン完全一致 / sub_domain: サブドメイン含むドメイン一致。省略時は sub_domain。",
                   "type": "string",
                   "enum": [
                     "url",
@@ -5983,7 +7274,7 @@
               ],
               "additionalProperties": false
             },
-            "description": "獲得キーワード調査の対象ドメインまたはURLとマッチタイプの配列。最大20件まで指定可能。",
+            "description": "獲得キーワード調査の対象ドメインまたはURLとマッチタイプの配列。最大20件まで指定可能。各要素は { url, matchType } のオブジェクト。",
             "example": [
               {
                 "url": "https://rakkokeyword.com/",
@@ -6005,7 +7296,7 @@
                 "type": "object",
                 "properties": {
                   "includes": {
-                    "description": "含む単語のリスト",
+                    "description": "含む単語のリスト（複数入力時はOR）",
                     "example": [
                       "水族館"
                     ],
@@ -6015,7 +7306,7 @@
                     }
                   },
                   "notIncludes": {
-                    "description": "含まない単語のリスト",
+                    "description": "含まない単語のリスト（複数入力時はOR）",
                     "example": [
                       "グッズ"
                     ],
@@ -6049,7 +7340,7 @@
                 "additionalProperties": false
               },
               "rank": {
-                "description": "検索順位フィルタ（範囲指定）",
+                "description": "検索順位フィルタ（1〜100の範囲指定）",
                 "type": "object",
                 "properties": {
                   "min": {
@@ -6205,7 +7496,7 @@
               "consumedCredit": {
                 "type": "number",
                 "description": "このリクエストで消費されたクレジット数。",
-                "example": 3
+                "example": 4.5
               }
             },
             "required": [
@@ -6286,10 +7577,16 @@
                       "type": "object",
                       "properties": {
                         "seoDifficulty": {
-                          "type": "number",
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
                           "description": "SEO難易度。1–100で表し、高いほど難易度が高い（1–33:低 / 34–66:中 / 67–100:高）。不明な場合は null。",
-                          "example": 30,
-                          "nullable": true
+                          "example": 30
                         },
                         "searchVolume": {
                           "type": "number",
@@ -6303,7 +7600,7 @@
                         },
                         "competition": {
                           "type": "number",
-                          "description": "広告競合性。0〜100 で表し、高いほど広告出稿の競合が激しい。",
+                          "description": "広告競合性。0〜100 で表し、高いほど競合性が高い（0–33:低 / 34–66:中 / 67–100:高）",
                           "example": 0
                         }
                       },
@@ -6393,7 +7690,7 @@
                 },
                 "matchType": {
                   "default": "sub_domain",
-                  "description": "マッチタイプ。url / forward_url / domain / sub_domain。省略時は sub_domain。",
+                  "description": "マッチタイプ。url: 完全一致URL / forward_url: 前方一致URL / domain: ドメイン完全一致 / sub_domain: サブドメイン含むドメイン一致。省略時は sub_domain。",
                   "type": "string",
                   "enum": [
                     "url",
@@ -6493,7 +7790,7 @@
                 "type": "object",
                 "properties": {
                   "includes": {
-                    "description": "含む単語のリスト",
+                    "description": "含む単語のリスト（複数入力時はOR）",
                     "example": [
                       "水族館"
                     ],
@@ -6503,7 +7800,7 @@
                     }
                   },
                   "notIncludes": {
-                    "description": "含まない単語のリスト",
+                    "description": "含まない単語のリスト（複数入力時はOR）",
                     "example": [
                       "グッズ"
                     ],
@@ -6520,7 +7817,7 @@
                 "type": "object",
                 "properties": {
                   "includes": {
-                    "description": "含むURLのリスト",
+                    "description": "含むURLのリスト（複数入力時はOR）",
                     "example": [
                       "https://rakkokeyword.com/"
                     ],
@@ -6530,7 +7827,7 @@
                     }
                   },
                   "notIncludes": {
-                    "description": "含まないURLのリスト",
+                    "description": "含まないURLのリスト（複数入力時はOR）",
                     "example": [
                       "https://rakkokeyword.com/result/"
                     ],
@@ -6547,7 +7844,7 @@
                 "type": "object",
                 "properties": {
                   "includes": {
-                    "description": "含む単語のリスト",
+                    "description": "含む単語のリスト（複数入力時はOR）",
                     "example": [
                       "水族館"
                     ],
@@ -6557,7 +7854,7 @@
                     }
                   },
                   "notIncludes": {
-                    "description": "含まない単語のリスト",
+                    "description": "含まない単語のリスト（複数入力時はOR）",
                     "example": [
                       "グッズ"
                     ],
@@ -6640,7 +7937,7 @@
               "consumedCredit": {
                 "type": "number",
                 "description": "このリクエストで消費されたクレジット数。",
-                "example": 3
+                "example": 4.5
               }
             },
             "required": [
@@ -6763,26 +8060,32 @@
                       "properties": {
                         "keyword": {
                           "type": "string",
-                          "description": "このページで最も代表的な獲得キーワード",
+                          "description": "このページで最もSEO流入を獲得しているトップキーワード",
                           "example": "ラッコ"
                         },
                         "position": {
                           "type": "number",
-                          "description": "代表キーワードでの検索順位",
+                          "description": "トップキーワードでの検索順位",
                           "example": 1
                         },
                         "metrics": {
                           "type": "object",
                           "properties": {
                             "seoDifficulty": {
-                              "type": "number",
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ],
                               "description": "SEO難易度。1–100で表し、高いほど難易度が高い（1–33:低 / 34–66:中 / 67–100:高）。不明な場合は null。",
-                              "example": 30,
-                              "nullable": true
+                              "example": 30
                             },
                             "searchVolume": {
                               "type": "number",
-                              "description": "代表キーワードの月間検索数（年平均）",
+                              "description": "トップキーワードの月間検索数（年平均）",
                               "example": 10000
                             }
                           },
@@ -6790,7 +8093,7 @@
                             "seoDifficulty",
                             "searchVolume"
                           ],
-                          "description": "代表キーワードの各種指標（SEO難易度・月間検索数）"
+                          "description": "トップキーワードの各種指標（SEO難易度・月間検索数）"
                         }
                       },
                       "required": [
@@ -6798,7 +8101,7 @@
                         "position",
                         "metrics"
                       ],
-                      "description": "代表キーワード情報（キーワード・順位・指標）"
+                      "description": "トップキーワード情報（キーワード・順位・指標）"
                     }
                   },
                   "required": [
@@ -6808,7 +8111,7 @@
                     "topKeyword"
                   ]
                 },
-                "description": "獲得キーワード調査結果（ページ軸）のリスト。各アイテムに対象・ページ情報・パフォーマンス指標・代表キーワードを含む。"
+                "description": "獲得キーワード調査結果（ページ軸）のリスト。各アイテムに対象・ページ情報・パフォーマンス指標・トップキーワードを含む。"
               }
             },
             "required": [
@@ -6887,7 +8190,7 @@
               "consumedCredit": {
                 "type": "number",
                 "description": "このリクエストで消費されたクレジット数。",
-                "example": 3
+                "example": 4.5
               }
             },
             "required": [
@@ -7050,6 +8353,369 @@
           "errors"
         ]
       },
+      "BulkSiteResearchDto": {
+        "type": "object",
+        "properties": {
+          "urls": {
+            "minItems": 1,
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": "一括サイト調査の対象URL一覧（1〜100件）。各URLの推定流入数・獲得キーワード数・ページ数の現在値と、その推移（0〜100指数）を取得する。",
+            "example": [
+              "https://rakkokeyword.com/"
+            ]
+          },
+          "urlMatchType": {
+            "default": "domain",
+            "description": "URLのマッチタイプ。url: 完全一致 / forward_url: 前方一致 / domain: ドメイン一致 / sub_domain: サブドメイン一致。省略時は domain。",
+            "type": "string",
+            "enum": [
+              "url",
+              "forward_url",
+              "domain",
+              "sub_domain"
+            ]
+          }
+        },
+        "required": [
+          "urls"
+        ],
+        "additionalProperties": false
+      },
+      "BulkSiteResearchResponseDto": {
+        "type": "object",
+        "properties": {
+          "result": {
+            "type": "boolean",
+            "description": "API 呼び出しの成否。正常時は true、エラー時は false。",
+            "example": true
+          },
+          "meta": {
+            "type": "object",
+            "properties": {
+              "consumedCredit": {
+                "type": "number",
+                "description": "このリクエストで消費されたクレジット数。",
+                "example": 4.5
+              }
+            },
+            "required": [
+              "consumedCredit"
+            ],
+            "description": "リクエストに関するメタ情報（課金・消費リソースなど）"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "object",
+                "properties": {
+                  "targets": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "urlMatchType で整形した検索対象パターン一覧（items と同数・同順）",
+                    "example": [
+                      "*.rakkokeyword.com/*"
+                    ]
+                  },
+                  "urlMatchType": {
+                    "type": "string",
+                    "enum": [
+                      "url",
+                      "forward_url",
+                      "domain",
+                      "sub_domain"
+                    ],
+                    "description": "リクエストで指定された（または既定の）URLマッチタイプ",
+                    "example": "domain"
+                  }
+                },
+                "required": [
+                  "targets",
+                  "urlMatchType"
+                ],
+                "description": "リクエストで指定されたクエリ情報"
+              },
+              "summary": {
+                "type": "object",
+                "properties": {
+                  "totalCount": {
+                    "type": "number",
+                    "description": "取得対象全体の件数",
+                    "example": 150
+                  },
+                  "returnedCount": {
+                    "type": "number",
+                    "description": "このレスポンスに含まれている件数",
+                    "example": 100
+                  }
+                },
+                "required": [
+                  "totalCount",
+                  "returnedCount"
+                ],
+                "description": "件数サマリー（全体件数とレスポンスに含まれる件数。入力URLと1:1）"
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "site": {
+                      "type": "object",
+                      "properties": {
+                        "target": {
+                          "type": "string",
+                          "description": "urlMatchType で整形した検索対象パターン（url: host/path / forward_url: host/path* / domain: host/* / sub_domain: *.host/*）",
+                          "example": "*.rakkokeyword.com/*"
+                        }
+                      },
+                      "required": [
+                        "target"
+                      ],
+                      "description": "調査対象サイト（urlMatchType で整形した検索パターン）"
+                    },
+                    "metrics": {
+                      "type": "object",
+                      "properties": {
+                        "estimatedTraffic": {
+                          "type": "number",
+                          "description": "推定検索流入数（月間・生値・現在集計）",
+                          "example": 15803
+                        },
+                        "estimatedTrafficChangeRate": {
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "description": "推定流入数の前年同月比。0〜1の小数（生値ベース。10%増=0.1）。算出不能時は null。",
+                          "example": 0.125
+                        },
+                        "keywordCount": {
+                          "type": "number",
+                          "description": "獲得しているキーワード数（生値）",
+                          "example": 119
+                        },
+                        "pageCount": {
+                          "type": "number",
+                          "description": "インデックスされているページ数（生値）",
+                          "example": 51
+                        },
+                        "trafficValue": {
+                          "type": "number",
+                          "description": "集客価値の合計（USD・生値）。推定流入数×CPC で算出される広告換算価値。",
+                          "example": 51386
+                        },
+                        "pagesWithTrafficCount": {
+                          "type": "number",
+                          "description": "検索流入があるページ数",
+                          "example": 42
+                        },
+                        "pagesWithTrafficRate": {
+                          "type": "number",
+                          "description": "検索流入があるページの比率。0〜1の小数。",
+                          "example": 0.8235
+                        },
+                        "averageEstimatedTrafficPerPage": {
+                          "type": "number",
+                          "description": "1ページ平均の推定流入数",
+                          "example": 309.86
+                        },
+                        "averageRankingKeywordCountPerPage": {
+                          "type": "number",
+                          "description": "1ページ平均のランクインキーワード数",
+                          "example": 2.33
+                        },
+                        "averageTrafficValuePerPage": {
+                          "type": "number",
+                          "description": "1ページ平均の集客価値（USD）",
+                          "example": 1007.57
+                        }
+                      },
+                      "required": [
+                        "estimatedTraffic",
+                        "estimatedTrafficChangeRate",
+                        "keywordCount",
+                        "pageCount",
+                        "trafficValue",
+                        "pagesWithTrafficCount",
+                        "pagesWithTrafficRate",
+                        "averageEstimatedTrafficPerPage",
+                        "averageRankingKeywordCountPerPage",
+                        "averageTrafficValuePerPage"
+                      ],
+                      "description": "現在値の各種指標（実数）。推移の指数（histories）とは別量。"
+                    },
+                    "histories": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "date": {
+                            "type": "string",
+                            "description": "各月末日（YYYY-MM-DD）。取得済み履歴中の最新月末を末尾に11ヶ月前までの12点。",
+                            "example": "2026-06-30"
+                          },
+                          "etvIndex": {
+                            "type": "number",
+                            "description": "推定流入数の推移指数（0〜100・小数第2位）。系列内最大月を100とする比例スケール。",
+                            "example": 100
+                          },
+                          "keywordCountIndex": {
+                            "type": "number",
+                            "description": "獲得キーワード数の推移指数（0〜100・小数第2位）。系列内最大月を100とする比例スケール。",
+                            "example": 82.35
+                          },
+                          "pageCountIndex": {
+                            "type": "number",
+                            "description": "ページ数の推移指数（0〜100・小数第2位）。系列内最大月を100とする比例スケール。",
+                            "example": 90.12
+                          }
+                        },
+                        "required": [
+                          "date",
+                          "etvIndex",
+                          "keywordCountIndex",
+                          "pageCountIndex"
+                        ]
+                      },
+                      "description": "推移データ（0〜100指数・小数第2位・12点）。常に返却される。"
+                    },
+                    "distributions": {
+                      "type": "object",
+                      "properties": {
+                        "rankingPosition": {
+                          "type": "object",
+                          "properties": {
+                            "1-3": {
+                              "type": "number"
+                            },
+                            "4-10": {
+                              "type": "number"
+                            },
+                            "11-20": {
+                              "type": "number"
+                            },
+                            "21-50": {
+                              "type": "number"
+                            },
+                            "51-100": {
+                              "type": "number"
+                            },
+                            "1-10": {
+                              "type": "number"
+                            },
+                            "1-20": {
+                              "type": "number"
+                            },
+                            "1-30": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "1-3",
+                            "4-10",
+                            "11-20",
+                            "21-50",
+                            "51-100",
+                            "1-10",
+                            "1-20",
+                            "1-30"
+                          ],
+                          "description": "キーワードの検索順位分布（整形ラベル別の生の件数）。"
+                        },
+                        "pageTraffic": {
+                          "type": "object",
+                          "properties": {
+                            "0": {
+                              "type": "number"
+                            },
+                            "10001+": {
+                              "type": "number"
+                            },
+                            "1001-10000": {
+                              "type": "number"
+                            },
+                            "101-1000": {
+                              "type": "number"
+                            },
+                            "1-100": {
+                              "type": "number"
+                            },
+                            "1000+": {
+                              "type": "number"
+                            },
+                            "100+": {
+                              "type": "number"
+                            },
+                            "1+": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "0",
+                            "10001+",
+                            "1001-10000",
+                            "101-1000",
+                            "1-100",
+                            "1000+",
+                            "100+",
+                            "1+"
+                          ],
+                          "description": "ページの推定流入数分布（整形ラベル別の生の件数）。"
+                        }
+                      },
+                      "required": [
+                        "rankingPosition",
+                        "pageTraffic"
+                      ],
+                      "description": "ランク帯・流入数帯の分布"
+                    }
+                  },
+                  "required": [
+                    "site",
+                    "metrics",
+                    "histories",
+                    "distributions"
+                  ],
+                  "additionalProperties": false
+                },
+                "description": "一括サイト調査結果のリスト。入力 urls と同数・同順。"
+              }
+            },
+            "required": [
+              "query",
+              "summary",
+              "items"
+            ],
+            "description": "一括サイト調査結果データ"
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "エラーメッセージの配列。正常時は空配列。",
+            "example": []
+          }
+        },
+        "required": [
+          "result",
+          "meta",
+          "data",
+          "errors"
+        ]
+      },
       "ContentSearchDto": {
         "type": "object",
         "properties": {
@@ -7107,7 +8773,7 @@
                 "additionalProperties": false
               },
               "rankingKeywordCount": {
-                "description": "ランクインキーワード数フィルタ（0〜100の範囲指定）",
+                "description": "ランクインキーワード数フィルタ（0〜の範囲指定）",
                 "type": "object",
                 "properties": {
                   "min": {
@@ -7153,7 +8819,7 @@
                 "type": "object",
                 "properties": {
                   "includes": {
-                    "description": "含む単語のリスト",
+                    "description": "含む単語のリスト（複数入力時はOR）",
                     "example": [
                       "水族館"
                     ],
@@ -7163,7 +8829,7 @@
                     }
                   },
                   "notIncludes": {
-                    "description": "含まない単語のリスト",
+                    "description": "含まない単語のリスト（複数入力時はOR）",
                     "example": [
                       "グッズ"
                     ],
@@ -7180,7 +8846,7 @@
                 "type": "object",
                 "properties": {
                   "includes": {
-                    "description": "含むURLのリスト",
+                    "description": "含むURLのリスト（複数入力時はOR）",
                     "example": [
                       "https://rakkokeyword.com/"
                     ],
@@ -7190,7 +8856,7 @@
                     }
                   },
                   "notIncludes": {
-                    "description": "含まないURLのリスト",
+                    "description": "含まないURLのリスト（複数入力時はOR）",
                     "example": [
                       "https://rakkokeyword.com/result/"
                     ],
@@ -7207,7 +8873,7 @@
                 "type": "object",
                 "properties": {
                   "includes": {
-                    "description": "含む単語のリスト",
+                    "description": "含む単語のリスト（複数入力時はOR）",
                     "example": [
                       "水族館"
                     ],
@@ -7217,7 +8883,7 @@
                     }
                   },
                   "notIncludes": {
-                    "description": "含まない単語のリスト",
+                    "description": "含まない単語のリスト（複数入力時はOR）",
                     "example": [
                       "グッズ"
                     ],
@@ -7234,7 +8900,7 @@
                 "type": "object",
                 "properties": {
                   "includes": {
-                    "description": "含む単語のリスト",
+                    "description": "含む単語のリスト（複数入力時はOR）",
                     "example": [
                       "水族館"
                     ],
@@ -7244,7 +8910,7 @@
                     }
                   },
                   "notIncludes": {
-                    "description": "含まない単語のリスト",
+                    "description": "含まない単語のリスト（複数入力時はOR）",
                     "example": [
                       "グッズ"
                     ],
@@ -7327,7 +8993,7 @@
               "consumedCredit": {
                 "type": "number",
                 "description": "このリクエストで消費されたクレジット数。",
-                "example": 3
+                "example": 4.5
               }
             },
             "required": [
@@ -7440,31 +9106,37 @@
                       "properties": {
                         "keyword": {
                           "type": "string",
-                          "description": "このページで最も代表的な獲得キーワード",
+                          "description": "このページで最もSEO流入を獲得しているトップキーワード",
                           "example": "ラッコ"
                         },
                         "wordCount": {
                           "type": "number",
-                          "description": "代表キーワードを構成する単語数（スペース区切り）",
+                          "description": "トップキーワードを構成する単語数（スペース区切り）",
                           "example": 1
                         },
                         "position": {
                           "type": "number",
-                          "description": "代表キーワードでの検索順位",
+                          "description": "トップキーワードでの検索順位",
                           "example": 2
                         },
                         "metrics": {
                           "type": "object",
                           "properties": {
                             "seoDifficulty": {
-                              "type": "number",
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ],
                               "description": "SEO難易度。1–100で表し、高いほど難易度が高い（1–33:低 / 34–66:中 / 67–100:高）。不明な場合は null。",
-                              "example": 37,
-                              "nullable": true
+                              "example": 37
                             },
                             "searchVolume": {
                               "type": "number",
-                              "description": "代表キーワードの月間検索数（年平均）",
+                              "description": "トップキーワードの月間検索数（年平均）",
                               "example": 5000
                             }
                           },
@@ -7472,7 +9144,7 @@
                             "seoDifficulty",
                             "searchVolume"
                           ],
-                          "description": "代表キーワードの各種指標（SEO難易度・月間検索数）"
+                          "description": "トップキーワードの各種指標（SEO難易度・月間検索数）"
                         }
                       },
                       "required": [
@@ -7481,7 +9153,7 @@
                         "position",
                         "metrics"
                       ],
-                      "description": "トップキーワード情報（代表キーワード・単語数・順位・指標）"
+                      "description": "トップキーワード情報（キーワード・単語数・順位・指標）"
                     }
                   },
                   "required": [
@@ -7613,7 +9285,7 @@
               "consumedCredit": {
                 "type": "number",
                 "description": "このリクエストで消費されたクレジット数。",
-                "example": 2
+                "example": 3
               }
             },
             "required": [
@@ -7858,7 +9530,7 @@
               "consumedCredit": {
                 "type": "number",
                 "description": "このリクエストで消費されたクレジット数。",
-                "example": 2
+                "example": 3
               }
             },
             "required": [
@@ -8083,11 +9755,19 @@
           },
           "depth": {
             "default": 30,
-            "description": "検索結果の取得深度。30 / 40 / 50 / 60 / 70 / 80 / 90 / 100 のいずれかを指定。省略時は 30。",
+            "description": "検索上位何位までデータ取得するかを指定する。30 / 40 / 50 / 60 / 70 / 80 / 90 / 100 のいずれかを指定。省略時は 30。",
             "example": 30,
-            "type": "integer",
-            "minimum": -9007199254740991,
-            "maximum": 9007199254740991
+            "type": "number",
+            "enum": [
+              30,
+              40,
+              50,
+              60,
+              70,
+              80,
+              90,
+              100
+            ]
           },
           "isSearchVolumeAndSeoDifficultyEnabled": {
             "default": false,
@@ -8098,6 +9778,39 @@
             "default": true,
             "description": "キーワードの重複除去を行うかどうか。省略時は true。",
             "type": "boolean"
+          },
+          "location": {
+            "default": "Japan",
+            "description": "SERP取得対象の地域名。省略時は Japan。\n\n- 指定可能な地域名は metadata の locations 一覧を参照（一覧は国レベルのみ）\n- 市区町村レベルの地域も指定可能。「市区町村名,上位地域名,国名」のようにカンマ区切りの正式名で指定する（例: Shibuya,Tokyo,Japan）\n- 途中の階層のみ（例: 都道府県のみ）の指定は未サポート",
+            "example": "Japan",
+            "type": "string"
+          },
+          "language": {
+            "default": "Japanese",
+            "description": "SERP取得対象の言語名。指定可能な言語名は metadata の languages 一覧を参照。省略時は Japanese。",
+            "example": "Japanese",
+            "type": "string"
+          },
+          "device": {
+            "default": "desktop",
+            "description": "SERP取得対象のデバイス。desktop / mobile のいずれか。省略時は desktop。",
+            "example": "desktop",
+            "type": "string",
+            "enum": [
+              "desktop",
+              "mobile"
+            ]
+          },
+          "os": {
+            "description": "SERP取得対象のOS。デスクトップは windows / macos、モバイルは android / ios を指定。省略時は desktop→windows / mobile→android。",
+            "example": "windows",
+            "type": "string",
+            "enum": [
+              "windows",
+              "macos",
+              "android",
+              "ios"
+            ]
           }
         },
         "required": [
@@ -8155,6 +9868,268 @@
           "errors"
         ]
       },
+      "SearchRankHistoryOverallStatus": {
+        "type": "string",
+        "enum": [
+          "completed",
+          "processing"
+        ]
+      },
+      "SearchRankHistoriesResponseDto": {
+        "type": "object",
+        "properties": {
+          "result": {
+            "type": "boolean",
+            "description": "API 呼び出しの成否。正常時は true、エラー時は false。",
+            "example": true
+          },
+          "meta": {
+            "type": "object",
+            "properties": {
+              "consumedCredit": {
+                "type": "number",
+                "description": "このリクエストで消費されたクレジット数。",
+                "example": 0
+              }
+            },
+            "required": [
+              "consumedCredit"
+            ],
+            "description": "リクエストに関するメタ情報（課金・消費リソースなど）"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "object",
+                "properties": {
+                  "limit": {
+                    "type": "number",
+                    "description": "リクエストで指定された取得件数",
+                    "example": 100
+                  },
+                  "offset": {
+                    "type": "number",
+                    "description": "リクエストで指定された取得開始位置",
+                    "example": 0
+                  },
+                  "status": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "completed",
+                          "processing"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "リクエストで指定されたステータスフィルタ",
+                    "example": null
+                  }
+                },
+                "required": [
+                  "limit",
+                  "offset",
+                  "status"
+                ],
+                "description": "リクエストで指定されたクエリパラメータ"
+              },
+              "summary": {
+                "type": "object",
+                "properties": {
+                  "totalCount": {
+                    "type": "number",
+                    "description": "取得対象全体の件数",
+                    "example": 150
+                  },
+                  "returnedCount": {
+                    "type": "number",
+                    "description": "このレスポンスに含まれている件数",
+                    "example": 100
+                  }
+                },
+                "required": [
+                  "totalCount",
+                  "returnedCount"
+                ],
+                "description": "件数サマリ",
+                "example": {
+                  "totalCount": 1,
+                  "returnedCount": 1
+                }
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "requestId": {
+                      "type": "string",
+                      "description": "リクエストID",
+                      "example": "01HQZX5Y4JMQK8XNQ7WVZXZ5Y4"
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "リクエスト作成日時（ISO 8601、UTC）",
+                      "example": "2026-05-31T01:00:00.000Z"
+                    },
+                    "completedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "全処理完了日時（ISO 8601、UTC）。未完了時は null。",
+                      "example": null
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "completed",
+                        "processing"
+                      ],
+                      "description": "全体ステータス。statuses の両方が processed の場合に completed（月間検索数/SEO難易度取得 OFF の場合は serp のみで判定）。",
+                      "example": "processing"
+                    },
+                    "statuses": {
+                      "type": "object",
+                      "properties": {
+                        "serp": {
+                          "type": "string",
+                          "enum": [
+                            "unprocessed",
+                            "processing",
+                            "processed"
+                          ],
+                          "description": "SERP取得ステータス。unprocessed: 未処理 / processing: 処理中 / processed: 完了。",
+                          "example": "processed"
+                        },
+                        "searchVolumeAndSeoDifficulty": {
+                          "description": "月間検索数/SEO難易度ステータス。月間検索数/SEO難易度取得 OFF のリクエストでは欠落する。unprocessed: 未処理 / processing: 処理中 / processed: 完了 / failed: 失敗 / integration_failed: 統合失敗。",
+                          "example": "processing",
+                          "type": "string",
+                          "enum": [
+                            "unprocessed",
+                            "processing",
+                            "processed",
+                            "failed",
+                            "integration_failed"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "serp"
+                      ],
+                      "description": "各処理のステータス情報"
+                    },
+                    "keywordSummary": {
+                      "type": "string",
+                      "description": "キーワードのサマリ（カンマ区切り、先頭20件・255文字以内で切り詰め）",
+                      "example": "ラッコ,カワウソ"
+                    },
+                    "urlSummary": {
+                      "type": "string",
+                      "description": "URLのサマリ（カンマ区切り、先頭20件・255文字以内で切り詰め）",
+                      "example": "https://rakkokeyword.com,https://rakko.inc"
+                    },
+                    "keywordCount": {
+                      "type": "number",
+                      "description": "キーワードの件数",
+                      "example": 2
+                    },
+                    "urlCount": {
+                      "type": "number",
+                      "description": "URLの件数",
+                      "example": 2
+                    },
+                    "matchType": {
+                      "type": "string",
+                      "enum": [
+                        "url",
+                        "forward_url",
+                        "domain",
+                        "sub_domain"
+                      ],
+                      "description": "マッチタイプ。url: 完全一致URL / forward_url: 前方一致URL / domain: ドメイン完全一致 / sub_domain: サブドメイン含むドメイン一致。",
+                      "example": "sub_domain"
+                    },
+                    "depth": {
+                      "anyOf": [
+                        {
+                          "type": "number",
+                          "enum": [
+                            30,
+                            40,
+                            50,
+                            60,
+                            70,
+                            80,
+                            90,
+                            100
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "検索結果の取得深度。30 / 40 / 50 / 60 / 70 / 80 / 90 / 100 のいずれか。取得深度が記録されていない古い履歴では null を返す。",
+                      "example": 30
+                    },
+                    "isSearchVolumeAndSeoDifficultyEnabled": {
+                      "type": "boolean",
+                      "description": "月間検索数/SEO難易度の取得が有効かどうか",
+                      "example": true
+                    }
+                  },
+                  "required": [
+                    "requestId",
+                    "createdAt",
+                    "completedAt",
+                    "status",
+                    "statuses",
+                    "keywordSummary",
+                    "urlSummary",
+                    "keywordCount",
+                    "urlCount",
+                    "matchType",
+                    "depth",
+                    "isSearchVolumeAndSeoDifficultyEnabled"
+                  ]
+                },
+                "description": "検索順位チェック履歴アイテムのリスト"
+              }
+            },
+            "required": [
+              "query",
+              "summary",
+              "items"
+            ],
+            "description": "検索順位チェック履歴一覧データ"
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "エラーメッセージの配列。正常時は空配列。",
+            "example": []
+          }
+        },
+        "required": [
+          "result",
+          "meta",
+          "data",
+          "errors"
+        ]
+      },
       "SearchRankStatusResponseDto": {
         "type": "object",
         "properties": {
@@ -8181,7 +10156,7 @@
             "type": "object",
             "properties": {
               "isCompleted": {
-                "description": "全処理完了フラグ。statuses.serp が processed かつ statuses.searchVolumeAndSeoDifficulty が processed・failed・integration_failed またはなし の場合に true。",
+                "description": "全処理完了フラグ。statuses.serp が processed かつ statuses.searchVolumeAndSeoDifficulty が processed またはなし の場合に true。failed または integration_failed の場合は false。",
                 "example": true,
                 "type": "boolean"
               },
@@ -8244,7 +10219,7 @@
                 "type": "object",
                 "properties": {
                   "includes": {
-                    "description": "含む単語のリスト",
+                    "description": "含む単語のリスト（複数入力時はOR）",
                     "example": [
                       "水族館"
                     ],
@@ -8254,7 +10229,7 @@
                     }
                   },
                   "notIncludes": {
-                    "description": "含まない単語のリスト",
+                    "description": "含まない単語のリスト（複数入力時はOR）",
                     "example": [
                       "グッズ"
                     ],
@@ -8378,10 +10353,121 @@
                     "type": "string",
                     "description": "検索順位チェック結果を識別するリクエストID",
                     "example": "sr_20260309_001"
+                  },
+                  "filter": {
+                    "description": "リクエストで指定された絞り込み条件（キーワード・SEO難易度・月間検索数）。指定がない場合は省略される。",
+                    "type": "object",
+                    "properties": {
+                      "keyword": {
+                        "description": "キーワードフィルタ（含む/含まないキーワード指定）",
+                        "type": "object",
+                        "properties": {
+                          "includes": {
+                            "description": "含む単語のリスト（複数入力時はOR）",
+                            "example": [
+                              "水族館"
+                            ],
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "notIncludes": {
+                            "description": "含まない単語のリスト（複数入力時はOR）",
+                            "example": [
+                              "グッズ"
+                            ],
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "seoDifficulty": {
+                        "description": "SEO難易度フィルタ（0〜100の範囲指定）",
+                        "type": "object",
+                        "properties": {
+                          "min": {
+                            "description": "最小値",
+                            "example": 1,
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "max": {
+                            "description": "最大値",
+                            "example": 100,
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "searchVolume": {
+                        "description": "月間検索数フィルタ（範囲指定）",
+                        "type": "object",
+                        "properties": {
+                          "min": {
+                            "description": "最小値",
+                            "example": 100,
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "max": {
+                            "description": "最大値",
+                            "example": 10000,
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "sortBy": {
+                    "type": "string",
+                    "enum": [
+                      "keyword",
+                      "seoDifficulty",
+                      "searchVolume"
+                    ],
+                    "description": "リクエストで指定されたソート項目。keyword / seoDifficulty / searchVolume。",
+                    "example": "searchVolume"
+                  },
+                  "orderBy": {
+                    "type": "string",
+                    "enum": [
+                      "asc",
+                      "desc"
+                    ],
+                    "description": "リクエストで指定されたソート順。asc: 昇順 / desc: 降順。",
+                    "example": "desc"
+                  },
+                  "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991,
+                    "description": "リクエストで指定された取得件数",
+                    "example": 100
+                  },
+                  "withAggregation": {
+                    "type": "boolean",
+                    "description": "ターゲットごとの集計情報（推定流入数）を出力するかどうか",
+                    "example": false
                   }
                 },
                 "required": [
-                  "requestId"
+                  "requestId",
+                  "sortBy",
+                  "orderBy",
+                  "limit",
+                  "withAggregation"
                 ],
                 "description": "検索クエリ情報"
               },
@@ -8448,7 +10534,7 @@
                             },
                             "101+": {
                               "type": "number",
-                              "description": "順位101位以上のキーワード数",
+                              "description": "順位101位以降のキーワード数",
                               "example": 10
                             }
                           },
@@ -8494,28 +10580,52 @@
                       "type": "object",
                       "properties": {
                         "seoDifficulty": {
-                          "type": "number",
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
                           "description": "SEO難易度。1–100で表し、高いほど難易度が高い（1–33:低 / 34–66:中 / 67–100:高）。不明な場合は null。",
-                          "example": 23,
-                          "nullable": true
+                          "example": 23
                         },
                         "searchVolume": {
-                          "type": "number",
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
                           "description": "月間検索数（年平均）。無効な場合は null。",
-                          "example": 70,
-                          "nullable": true
+                          "example": 70
                         },
                         "cpc": {
-                          "type": "number",
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
                           "description": "推定クリック単価（USD）。無効な場合は null。",
-                          "example": 3.47,
-                          "nullable": true
+                          "example": 3.47
                         },
                         "competition": {
-                          "type": "number",
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
                           "description": "広告競合性。0–100で表し、高いほど競合性が高い（0–33:低 / 34–66:中 / 67–100:高）。無効な場合は null。",
-                          "example": 41,
-                          "nullable": true
+                          "example": 41
                         }
                       },
                       "required": [
@@ -8537,20 +10647,32 @@
                             "example": "*.rakkoma.com/*"
                           },
                           "position": {
-                            "type": "number",
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
                             "description": "検索順位。圏外または未検出の場合は null。",
-                            "example": 3,
-                            "nullable": true
+                            "example": 3
                           },
                           "rankedUrl": {
-                            "type": "string",
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
                             "description": "実際にランクインしたURL。未検出の場合は null。",
-                            "example": "https://rakkoma.com/",
-                            "nullable": true
+                            "example": "https://rakkoma.com/"
                           },
                           "estimatedTraffic": {
                             "type": "number",
-                            "description": "このキーワードでの推定検索流入数",
+                            "description": "このキーワードでの推定検索流入数（月間）",
                             "example": 9
                           }
                         },
@@ -8579,6 +10701,612 @@
               "items"
             ],
             "description": "検索順位チェック結果データ"
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "エラーメッセージの配列。正常時は空配列。",
+            "example": []
+          }
+        },
+        "required": [
+          "result",
+          "meta",
+          "data",
+          "errors"
+        ]
+      },
+      "SiteSearchDto": {
+        "type": "object",
+        "properties": {
+          "filter": {
+            "default": {},
+            "description": "絞り込み条件。コンテンツ・ドメイン・推定流入数・キーワード数・ページ数・価値・関連コンテンツ推定流入数・コンテンツ関連性で絞り込む。省略時は全サイトを流入が多い順に取得する。",
+            "type": "object",
+            "properties": {
+              "keyword": {
+                "description": "コンテンツフィルタ（含む/含まないキーワード）。指定すると、まず関連サイトを流入が多い順に最大100件抽出した後に他フィルタが適用される。",
+                "type": "object",
+                "properties": {
+                  "includes": {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "含む単語のリスト（1件以上必須）",
+                    "example": [
+                      "水族館"
+                    ]
+                  },
+                  "notIncludes": {
+                    "description": "含まない単語のリスト",
+                    "example": [
+                      "グッズ"
+                    ],
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "includes"
+                ],
+                "additionalProperties": false
+              },
+              "domain": {
+                "description": "ドメインフィルタ（含む/含まないドメインとマッチタイプ）",
+                "type": "object",
+                "properties": {
+                  "includes": {
+                    "description": "含むドメインのリスト",
+                    "example": [
+                      "example.com"
+                    ],
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "notIncludes": {
+                    "description": "含まないドメインのリスト",
+                    "example": [
+                      "example.net"
+                    ],
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "matchType": {
+                    "default": "partialMatch",
+                    "description": "ドメインのマッチタイプ。partialMatch: 部分一致 / prefixMatch: 前方一致 / suffixMatch: 後方一致。省略時は partialMatch。",
+                    "type": "string",
+                    "enum": [
+                      "partialMatch",
+                      "prefixMatch",
+                      "suffixMatch"
+                    ]
+                  }
+                },
+                "additionalProperties": false
+              },
+              "totalEtv": {
+                "description": "推定流入数フィルタ（範囲指定）",
+                "type": "object",
+                "properties": {
+                  "min": {
+                    "description": "最小値",
+                    "example": 100,
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "max": {
+                    "description": "最大値",
+                    "example": 10000,
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "additionalProperties": false
+              },
+              "keywordCount": {
+                "description": "キーワード数フィルタ（範囲指定）",
+                "type": "object",
+                "properties": {
+                  "min": {
+                    "description": "最小値",
+                    "example": 100,
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "max": {
+                    "description": "最大値",
+                    "example": 10000,
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "additionalProperties": false
+              },
+              "pageCount": {
+                "description": "ページ数フィルタ（範囲指定）",
+                "type": "object",
+                "properties": {
+                  "min": {
+                    "description": "最小値",
+                    "example": 100,
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "max": {
+                    "description": "最大値",
+                    "example": 10000,
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "additionalProperties": false
+              },
+              "totalTrafficValue": {
+                "description": "価値（USD）フィルタ（範囲指定）",
+                "type": "object",
+                "properties": {
+                  "min": {
+                    "description": "最小値",
+                    "example": 100,
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "max": {
+                    "description": "最大値",
+                    "example": 10000,
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "additionalProperties": false
+              },
+              "relatedContentEtv": {
+                "description": "関連コンテンツ推定流入数フィルタ（範囲指定）。コンテンツフィルタ指定時のみ有効。",
+                "type": "object",
+                "properties": {
+                  "min": {
+                    "description": "最小値",
+                    "example": 100,
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "max": {
+                    "description": "最大値",
+                    "example": 10000,
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "additionalProperties": false
+              },
+              "contentRelevance": {
+                "description": "コンテンツ関連性フィルタ（0〜100の範囲指定）。コンテンツフィルタ指定時のみ有効。",
+                "type": "object",
+                "properties": {
+                  "min": {
+                    "description": "最小値",
+                    "example": 1,
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "max": {
+                    "description": "最大値",
+                    "example": 100,
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          },
+          "limit": {
+            "default": 100,
+            "description": "取得件数。1〜100 の整数を指定する。省略時は 100。",
+            "example": 100,
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          }
+        },
+        "additionalProperties": false
+      },
+      "SiteSearchResponseDto": {
+        "type": "object",
+        "properties": {
+          "result": {
+            "type": "boolean",
+            "description": "API 呼び出しの成否。正常時は true、エラー時は false。",
+            "example": true
+          },
+          "meta": {
+            "type": "object",
+            "properties": {
+              "consumedCredit": {
+                "type": "number",
+                "description": "このリクエストで消費されたクレジット数。",
+                "example": 1.5
+              }
+            },
+            "required": [
+              "consumedCredit"
+            ],
+            "description": "リクエストに関するメタ情報（課金・消費リソースなど）"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "object",
+                "properties": {
+                  "filter": {
+                    "type": "object",
+                    "properties": {
+                      "keyword": {
+                        "description": "コンテンツフィルタ（含む/含まないキーワード）。指定すると、まず関連サイトを流入が多い順に最大100件抽出した後に他フィルタが適用される。",
+                        "type": "object",
+                        "properties": {
+                          "includes": {
+                            "minItems": 1,
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            },
+                            "description": "含む単語のリスト（1件以上必須）",
+                            "example": [
+                              "水族館"
+                            ]
+                          },
+                          "notIncludes": {
+                            "description": "含まない単語のリスト",
+                            "example": [
+                              "グッズ"
+                            ],
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        "required": [
+                          "includes"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "domain": {
+                        "description": "ドメインフィルタ（含む/含まないドメインとマッチタイプ）",
+                        "type": "object",
+                        "properties": {
+                          "includes": {
+                            "description": "含むドメインのリスト",
+                            "example": [
+                              "example.com"
+                            ],
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "notIncludes": {
+                            "description": "含まないドメインのリスト",
+                            "example": [
+                              "example.net"
+                            ],
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "matchType": {
+                            "default": "partialMatch",
+                            "description": "ドメインのマッチタイプ。partialMatch: 部分一致 / prefixMatch: 前方一致 / suffixMatch: 後方一致。省略時は partialMatch。",
+                            "type": "string",
+                            "enum": [
+                              "partialMatch",
+                              "prefixMatch",
+                              "suffixMatch"
+                            ]
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "totalEtv": {
+                        "description": "推定流入数フィルタ（範囲指定）",
+                        "type": "object",
+                        "properties": {
+                          "min": {
+                            "description": "最小値",
+                            "example": 100,
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "max": {
+                            "description": "最大値",
+                            "example": 10000,
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "keywordCount": {
+                        "description": "キーワード数フィルタ（範囲指定）",
+                        "type": "object",
+                        "properties": {
+                          "min": {
+                            "description": "最小値",
+                            "example": 100,
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "max": {
+                            "description": "最大値",
+                            "example": 10000,
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "pageCount": {
+                        "description": "ページ数フィルタ（範囲指定）",
+                        "type": "object",
+                        "properties": {
+                          "min": {
+                            "description": "最小値",
+                            "example": 100,
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "max": {
+                            "description": "最大値",
+                            "example": 10000,
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "totalTrafficValue": {
+                        "description": "価値（USD）フィルタ（範囲指定）",
+                        "type": "object",
+                        "properties": {
+                          "min": {
+                            "description": "最小値",
+                            "example": 100,
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "max": {
+                            "description": "最大値",
+                            "example": 10000,
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "relatedContentEtv": {
+                        "description": "関連コンテンツ推定流入数フィルタ（範囲指定）。コンテンツフィルタ指定時のみ有効。",
+                        "type": "object",
+                        "properties": {
+                          "min": {
+                            "description": "最小値",
+                            "example": 100,
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "max": {
+                            "description": "最大値",
+                            "example": 10000,
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "contentRelevance": {
+                        "description": "コンテンツ関連性フィルタ（0〜100の範囲指定）。コンテンツフィルタ指定時のみ有効。",
+                        "type": "object",
+                        "properties": {
+                          "min": {
+                            "description": "最小値",
+                            "example": 1,
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "max": {
+                            "description": "最大値",
+                            "example": 100,
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    },
+                    "additionalProperties": false,
+                    "description": "リクエストで適用された絞り込み条件"
+                  }
+                },
+                "required": [
+                  "filter"
+                ],
+                "description": "リクエストで指定された検索条件"
+              },
+              "summary": {
+                "type": "object",
+                "properties": {
+                  "totalCount": {
+                    "type": "number",
+                    "description": "取得対象全体の件数",
+                    "example": 150
+                  },
+                  "returnedCount": {
+                    "type": "number",
+                    "description": "このレスポンスに含まれている件数",
+                    "example": 100
+                  }
+                },
+                "required": [
+                  "totalCount",
+                  "returnedCount"
+                ],
+                "description": "件数サマリー（全体件数とレスポンスに含まれる件数）"
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "no": {
+                      "type": "number",
+                      "description": "結果内の連番（1始まり）",
+                      "example": 1
+                    },
+                    "site": {
+                      "type": "object",
+                      "properties": {
+                        "domain": {
+                          "type": "string",
+                          "description": "サイトのドメイン名",
+                          "example": "rakkokeyword.com"
+                        },
+                        "url": {
+                          "type": "string",
+                          "description": "サイトのトップページURL",
+                          "example": "https://rakkokeyword.com/"
+                        },
+                        "title": {
+                          "type": "string",
+                          "description": "トップページのタイトル",
+                          "example": "ラッコキーワード"
+                        },
+                        "description": {
+                          "type": "string",
+                          "description": "トップページの説明文",
+                          "example": "多機能でサクサク使えるキーワードリサーチツール。"
+                        }
+                      },
+                      "required": [
+                        "domain",
+                        "url",
+                        "title",
+                        "description"
+                      ],
+                      "description": "サイト情報（ドメイン・URL・タイトル・説明文）"
+                    },
+                    "metrics": {
+                      "type": "object",
+                      "properties": {
+                        "estimatedTraffic": {
+                          "type": "number",
+                          "description": "サイト全体の推定検索流入数（月間）",
+                          "example": 140000
+                        },
+                        "trafficValue": {
+                          "type": "number",
+                          "description": "サイト全体の集客価値（USD）",
+                          "example": 22660
+                        },
+                        "rankingKeywordCount": {
+                          "type": "number",
+                          "description": "サイト全体でランクインしているキーワード数",
+                          "example": 1800
+                        },
+                        "pageCount": {
+                          "type": "number",
+                          "description": "ランクインしているページ数",
+                          "example": 320
+                        }
+                      },
+                      "required": [
+                        "estimatedTraffic",
+                        "trafficValue",
+                        "rankingKeywordCount",
+                        "pageCount"
+                      ],
+                      "description": "サイトの各種指標（推定流入数・価値・キーワード数・ページ数）"
+                    },
+                    "relatedContent": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "estimatedTraffic": {
+                              "type": "number",
+                              "description": "コンテンツフィルタに関連するページの推定流入数の合計",
+                              "example": 12000
+                            },
+                            "relevanceScore": {
+                              "type": "number",
+                              "description": "コンテンツ関連性スコア（0〜100）。サイト全体の流入に占める関連コンテンツ流入の割合。",
+                              "example": 42
+                            }
+                          },
+                          "required": [
+                            "estimatedTraffic",
+                            "relevanceScore"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "コンテンツフィルタ関連の指標。コンテンツフィルタ未指定時は null。"
+                    }
+                  },
+                  "required": [
+                    "no",
+                    "site",
+                    "metrics",
+                    "relatedContent"
+                  ]
+                },
+                "description": "サイト検索結果のリスト。流入が多い順（コンテンツフィルタ指定時は関連コンテンツ流入が多い順）。"
+              }
+            },
+            "required": [
+              "query",
+              "summary",
+              "items"
+            ],
+            "description": "サイト検索結果データ"
           },
           "errors": {
             "type": "array",
