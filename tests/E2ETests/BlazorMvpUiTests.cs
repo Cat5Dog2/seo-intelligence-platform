@@ -53,8 +53,8 @@ public sealed class BlazorMvpUiTests
                                 FirstSeenRange: "last_30_days")
                         ],
                         SeedKeyword: "SEO",
-                        Location: "JP",
-                        Language: "ja",
+                        Location: "Japan",
+                        Language: "Japanese",
                         Sources: ["suggest", "related"],
                         ConsumedCredit: 2m))));
         using var httpClient = new HttpClient(handler)
@@ -69,8 +69,8 @@ public sealed class BlazorMvpUiTests
                 SeedKeyword: "SEO",
                 Sources: ["suggest", "related"],
                 Engines: ["google", "bing"],
-                Location: "JP",
-                Language: "ja",
+                Location: "Japan",
+                Language: "Japanese",
                 Limit: 100,
                 Filter: new KeywordDiscoveryFilter(
                     MinSearchVolume: 100,
@@ -120,7 +120,7 @@ public sealed class BlazorMvpUiTests
 
         var result = await client.RegisterSearchVolumeJobAsync(
             projectId,
-            new SearchVolumeJobRequest(parsed.Keywords, "JP", "ja", 12, SeoDifficulty: true));
+            new SearchVolumeJobRequest(parsed.Keywords, "Japan", "Japanese", 12, SeoDifficulty: true));
 
         Assert.True(result.IsSuccess, result.ErrorSummary);
         Assert.Equal($"/api/projects/{projectId:D}/search-volume/jobs", handler.RequestUris.Single());
@@ -130,8 +130,8 @@ public sealed class BlazorMvpUiTests
         using var body = JsonDocument.Parse(handler.RequestBodies.Single());
         var keywords = body.RootElement.GetProperty("keywords").EnumerateArray().Select(value => value.GetString()!).ToArray();
         Assert.Equal(["SEO", "content marketing"], keywords);
-        Assert.Equal("JP", body.RootElement.GetProperty("location").GetString());
-        Assert.Equal("ja", body.RootElement.GetProperty("language").GetString());
+        Assert.Equal("Japan", body.RootElement.GetProperty("location").GetString());
+        Assert.Equal("Japanese", body.RootElement.GetProperty("language").GetString());
     }
 
     private static SeoIntelligenceApiClient CreateClient(HttpClient httpClient)

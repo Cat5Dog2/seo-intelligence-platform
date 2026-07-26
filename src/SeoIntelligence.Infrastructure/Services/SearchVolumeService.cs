@@ -34,6 +34,13 @@ internal sealed class SearchVolumeService(
     public const string ResultResourceType = "search_volume_job";
     public const int MaxKeywordCount = 50_000;
     public const int ExternalRequestKeywordLimit = 50_000;
+
+    // ラッコキーワードAPI v1.12.0 の POST /v1/search-volume 消費クレジット:
+    // 0.03/キーワード、seoDifficulty有効時は追加で0.75/キーワード、1リクエスト最低15クレジット。
+    public const decimal CreditPerKeyword = 0.03m;
+    public const decimal SeoDifficultyCreditPerKeyword = 0.75m;
+    public const decimal MinimumCreditPerExternalRequest = 15m;
+
     public static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(60);
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -654,10 +661,18 @@ internal sealed class SearchVolumeService(
         {
             errors.Add("location", "location is required.");
         }
+        else
+        {
+            location = await ResolveCanonicalLocationAsync(location, errors, cancellationToken);
+        }
 
         if (string.IsNullOrWhiteSpace(language))
         {
             errors.Add("language", "language is required.");
+        }
+        else
+        {
+            language = await ResolveCanonicalLanguageAsync(language, errors, cancellationToken);
         }
 
         if (!AllowedAggregationMonths.Contains(request.AggregationPeriodMonths))
@@ -679,7 +694,7 @@ internal sealed class SearchVolumeService(
             request.SeoDifficulty,
             ExternalRequestKeywordLimit,
             NormalizedKeywordCount: keywords.Count,
-            EstimatedCredit: keywords.Count,
+            EstimatedCredit: EstimateCredit(keywords.Count, request.SeoDifficulty),
             IdempotencyKey: string.Empty,
             RequestHash: string.Empty);
         var requestHash = HashText(JsonSerializer.Serialize(normalized with { IdempotencyKey = string.Empty, RequestHash = string.Empty }, JsonOptions));
@@ -690,6 +705,129 @@ internal sealed class SearchVolumeService(
         };
 
         return new NormalizeResult(normalized, null);
+    }
+
+    private static decimal EstimateCredit(int keywordCount, bool seoDifficulty)
+    {
+        var creditPerKeyword = CreditPerKeyword + (seoDifficulty ? SeoDifficultyCreditPerKeyword : 0m);
+        var estimated = 0m;
+        for (var remaining = keywordCount; remaining > 0; remaining -= ExternalRequestKeywordLimit)
+        {
+            var batchSize = Math.Min(remaining, ExternalRequestKeywordLimit);
+            estimated += Math.Max(MinimumCreditPerExternalRequest, batchSize * creditPerKeyword);
+        }
+
+        return estimated;
+    }
+
+    // ラッコキーワードAPI v1.12.0のPOST /v1/search-volumeは、location/languageに
+    // metadata一覧(同期済みマスタ)の名前を要求する。provider行が1件もない未同期時だけ検証を省略し、
+    // 旧コード値は変換先の名前がactiveな場合に限って自動正規化する。
+    private async Task<string> ResolveCanonicalLocationAsync(
+        string location,
+        ValidationErrors errors,
+        CancellationToken cancellationToken)
+    {
+        var entries = dbContext.Locations
+            .AsNoTracking()
+            .Where(entity => entity.Provider == SeoIntelligenceSeedData.RakkoKeywordProvider)
+            .Select(entity => new MasterNameEntry(entity.LocationCode, entity.LocationName, entity.Status));
+        return await ResolveCanonicalNameAsync(
+            entries,
+            location,
+            "location",
+            compatibilityAlias: "JP",
+            compatibilityName: "Japan",
+            errors,
+            cancellationToken);
+    }
+
+    private async Task<string> ResolveCanonicalLanguageAsync(
+        string language,
+        ValidationErrors errors,
+        CancellationToken cancellationToken)
+    {
+        var entries = dbContext.Languages
+            .AsNoTracking()
+            .Where(entity => entity.Provider == SeoIntelligenceSeedData.RakkoKeywordProvider)
+            .Select(entity => new MasterNameEntry(entity.LanguageCode, entity.LanguageName, entity.Status));
+        return await ResolveCanonicalNameAsync(
+            entries,
+            language,
+            "language",
+            compatibilityAlias: "ja",
+            compatibilityName: "Japanese",
+            errors,
+            cancellationToken);
+    }
+
+    private static async Task<string> ResolveCanonicalNameAsync(
+        IQueryable<MasterNameEntry> entries,
+        string value,
+        string field,
+        string compatibilityAlias,
+        string compatibilityName,
+        ValidationErrors errors,
+        CancellationToken cancellationToken)
+    {
+        var normalizedValue = value.ToUpperInvariant();
+        var canonical = await entries
+            .Where(entry =>
+                entry.Status == StatusValues.Active &&
+                entry.Name.ToUpper() == normalizedValue)
+            .Select(entry => entry.Name)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (canonical is not null)
+        {
+            return canonical;
+        }
+
+        if (string.Equals(value, compatibilityAlias, StringComparison.OrdinalIgnoreCase))
+        {
+            var aliasTarget = compatibilityName.ToUpperInvariant();
+            var canonicalAlias = await entries
+                .Where(entry =>
+                    entry.Status == StatusValues.Active &&
+                    entry.Name.ToUpper() == aliasTarget)
+                .Select(entry => entry.Name)
+                .FirstOrDefaultAsync(cancellationToken);
+            if (canonicalAlias is not null)
+            {
+                return canonicalAlias;
+            }
+        }
+
+        var legacyName = await entries
+            .Where(entry =>
+                entry.Code.ToUpper() == normalizedValue &&
+                entry.Code.ToUpper() != entry.Name.ToUpper())
+            .Select(entry => entry.Name)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (legacyName is not null)
+        {
+            var normalizedLegacyName = legacyName.ToUpperInvariant();
+            var activeLegacyTarget = await entries
+                .Where(entry =>
+                    entry.Status == StatusValues.Active &&
+                    entry.Name.ToUpper() == normalizedLegacyName)
+                .Select(entry => entry.Name)
+                .FirstOrDefaultAsync(cancellationToken);
+            if (activeLegacyTarget is not null)
+            {
+                return activeLegacyTarget;
+            }
+
+            errors.Add(field, $"{field} legacy code does not map to an active synchronized master entry.");
+            return value;
+        }
+
+        if (!await entries.AnyAsync(cancellationToken))
+        {
+            return value;
+        }
+
+        errors.Add(field, $"{field} must be a name from the synchronized {field} master data.");
+        return value;
     }
 
     private async Task<KeywordEntity> EnsureKeywordAsync(
@@ -951,6 +1089,8 @@ internal sealed record SearchVolumeStatusSnapshot(
     decimal EstimatedCredit,
     string? Message);
 
+internal sealed record MasterNameEntry(string Code, string Name, string Status);
+
 internal sealed record SearchVolumeMetricsSnapshot(
     int? SearchVolume,
     decimal? SeoDifficulty,
@@ -1066,7 +1206,16 @@ internal sealed class RegisterSearchVolumeJob(
     {
         var statusCode = TryReadStatusCode(error) ??
             (error.Code is ErrorCode.ExternalTemporaryFailure or ErrorCode.RateLimited ? 429 : 400);
-        return JobFailure.FromHttpStatusCode(statusCode, TryReadDetail(error, "errorCode"), error.Message);
+        var errorCode = TryReadDetail(error, "errorCode");
+
+        // 契約違反レスポンス(invalid_response等)はHTTPステータスが5xxでも再試行しない。
+        // 再試行しても解消せず、登録経路では課金される呼び出しを繰り返すだけになる。
+        if (error.Code is ErrorCode.ExternalFatalFailure)
+        {
+            return JobFailure.ExternalFatal(statusCode, errorCode, error.Message);
+        }
+
+        return JobFailure.FromHttpStatusCode(statusCode, errorCode, error.Message);
     }
 
     private static int? TryReadStatusCode(Error error)
@@ -1140,7 +1289,16 @@ internal sealed class PollSearchVolumeStatusJob(
     {
         var statusCode = TryReadStatusCode(error) ??
             (error.Code is ErrorCode.ExternalTemporaryFailure or ErrorCode.RateLimited ? 429 : 400);
-        return JobFailure.FromHttpStatusCode(statusCode, TryReadDetail(error, "errorCode"), error.Message);
+        var errorCode = TryReadDetail(error, "errorCode");
+
+        // 契約違反レスポンス(invalid_response等)はHTTPステータスが5xxでも再試行しない。
+        // 再試行しても解消せず、登録経路では課金される呼び出しを繰り返すだけになる。
+        if (error.Code is ErrorCode.ExternalFatalFailure)
+        {
+            return JobFailure.ExternalFatal(statusCode, errorCode, error.Message);
+        }
+
+        return JobFailure.FromHttpStatusCode(statusCode, errorCode, error.Message);
     }
 
     private static int? TryReadStatusCode(Error error)
@@ -1245,7 +1403,16 @@ internal sealed class FetchSearchVolumeResultsJob(
     {
         var statusCode = TryReadStatusCode(error) ??
             (error.Code is ErrorCode.ExternalTemporaryFailure or ErrorCode.RateLimited ? 429 : 400);
-        return JobFailure.FromHttpStatusCode(statusCode, TryReadDetail(error, "errorCode"), error.Message);
+        var errorCode = TryReadDetail(error, "errorCode");
+
+        // 契約違反レスポンス(invalid_response等)はHTTPステータスが5xxでも再試行しない。
+        // 再試行しても解消せず、登録経路では課金される呼び出しを繰り返すだけになる。
+        if (error.Code is ErrorCode.ExternalFatalFailure)
+        {
+            return JobFailure.ExternalFatal(statusCode, errorCode, error.Message);
+        }
+
+        return JobFailure.FromHttpStatusCode(statusCode, errorCode, error.Message);
     }
 
     private static int? TryReadStatusCode(Error error)

@@ -229,7 +229,11 @@ public sealed record RakkoSearchRankRegistrationRequest(
     string MatchType = "domain",
     int Depth = 100,
     bool WithMetrics = true,
-    bool Deduplicate = true);
+    bool Deduplicate = true,
+    string? Location = null,
+    string? Language = null,
+    string? Device = null,
+    string? Os = null);
 
 public sealed record RakkoSearchRankResultsRequest(
     IReadOnlyDictionary<string, object?>? Filter = null,
@@ -350,11 +354,8 @@ public sealed record RakkoLocationCatalog(IReadOnlyList<RakkoLocation> Locations
 
 public sealed record RakkoLocation(
     string Name,
-    string Code,
     string CountryIsoCode);
 
 public sealed record RakkoLanguageCatalog(IReadOnlyList<RakkoLanguage> Languages);
 
-public sealed record RakkoLanguage(
-    string Name,
-    string Code);
+public sealed record RakkoLanguage(string Name);

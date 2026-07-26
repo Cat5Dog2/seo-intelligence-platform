@@ -10,7 +10,7 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | 作成日 | 2026-05-30 |
 | 対象システム | ラッコキーワードAPIを中核にしたSEO・コンテンツ・競合分析・順位監視プラットフォーム |
 | 想定技術 | .NET 10 LTS / ASP.NET Core / Blazor Web App / PostgreSQL / Redis / Worker Service |
-| 入力仕様 | rakko-keyword-api-docs.json（OpenAPI 3.0、API v1.4.1） |
+| 入力仕様 | rakko-keyword-api-docs.json（OpenAPI 3.1、API v1.12.0） |
 | 関連設計 | basic_design.md / api_design.md / db_design.md / screen_design.md / job_design.md / test_plan.md / external_api_design.md / operations_runbook.md / environment_setup.md / adr/ |
 | 作成方針 | 上記で列挙した全ユースケースを、API連携・DB・非同期ジョブ・AI支援・外部連携を組み合わせて実現する。 |
 
@@ -23,6 +23,7 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | 1.0 | 2026-05-30 | 初版作成。ラッコキーワードAPI v1.4.1を前提に全ユースケースを要件化。 | ChatGPT |
 | 1.1 | 2026-05-30 | API設計書・DB設計書との責務分担を追加し、リスク/設計成果物の参照関係を整理。 | ChatGPT |
 | 1.2 | 2026-05-30 | 画面、ジョブ、テスト、外部API、運用、環境構築、ADR文書を設計成果物へ追加。 | ChatGPT |
+| 1.3 | 2026-07-26 | ラッコキーワードAPI v1.12.0（OpenAPI 3.1）へ追随。地域/言語マスタを`/v1/metadata/*`へ移行。 | Claude |
 
 ## 目次
 
@@ -158,7 +159,7 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 
 | 分類 | 前提・制約 |
 | --- | --- |
-| API仕様 | OpenAPI 3.0 / ラッコキーワードAPI v1.4.1を基準とする。 |
+| API仕様 | OpenAPI 3.1 / ラッコキーワードAPI v1.12.0を基準とする。 |
 | 利用者 | 初期版の利用者は開発者本人1名とする。システム内では単一ワークスペース/単一管理者として扱い、操作主体は固定のdeveloperとして監査する。 |
 | API認証 | 原則としてX-API-Keyヘッダーで認証する。地域/言語マスタの一部は認証不要。 |
 | API利用 | ラッコキーワードAPIの契約プラン、APIキー数、データ利用範囲は契約確認日と確認者を記録し、変更時は要件・運用手順を更新する。初期想定はスタンダードプラン、APIキー最大5個、社内利用範囲とする。契約スコープは管理画面/APIでは管理しない。 |
@@ -393,8 +394,8 @@ Phase 1の実装開始時は、FR-001からFR-005、FR-010からFR-030、FR-110�
 | POST | /v1/search-volume | 一括キーワード調査登録 | SearchVolumeHistoryDto | 最大50,000語の一括需要調査登録 |
 | GET | /v1/search-volume/{requestId}/status | 一括キーワード調査ステータス取得 | - | 一括調査ジョブの完了監視 |
 | POST | /v1/search-volume/{requestId}/results | 一括キーワード調査データ取得 | SearchVolumeResultsDto | 検索ボリューム、SEO難易度、CPC、トレンド取得 |
-| GET | /v1/search-volume/locations | 地域一覧取得 | - | 地域マスタ同期 |
-| GET | /v1/search-volume/languages | 言語一覧取得 | - | 言語マスタ同期 |
+| GET | /v1/metadata/locations | 地域一覧取得（クレジット消費なし・認証不要） | - | 地域マスタ同期 |
+| GET | /v1/metadata/languages | 言語一覧取得（クレジット消費なし・認証不要） | - | 言語マスタ同期 |
 | POST | /v1/influx-keywords | 獲得キーワード調査取得 | InfluxKeywordsKeywordDto | 自社/競合の獲得キーワード、ギャップ分析 |
 | POST | /v1/influx-pages | 獲得ページ調査取得 | InfluxPagesDto | 獲得ページ、稼ぎ頭ページ、リライト候補 |
 | POST | /v1/competitive | 競合サイト抽出 | CompetitiveDto | 競合ドメイン抽出、重複率、競合独自キーワード数 |
@@ -407,7 +408,7 @@ Phase 1の実装開始時は、FR-001からFR-005、FR-010からFR-030、FR-110�
 
 ## 付録B. 参照資料
 
-- rakko-keyword-api-docs.json（OpenAPI 3.0、ラッコキーワードAPI v1.4.1、アップロードファイル）
+- rakko-keyword-api-docs.json（OpenAPI 3.1、ラッコキーワードAPI v1.12.0、アップロードファイル）
 
 - basic_design.md
 

@@ -152,22 +152,39 @@ internal sealed class ApiContractScopeEntityConfiguration : IEntityTypeConfigura
         entity.HasIndex(e => new { e.EffectiveFrom, e.EffectiveTo }).HasDatabaseName("ix_api_contract_scopes_effective_from_effective_to");
         entity.HasOne<WorkspaceEntity>().WithMany().HasForeignKey(e => e.WorkspaceId).OnDelete(DeleteBehavior.Restrict);
 
-        entity.HasData(new ApiContractScopeEntity
-        {
-            Id = SeoIntelligenceSeedData.DefaultRakkoContractScopeId,
-            WorkspaceId = SeoIntelligenceSeedData.DefaultWorkspaceId,
-            Provider = SeoIntelligenceSeedData.RakkoKeywordProvider,
-            PlanName = SeoIntelligenceSeedData.RakkoKeywordPlanName,
-            ApiKeyLimit = 5,
-            DataUsageScope = SeoIntelligenceSeedData.RakkoKeywordDataUsageScope,
-            ConfirmedAt = SeoIntelligenceSeedData.SeedCreatedAt,
-            ConfirmedBy = "developer",
-            EffectiveFrom = SeoIntelligenceSeedData.ContractEffectiveFrom,
-            EffectiveTo = null,
-            ScopeKey = SeoIntelligenceSeedData.RakkoKeywordScopeKey,
-            Status = "active",
-            CreatedAt = SeoIntelligenceSeedData.SeedCreatedAt
-        });
+        entity.HasData(
+            new ApiContractScopeEntity
+            {
+                Id = SeoIntelligenceSeedData.ArchivedRakkoContractScopeId,
+                WorkspaceId = SeoIntelligenceSeedData.DefaultWorkspaceId,
+                Provider = SeoIntelligenceSeedData.RakkoKeywordProvider,
+                PlanName = SeoIntelligenceSeedData.RakkoKeywordPlanName,
+                ApiKeyLimit = 5,
+                DataUsageScope = SeoIntelligenceSeedData.RakkoKeywordDataUsageScope,
+                ConfirmedAt = SeoIntelligenceSeedData.SeedCreatedAt,
+                ConfirmedBy = "developer",
+                EffectiveFrom = SeoIntelligenceSeedData.ArchivedContractEffectiveFrom,
+                EffectiveTo = SeoIntelligenceSeedData.ArchivedContractEffectiveTo,
+                ScopeKey = SeoIntelligenceSeedData.ArchivedRakkoKeywordScopeKey,
+                Status = "archived",
+                CreatedAt = SeoIntelligenceSeedData.SeedCreatedAt
+            },
+            new ApiContractScopeEntity
+            {
+                Id = SeoIntelligenceSeedData.DefaultRakkoContractScopeId,
+                WorkspaceId = SeoIntelligenceSeedData.DefaultWorkspaceId,
+                Provider = SeoIntelligenceSeedData.RakkoKeywordProvider,
+                PlanName = SeoIntelligenceSeedData.RakkoKeywordPlanName,
+                ApiKeyLimit = 5,
+                DataUsageScope = SeoIntelligenceSeedData.RakkoKeywordDataUsageScope,
+                ConfirmedAt = SeoIntelligenceSeedData.ContractUpdatedAt,
+                ConfirmedBy = "developer",
+                EffectiveFrom = SeoIntelligenceSeedData.ContractEffectiveFrom,
+                EffectiveTo = null,
+                ScopeKey = SeoIntelligenceSeedData.RakkoKeywordScopeKey,
+                Status = "active",
+                CreatedAt = SeoIntelligenceSeedData.ContractUpdatedAt
+            });
     }
 }
 

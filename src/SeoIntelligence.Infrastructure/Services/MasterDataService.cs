@@ -313,26 +313,26 @@ internal sealed class MasterDataSyncJob(
         }
     }
 
+    // ラッコキーワードAPI v1.12.0以降、地域・言語のcode値は提供されない。
+    // location_code/language_code列にはAPIリクエスト(location/language)でそのまま使える名前を正準値として格納する。
     private static NormalizedLocation? NormalizeLocation(RakkoLocation location)
     {
-        var code = NormalizeText(location.Code);
         var name = NormalizeText(location.Name);
-        if (code is null || name is null)
+        if (name is null)
         {
             return null;
         }
 
         var countryCode = NormalizeText(location.CountryIsoCode)?.ToUpperInvariant() ?? string.Empty;
-        return new NormalizedLocation(code, name, countryCode);
+        return new NormalizedLocation(name, name, countryCode);
     }
 
     private static NormalizedLanguage? NormalizeLanguage(RakkoLanguage language)
     {
-        var code = NormalizeText(language.Code)?.ToLowerInvariant();
         var name = NormalizeText(language.Name);
-        return code is null || name is null
+        return name is null
             ? null
-            : new NormalizedLanguage(code, name);
+            : new NormalizedLanguage(name, name);
     }
 
     private async Task RecordExternalFailureAsync<T>(

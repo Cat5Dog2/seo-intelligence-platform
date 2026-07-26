@@ -125,6 +125,49 @@ public sealed class MvpDatabaseSchemaTests
 
     [Fact]
     [Trait("Category", "Integration")]
+    public void RakkoV1120BackfillMigrationTargetsOnlyLegacyJobsAndKeepsAuditStateInSync()
+    {
+        using var context = CreateContext();
+        var migrator = context.GetService<IMigrator>();
+
+        var sql = migrator.GenerateScript(
+            fromMigration: "20260726021810_RakkoKeywordV1120Alignment",
+            toMigration: "20260726032205_RakkoKeywordV1120DataBackfill");
+
+        Assert.Contains("CREATE TEMP TABLE rakko_v1120_legacy_jobs", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("INNER JOIN search_volume_jobs", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("lower(svj.location) = 'jp'", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("lower(svj.language) = 'ja'", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("lower(l.location_code) = lower(svj.location)", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("lower(lg.language_code) = lower(svj.language)", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("INSERT INTO audit_logs", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("'job.canceled'", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("UPDATE job_external_requests", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("UPDATE search_volume_jobs", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("UPDATE jobs job", sql, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public void RakkoV1120CorrectionMigrationMakesPreviouslyCanceledCanonicalJobsRegisterable()
+    {
+        using var context = CreateContext();
+        var migrator = context.GetService<IMigrator>();
+
+        var sql = migrator.GenerateScript(
+            fromMigration: "20260726032205_RakkoKeywordV1120DataBackfill",
+            toMigration: "20260726053518_RakkoKeywordV1120BackfillCorrection");
+
+        Assert.Contains("was_canonical", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("location.status = 'active'", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("language.status = 'active'", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("superseded-by-20260726053518", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("canonical_re_registration_enabled", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("INSERT INTO audit_logs", sql, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
     public void ModelAndMigrationSqlContainPhase2TablesAndIndexes()
     {
         using var context = CreateContext();

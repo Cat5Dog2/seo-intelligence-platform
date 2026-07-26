@@ -2,6 +2,10 @@ param(
     [switch]$ValidateOnly
 )
 
+# 本スクリプトは生成DTOのメタデータ(OpenApiVersion/SourceSha256)と必須スキーマ名の存在を検証・更新する。
+# DTOのプロパティ・required制約の形状検証は ContractTests の RakkoKeywordDtoShapeContractTests が担う。
+# 更新手順は docs/adr/0006-openapi-dto-generation.md を参照。
+
 $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $PSScriptRoot
@@ -25,8 +29,8 @@ $mvpSchemas = @(
     "SearchVolumeStatusResponseDto",
     "SearchVolumeResultsDto",
     "SearchVolumeResultsResponseDto",
-    "LocationsResponseDto",
-    "LanguagesResponseDto"
+    "MetadataLocationsResponseDto",
+    "MetadataLanguagesResponseDto"
 )
 
 $phase2Schemas = @(

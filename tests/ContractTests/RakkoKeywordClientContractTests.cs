@@ -19,6 +19,53 @@ namespace ContractTests;
 
 public sealed class RakkoKeywordClientContractTests
 {
+    public static TheoryData<string> InvalidSearchVolumeRequestIdResponses =>
+        new()
+        {
+            """
+            {
+              "result": true,
+              "meta": { "consumedCredit": 15 },
+              "data": { "requestId": 123.5 },
+              "errors": []
+            }
+            """,
+            """
+            {
+              "result": true,
+              "meta": { "consumedCredit": 15 },
+              "data": { "requestId": 0 },
+              "errors": []
+            }
+            """,
+            """
+            {
+              "result": true,
+              "meta": { "consumedCredit": 15 },
+              "data": { "requestId": 9223372036854775808 },
+              "errors": []
+            }
+            """,
+            """
+            {
+              "result": true,
+              "meta": { "consumedCredit": 15 },
+              "data": {},
+              "errors": []
+            }
+            """,
+            // 型付きDTOへの逆シリアライズ自体が失敗するケース。
+            // 生JSONからクレジットを抽出しているため監査値は他ケースと同じになる。
+            """
+            {
+              "result": true,
+              "meta": { "consumedCredit": 15 },
+              "data": { "requestId": "invalid" },
+              "errors": []
+            }
+            """
+        };
+
     [Fact]
     [Trait("Category", "Contract")]
     public async Task GeneratedDtoMetadataMatchesVendorOpenApiSpec()
@@ -62,7 +109,7 @@ public sealed class RakkoKeywordClientContractTests
 
             Assert.True(result.IsSuccess);
             Assert.Equal(200, result.StatusCode);
-            Assert.Equal(1m, result.ConsumedCredit);
+            Assert.Equal(1.5m, result.ConsumedCredit);
             Assert.NotNull(result.Data);
             var item = Assert.Single(result.Data!.Items);
             Assert.Equal("suggest", result.Data.Source);
@@ -145,8 +192,8 @@ public sealed class RakkoKeywordClientContractTests
                 new RakkoSearchVolumeRegistrationRequest(
                     ["seo", "content marketing"],
                     SeoDifficulty: true,
-                    Location: "JP",
-                    Language: "ja"));
+                    Location: "Japan",
+                    Language: "Japanese"));
             var status = await client.GetSearchVolumeStatusAsync(context, registration.Data!.RequestId);
             var results = await client.GetSearchVolumeResultsAsync(
                 context,
@@ -162,7 +209,8 @@ public sealed class RakkoKeywordClientContractTests
             Assert.Equal("completed", status.Data.Statuses["overall"]);
 
             Assert.True(results.IsSuccess);
-            Assert.Equal(5m, results.ConsumedCredit);
+            Assert.Equal(0m, results.ConsumedCredit);
+            Assert.Equal(15m, registration.ConsumedCredit);
             var item = Assert.Single(results.Data!.Items);
             Assert.Equal("sample keyword", item.Keyword);
             Assert.Equal(1300, item.Metrics.SearchVolume);
@@ -174,6 +222,97 @@ public sealed class RakkoKeywordClientContractTests
         {
             DeleteTempStoragePath(storagePath);
         }
+    }
+
+    [Theory]
+    [MemberData(nameof(InvalidSearchVolumeRequestIdResponses))]
+    [Trait("Category", "Contract")]
+    public async Task RealClientRejectsInvalidSearchVolumeRequestIds(string responseJson)
+    {
+        var handler = new CapturingHandler(responseJson);
+        using var httpClient = new HttpClient(handler)
+        {
+            BaseAddress = new Uri("https://api.example.test")
+        };
+        var recorder = new CapturingRecorder();
+        var client = new RakkoKeywordRealClient(
+            httpClient,
+            new FakeSecretStore("secret-value"),
+            recorder,
+            Options.Create(new RakkoKeywordOptions
+            {
+                Mode = RakkoKeywordOptions.RealMode,
+                BaseUrl = "https://api.example.test",
+                ApiKeySecretRef = "rakko-keyword-api-key-dev",
+                EnvironmentName = "Testing"
+            }),
+            NullLogger<RakkoKeywordRealClient>.Instance);
+
+        var result = await client.RegisterSearchVolumeAsync(
+            CreateContext(apiKeySecretRef: "rakko-keyword-api-key-dev", correlationId: "corr-invalid-request-id"),
+            new RakkoSearchVolumeRegistrationRequest(
+                ["seo"],
+                SeoDifficulty: false,
+                Location: "Japan",
+                Language: "Japanese"));
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(500, result.StatusCode);
+        Assert.Equal("invalid_response", result.ExternalCall.ErrorCode);
+        Assert.NotEmpty(result.Errors);
+
+        // 契約違反は再試行しない。課金される登録POSTを繰り返さないため。
+        Assert.Equal(RakkoKeywordFailureKind.Fatal, result.FailureKind);
+        Assert.False(result.IsRetryable);
+
+        // 監査は実際の通信結果を残す。外部APIは200を返しクレジットを消費しているため、
+        // 内部の失敗分類(500)ではなく実HTTPステータスと消費クレジットを記録する。
+        Assert.Equal(200, recorder.LastRequest!.StatusCode);
+        Assert.Equal(15m, recorder.LastRequest.ConsumedCredit);
+        Assert.Equal("invalid_response", recorder.LastRequest.ErrorCode);
+    }
+
+    [Fact]
+    [Trait("Category", "Contract")]
+    public async Task RealClientAcceptsPositiveIntegralSearchVolumeRequestId()
+    {
+        var handler = new CapturingHandler("""
+            {
+              "result": true,
+              "meta": { "consumedCredit": 15 },
+              "data": { "requestId": 9223372036854775807 },
+              "errors": []
+            }
+            """);
+        using var httpClient = new HttpClient(handler)
+        {
+            BaseAddress = new Uri("https://api.example.test")
+        };
+        var recorder = new CapturingRecorder();
+        var client = new RakkoKeywordRealClient(
+            httpClient,
+            new FakeSecretStore("secret-value"),
+            recorder,
+            Options.Create(new RakkoKeywordOptions
+            {
+                Mode = RakkoKeywordOptions.RealMode,
+                BaseUrl = "https://api.example.test",
+                ApiKeySecretRef = "rakko-keyword-api-key-dev",
+                EnvironmentName = "Testing"
+            }),
+            NullLogger<RakkoKeywordRealClient>.Instance);
+
+        var result = await client.RegisterSearchVolumeAsync(
+            CreateContext(apiKeySecretRef: "rakko-keyword-api-key-dev", correlationId: "corr-valid-request-id"),
+            new RakkoSearchVolumeRegistrationRequest(
+                ["seo"],
+                SeoDifficulty: false,
+                Location: "Japan",
+                Language: "Japanese"));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(long.MaxValue, result.Data!.RequestId);
+        Assert.Null(result.ExternalCall.ErrorCode);
     }
 
     [Fact]

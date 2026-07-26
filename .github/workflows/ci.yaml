@@ -75,6 +75,7 @@ jobs:
             Configuration = $env:CONFIGURATION
             SkipBuild = $true
             StopDependencies = $true
+            RemoveDependencyVolumes = $true
           }
           if ("${{ vars.RUN_BROWSER_E2E }}" -eq "true") {
             $smokeArgs.RunBrowserTests = $true

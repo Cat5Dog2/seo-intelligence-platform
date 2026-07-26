@@ -13,8 +13,8 @@ internal static class RakkoKeywordClientSupport
     public const string SearchVolumeEndpoint = "/v1/search-volume";
     public const string SearchVolumeStatusEndpoint = "/v1/search-volume/{requestId}/status";
     public const string SearchVolumeResultsEndpoint = "/v1/search-volume/{requestId}/results";
-    public const string LocationsEndpoint = "/v1/search-volume/locations";
-    public const string LanguagesEndpoint = "/v1/search-volume/languages";
+    public const string LocationsEndpoint = "/v1/metadata/locations";
+    public const string LanguagesEndpoint = "/v1/metadata/languages";
     public const string InfluxKeywordsEndpoint = "/v1/influx-keywords";
     public const string InfluxPagesEndpoint = "/v1/influx-pages";
     public const string CompetitiveEndpoint = "/v1/competitive";
