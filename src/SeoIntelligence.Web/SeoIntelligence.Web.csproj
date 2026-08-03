@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\SeoIntelligence.Application\SeoIntelligence.Application.csproj" />
+    <ProjectReference Include="..\SeoIntelligence.Infrastructure\SeoIntelligence.Infrastructure.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

@@ -16,6 +16,8 @@ using SeoIntelligence.Domain.Common;
 using SeoIntelligence.Infrastructure.Persistence;
 using SeoIntelligence.Infrastructure.Services;
 
+using IntegrationTests.Support;
+
 namespace IntegrationTests;
 
 public sealed class ManagementApiIntegrationTests
@@ -824,7 +826,7 @@ public sealed class ManagementApiIntegrationTests
         }
     }
 
-    private sealed class ManagementApiFactory : WebApplicationFactory<Program>
+    private sealed class ManagementApiFactory : ServiceKeyApiFactory
     {
         private readonly string _databaseName = Guid.NewGuid().ToString("N");
         private readonly IReadOnlyDictionary<string, string?> _additionalConfiguration;

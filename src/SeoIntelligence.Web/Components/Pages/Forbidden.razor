@@ -1,0 +1,20 @@
+@page "/forbidden"
+@attribute [Authorize]
+@layout SelfServiceLayout
+
+<PageTitle>権限がありません - SEO Intelligence</PageTitle>
+
+<h1>権限がありません</h1>
+
+<p>このページを表示する権限がありません。</p>
+
+<AuthorizeView Policy="@ApplicationPolicies.RequireAdmin">
+    <Authorized>
+        <a data-testid="forbidden-back-link" href="/">プロジェクト一覧へ戻る</a>
+    </Authorized>
+    <NotAuthorized>
+        @* Only Admin accounts can open the project list; sending anyone else there would loop
+           straight back to this page. *@
+        <a data-testid="forbidden-back-link" href="/account">アカウントへ戻る</a>
+    </NotAuthorized>
+</AuthorizeView>

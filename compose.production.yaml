@@ -8,6 +8,7 @@ name: seo-intelligence-prod
 x-production-environment: &production-environment
   DOTNET_ENVIRONMENT: Production
   Database__Password: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.production}
+  Secrets__ApiServiceKey: ${API_SERVICE_KEY:?Set API_SERVICE_KEY in .env.production}
 
 services:
   postgres:
@@ -46,8 +47,16 @@ services:
 
   web:
     environment:
-      DOTNET_ENVIRONMENT: Production
+      <<: *production-environment
       ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
+      # Needed only on the first deploy, and deliberately optional afterwards so the
+      # credentials can be cleared once an Admin exists. The Web host already fails to
+      # start when no Admin exists and these are empty, so requiring them here would add
+      # nothing and would break every later Compose operation. Empty (not absent) also
+      # matters: it overrides the development defaults in compose.yaml, which must never
+      # become a production account.
+      AdminSeed__Email: ${ADMIN_SEED_EMAIL:-}
+      AdminSeed__Password: ${ADMIN_SEED_PASSWORD:-}
     networks:
       backend:
       caddy:

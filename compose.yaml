@@ -25,6 +25,9 @@ x-backend-environment: &backend-environment
   Hangfire__Storage: PostgreSQL
   Storage__Provider: Local
   Storage__BasePath: /data/storage
+  # Shared secret the Web host presents to the API on every call.
+  ServiceAuthentication__ServiceKeyRef: ApiServiceKey
+  Secrets__ApiServiceKey: ${API_SERVICE_KEY:-local_development_service_key}
 
 services:
   postgres:
@@ -129,7 +132,27 @@ services:
       dockerfile: Dockerfile
       target: web
     image: seo-intelligence-web
+    env_file:
+      - path: ${APP_ENV_FILE:-.env}
+        required: false
     environment:
+      # The Web host needs the database for the administrator sign-in (ASP.NET Core Identity)
+      # and the service key for its API calls. All business data still goes through the API.
+      Database__Host: postgres
+      Database__Port: "5432"
+      Database__Name: ${POSTGRES_DB:-seo}
+      Database__Username: ${POSTGRES_USER:-seo}
+      Database__Password: ${POSTGRES_PASSWORD:-seo_dev_password}
+      Database__GssEncryptionMode: Disable
+      SecretStore__Provider: Configuration
+      SecretStore__ConfigurationPrefix: Secrets
+      ServiceAuthentication__ServiceKeyRef: ApiServiceKey
+      Secrets__ApiServiceKey: ${API_SERVICE_KEY:-local_development_service_key}
+      # The Web host refuses to start when no Admin user exists and these are unset,
+      # so the development defaults keep `compose up` working out of the box.
+      AdminSeed__Email: ${ADMIN_SEED_EMAIL:-developer@localhost}
+      AdminSeed__Password: ${ADMIN_SEED_PASSWORD:-LocalDev!Passw0rd}
+      AdminSeed__DisplayName: ${ADMIN_SEED_DISPLAY_NAME:-Admin}
       DOTNET_ENVIRONMENT: ${DOTNET_ENVIRONMENT:-Development}
       Api__BaseUrl: http://api:8080
       # Must match the volume target below; the application reads this key.
@@ -142,6 +165,8 @@ services:
       start_period: 30s
     depends_on:
       api:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     volumes:
       - web-data-protection:/app/.data/data-protection-keys

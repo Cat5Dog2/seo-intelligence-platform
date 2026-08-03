@@ -195,6 +195,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-local.ps1 -Run
 | `Storage__BucketName` | Storage bucket | `seo-intelligence` |
 | `SecretStore__Provider` | Secret Store実装 | `Configuration` |
 | `SecretStore__ConfigurationPrefix` | User Secrets/環境変数上のSecret prefix | `Secrets` |
+| `ServiceAuthentication__ServiceKeyRef` | APIサービスキーのSecret参照名 | `ApiServiceKey` |
+| `Secrets__ApiServiceKey` | APIサービスキーの実値。APIとWebへ同じ値を設定する | `local-development-service-key`（Development既定） |
+| `AdminSeed__Email` | 初期管理者のメールアドレス。Adminが存在しない場合だけ作成 | `developer@localhost` |
+| `AdminSeed__Password` | 初期管理者のパスワード。12文字以上、大文字/小文字/数字/記号必須 | `LocalDev!Passw0rd` |
+| `AdminSeed__DisplayName` | 初期管理者の表示名 | `Developer` |
 | `OpenTelemetry__Enabled` | OTel exporter有効化 | `false` |
 | `OpenTelemetry__ServiceName` | OTel service name | `SeoIntelligence.Api` |
 | `OpenTelemetry__OtlpEndpoint` | OTLP endpoint | `http://localhost:4317` |
@@ -211,6 +216,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-local.ps1 -Run
 | `E2E_BROWSER_ENABLED` | BrowserE2E実行フラグ | `true` |
 | `E2E_WEB_URL` | BrowserE2E対象Web URL | `http://localhost:5295` |
 | `E2E_API_URL` | BrowserE2E対象API URL | `http://localhost:5251` |
+| `E2E_API_SERVICE_KEY` | BrowserE2EがAPIへ提示するサービスキー | `Secrets__ApiServiceKey`と同じ値 |
+| `E2E_ADMIN_EMAIL` | BrowserE2Eのサインインに使うメールアドレス | `AdminSeed__Email`と同じ値 |
+| `E2E_ADMIN_PASSWORD` | BrowserE2Eのサインインに使うパスワード | `AdminSeed__Password`と同じ値 |
 | `E2E_HEADLESS` | BrowserE2Eのheadless切替 | 通常は未設定。画面表示時のみ`false` |
 
 Compose内のAPI/WorkerはPostgreSQLを`postgres:5432`、Redisを`redis:6379`、Local Storageを`/data/storage`で参照する。VPS用の環境変数とCaddy networkは `.env.production.example` と `docs/docker_deployment.md` を正本とする。
@@ -228,6 +236,9 @@ Compose起動時は `.env` をAPI/Workerの任意`env_file`としても読み込
 | `rakko-keyword-api-key-dev` | ラッコキーワードAPIキー | DBへ実値保存しない。 |
 | `discord-webhook-dev` | Discord Webhook URL | DBへ実値保存しない。 |
 | `ai-api-key-dev` | AI APIキー | Phase 3。必要時のみ設定。 |
+| `ApiServiceKey` | WebがAPIへ提示するサービスキー | APIとWebへ同じ値を設定する。ずれるとWebのAPI呼び出しが全て401になる。VPSでは`openssl rand -hex 32`で生成する。 |
+
+管理者パスワードはSecret Storeではなく、ASP.NET Core Identityが`identity_users.password_hash`にハッシュとして保存する。`AdminSeed__Password`は初回シード時にだけ読まれるため、初回サインイン後は画面からパスワードを変更し、環境変数の値を空にする。
 
 ローカルでは `.env`、.NET User Secrets、開発用Key Vault、または安全なSecret管理を使う。MVPの`Configuration` Secret Storeは `Secrets:{secretName}` を参照する。たとえば `.env` に `Secrets__discord-webhook-dev=<Webhook URL>` を置くと、`webhook_secret_ref=discord-webhook-dev` から解決される。ラッコキーワードAPIへ実接続する場合は `RakkoKeyword__Mode=Real`、`RakkoKeyword__ApiKeySecretRef=rakko-keyword-api-key-dev`、`Secrets__rakko-keyword-api-key-dev=<API Key>` を設定する。通常開発とCIは既定の`Mock`を使い、実APIキーは不要。APIが`secretValue`を受け取った場合は生成したSecret名へ登録し、DBには参照名だけを保存する。`Configuration`実装のAPI経由登録はプロセス内の設定値として扱い、`.env`や設定ファイルへ実値をコミットしない。
 
@@ -262,12 +273,21 @@ docker compose --profile tools run --rm --build migrate
 
 | 確認 | 期待結果 |
 | --- | --- |
-| API Health | `/healthz`が成功する。 |
-| Readiness | `/readyz`でDB、Redis、Storage、Secret Storeの疎通確認ができる。未設定のDB/Redisはskip扱い、設定済みで接続不可または未適用Migrationがある場合はunhealthy。 |
-| OpenAPI | `/openapi/v1.json`が取得できる。 |
-| プロジェクト一覧 | `GET /api/projects`が成功する。 |
+| API Health | `/healthz`が成功する（サービスキー不要）。 |
+| Readiness | `/readyz`でDB、Redis、Storage、Secret Storeの疎通確認ができる（サービスキー不要）。未設定のDB/Redisはskip扱い、設定済みで接続不可または未適用Migrationがある場合はunhealthy。 |
+| API認証 | サービスキーなしの`GET /api/projects`が401を返し、`X-Service-Key`付きで200を返す。 |
+| OpenAPI | `X-Service-Key`付きで`/openapi/v1.json`が取得できる。 |
+| プロジェクト一覧 | `X-Service-Key`付きの`GET /api/projects`が成功する。 |
+| Webサインイン | 未サインインで`/dashboard`が`/login`へリダイレクトされ、初期管理者でサインインできる。 |
 | Worker | ジョブ一覧にWorker処理結果が反映される。 |
 | Discord | テスト通知が送信され履歴が残る。 |
+
+APIをcurlで確認する例:
+
+```bash
+curl --silent --output /dev/null --write-out '%{http_code}\n' http://localhost:5251/api/projects
+curl --fail --silent --header "X-Service-Key: local-development-service-key" "http://localhost:5251/api/projects?page=1&pageSize=5"
+```
 
 ## 9. 外部APIモード
 

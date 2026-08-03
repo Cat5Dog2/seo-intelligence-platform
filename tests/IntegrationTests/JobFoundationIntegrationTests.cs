@@ -15,6 +15,8 @@ using SeoIntelligence.Domain.Common;
 using SeoIntelligence.Infrastructure.Persistence;
 using SeoIntelligence.Infrastructure.Persistence.Entities;
 
+using IntegrationTests.Support;
+
 namespace IntegrationTests;
 
 public sealed class JobFoundationIntegrationTests
@@ -320,7 +322,7 @@ public sealed class JobFoundationIntegrationTests
         }
     }
 
-    private sealed class JobApiFactory(bool useRedis = false) : WebApplicationFactory<Program>
+    private sealed class JobApiFactory(bool useRedis = false) : ServiceKeyApiFactory
     {
         private readonly string databaseName = Guid.NewGuid().ToString("N");
 

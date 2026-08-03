@@ -35,9 +35,9 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 ## 3. 共通レイアウト
 
 ```text
-+---------------------------------------------------------------+
-| Header: Project Switcher / Location / Language / Credit Status |
-+----------------------+----------------------------------------+
++-----------------------------------------------------------------------+
+| Header: Project Switcher / Location / Language / Credit / Account      |
++----------------------+------------------------------------------------+
 | Side Navigation      | Main Content                            |
 | - Dashboard          | Toolbar / Filters / Table / Detail      |
 | - Keyword            | Job progress / Error / Export actions   |
@@ -67,6 +67,7 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 
 | 画面ID | 画面名 | Phase | 主API |
 | --- | --- | --- | --- |
+| S-000 | サインイン | 横断 | `POST /login` |
 | S-001 | 起動/プロジェクト選択 | MVP | `GET /api/projects` |
 | S-010 | ホームダッシュボード | MVP（段階拡張） | `GET /api/projects/{projectId}/dashboard` |
 | S-020 | キーワード探索 | MVP | `POST /api/projects/{projectId}/keyword-discovery/suggest` |
@@ -84,6 +85,28 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | S-900 | 管理 | MVP（段階拡張） | MVPは`/api/admin/*`、Phase 2で`rank_alert`/`alert_events`/Phase 2ジョブ導線、Phase 3で`/api/projects/{projectId}/connectors` |
 
 ## 6. 画面詳細
+
+### 6.0 S-000 サインイン
+
+| 項目 | 内容 |
+| --- | --- |
+| 目的 | 単一管理者としてアプリケーションへサインインする。 |
+| ルート | `/login`。共通レイアウトを使わない専用レイアウト。 |
+| 入力 | メールアドレス、パスワード、ログイン状態を保持。 |
+| 表示 | 認証失敗、アカウント無効、ロックアウトのメッセージ。 |
+| 操作 | サインイン。フォームはSSRの`POST /login`へ送信し、CSRFトークンを必須にする。 |
+| バリデーション | メールアドレスとパスワードは必須。認証失敗理由はアカウントの存在を推測させない共通文言にする。 |
+| 遷移 | 成功時は`returnUrl`（アプリ内パスのみ許可）または`/`へ。未サインインで保護ページを開くと`/login?ReturnUrl=...`へリダイレクトされる。 |
+
+関連画面として`/account`（表示名確認とパスワード変更）、`/forbidden`（権限不足）を持つ。ヘッダー右端にサインイン中のユーザー名とログアウトボタンを表示する。
+
+`/login`以外の全画面はサインインを必須とする。`/not-found`と`/Error`も例外にしない。`/not-found`は共通レイアウトを経由してプロジェクト名などの業務データを描画するため、匿名表示は不可とする。`/Error`は障害時に共通レイアウト経由でAPIを呼ばないよう専用レイアウトで表示するが、サインインは同様に必須とする。
+
+業務画面はさらに`RequireAdmin`ポリシーを要求する。`/account`、`/forbidden`、`/Error`は本人操作および障害表示のため、認証済みであれば表示できる。
+
+これらのセルフサービス画面は共通レイアウトを使わず、専用レイアウトで表示する。共通レイアウトの`ProjectSwitcher`、`CreditBadge`、`LocationLanguageSelector`は業務データの参照と更新をサービスキー経由で行い、APIはロールを判別できない。そのため、`RequireAdmin`を持たない画面にこれらを描画してはならない。
+
+認可失敗時の遷移先は認証状態で分ける。未認証は`/login`、認証済みで権限不足は`/forbidden`とする。フルページ遷移ではエンドポイントの認可がCookieの`AccessDeniedPath`で処理し、Blazor回路内の遷移では`RedirectToSignInOrForbidden`が同じ分岐を行う。
 
 ### 6.1 S-001 起動/プロジェクト選択
 

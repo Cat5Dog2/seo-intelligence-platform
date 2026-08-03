@@ -1,5 +1,6 @@
 @page "/admin"
 @page "/admin/audit"
+@attribute [Authorize(Policy = ApplicationPolicies.RequireAdmin)]
 @using System.Text.Json
 @implements IDisposable
 @inject ISeoIntelligenceApiClient ApiClient

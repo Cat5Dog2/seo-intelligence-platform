@@ -8,6 +8,9 @@ log_path="${SMOKE_TEST_LOG:-artifacts/smoke/api.log}"
 timeout_seconds="${SMOKE_TEST_TIMEOUT_SECONDS:-30}"
 smoke_project_id="${SMOKE_PROJECT_ID:-}"
 discord_channel_id="${SMOKE_DISCORD_CHANNEL_ID:-}"
+# Must match Secrets:ApiServiceKey for the environment the API runs under; the
+# default matches appsettings.Development.json.
+api_service_key="${API_SERVICE_KEY:-local-development-service-key}"
 
 mkdir -p "$(dirname "$log_path")"
 
@@ -45,13 +48,13 @@ request_json() {
   local response
 
   if [ -n "$body" ]; then
-    if ! response="$(curl -fsS -X "$method" -H "Content-Type: application/json" -d "$body" "$api_url$path")"; then
+    if ! response="$(curl -fsS -X "$method" -H "X-Service-Key: $api_service_key" -H "Content-Type: application/json" -d "$body" "$api_url$path")"; then
       echo "Smoke request failed: $method $path"
       tail -n 200 "$log_path" || true
       exit 1
     fi
   else
-    if ! response="$(curl -fsS -X "$method" "$api_url$path")"; then
+    if ! response="$(curl -fsS -X "$method" -H "X-Service-Key: $api_service_key" "$api_url$path")"; then
       echo "Smoke request failed: $method $path"
       tail -n 200 "$log_path" || true
       exit 1

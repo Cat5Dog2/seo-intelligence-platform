@@ -10,6 +10,8 @@ using SeoIntelligence.Infrastructure.Persistence;
 using SeoIntelligence.Infrastructure.Persistence.Entities;
 using SeoIntelligence.Infrastructure.Services;
 
+using IntegrationTests.Support;
+
 namespace IntegrationTests;
 
 public sealed class MasterDataIntegrationTests
@@ -150,7 +152,7 @@ public sealed class MasterDataIntegrationTests
         }
     }
 
-    private sealed class MasterDataApiFactory : WebApplicationFactory<Program>
+    private sealed class MasterDataApiFactory : ServiceKeyApiFactory
     {
         private readonly string databaseName = Guid.NewGuid().ToString("N");
 

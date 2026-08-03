@@ -97,7 +97,7 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | 201 | リソース作成成功 | 作成リソースを返す。 |
 | 202 | 非同期ジョブ登録 | `jobId`とジョブ状態取得URLを返す。 |
 | 400 | 入力エラー | 入力修正可能なバリデーションエラー。 |
-| 401 | 未認証 | 外部公開時の単一管理者ログインで使用する。 |
+| 401 | 未認証 | `X-Service-Key`が無い、または一致しない。エラーコードは`Auth.Unauthorized`。 |
 | 403 | 認可/スコープ不一致 | プロジェクト外リソース参照、無効化済み設定など。 |
 | 404 | リソースなし | 存在しない、または参照できないリソース。 |
 | 409 | 競合 | 重複名、idempotency keyの不一致、状態遷移競合。 |
@@ -120,7 +120,29 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 
 ## 5. 認証・認可
 
-初期版は開発者本人のみが利用する前提とし、ローカル実行ではOS/開発環境の保護に委ねる。本番相当環境へ公開する場合は、単一管理者ログイン + Cookie/BFF構成を必須にする。
+利用者はWeb側の単一管理者ログイン（ASP.NET Core Identity + Cookie）で認証する。詳細は `docs/adr/0008-aspnet-core-identity-auth.md` を参照する。
+
+内部APIはWebからのみ呼び出される前提で、`X-Service-Key`ヘッダーの共有シークレットで認証する。値はSecret Storeから取得し、定数時間比較で検証する。既定で全エンドポイントが要認証であり、匿名で到達できるのは以下だけである。
+
+| パス | 匿名許可の理由 |
+| --- | --- |
+| `GET /healthz` | コンテナのlivenessプローブが認証情報を持たないため。 |
+| `GET /readyz` | コンテナのreadinessプローブが認証情報を持たないため。 |
+| `GET /api/report-shares/{token}` | 共有URLは社外へ渡す前提であり、共有トークン自体がアクセス制御であるため。 |
+
+サービスキーが無い、または一致しない場合は401を共通レスポンスエンベロープで返す。エラーコードは `Auth.Unauthorized` とする。
+
+```json
+{
+  "requestId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "result": false,
+  "data": null,
+  "errors": [
+    { "code": "Auth.Unauthorized", "message": "A valid service key is required.", "target": null }
+  ],
+  "meta": {}
+}
+```
 
 プロジェクト配下APIは、URL上の`projectId`と対象リソースの`project_id`一致をDBで検証する。不一致はデータ存在を隠す目的で原則404、監査上明示したい管理APIでは403を返す。
 

@@ -14,6 +14,8 @@ using SeoIntelligence.Infrastructure.Persistence;
 using SeoIntelligence.Infrastructure.Persistence.Entities;
 using SeoIntelligence.Infrastructure.Services;
 
+using IntegrationTests.Support;
+
 namespace IntegrationTests;
 
 public sealed class TopicClusterIntegrationTests
@@ -367,7 +369,7 @@ public sealed class TopicClusterIntegrationTests
     private static string HashText(string value)
         => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
 
-    private sealed class TopicClusterApiFactory : WebApplicationFactory<Program>
+    private sealed class TopicClusterApiFactory : ServiceKeyApiFactory
     {
         private readonly string databaseName = Guid.NewGuid().ToString("N");
 

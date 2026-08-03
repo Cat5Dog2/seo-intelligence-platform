@@ -135,7 +135,7 @@ OpenTelemetry Meter名は `SeoIntelligence`。MVPで記録する運用メトリ�
 
 ### 7.1 単一利用者向け暫定VPSの運用
 
-VPSの初回デプロイ・更新・バックアップの正本手順は `docs/docker_deployment.md` とする（コマンド列は本書へ複製しない）。これはアプリ内認証実装前の個人利用向け暫定構成であり、PostgreSQL、Redis、APIのホストポートを公開せず、Web/APIだけを共通Caddyの専用external networkへ接続する。
+VPSの初回デプロイ・更新・バックアップの正本手順は `docs/docker_deployment.md` とする（コマンド列は本書へ複製しない）。個人利用向け構成であり、PostgreSQL、Redis、APIのホストポートを公開せず、Web/APIだけを共通Caddyの専用external networkへ接続する。
 
 運用上の注意（正本手順に加えて守ること）:
 
@@ -150,7 +150,9 @@ VPSの初回デプロイ・更新・バックアップの正本手順は `docs/d
 
 ### 7.2 公開境界
 
-認証・認可は未実装のため、Caddy Basic認証、VPN、Cloudflare Access等の認証ゲートなしで公開しない。共有URLで使う`/api/*`は同じ認証ゲート配下で`seo-api:8080`へ、それ以外は`seo-web:8080`へproxyする。Blazorの`/_blazor` WebSocketもCaddy経由とする。
+アプリ内の単一管理者ログイン（ASP.NET Core Identity + Cookie）とAPIサービスキーで保護する。Caddyは`/api/report-shares/*`だけを`seo-api:8080`へ、それ以外は`seo-web:8080`へproxyし、他の`/api/*`は公開しない。Blazorの`/_blazor` WebSocketもCaddy経由とする。Caddy Basic認証、VPN、Cloudflare Access等の外部ゲートは多層防御として併用を推奨する。設定例は `docs/docker_deployment.md` の3.3節を正本とする。
+
+他アプリと同一VPSへ同居させる場合は別サブドメインで公開する。認証Cookieが`__Host-`接頭辞を使うため、同一ホスト名でパス分割するとCookie名が衝突する。
 
 ## 8. スモークテスト
 
@@ -186,18 +188,20 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-local.ps1 -Run
 
 ### 8.2 VPSスモーク
 
-Caddy Basic認証を使う例では、passwordをコマンドへ直接書かず、`curl --user admin`の対話入力を使う。VPNやAccessを使う場合は、その認証方式で同じURLを確認する。
+業務APIはCaddyから公開していないため、VPSスモークではヘルスエンドポイントとWebのサインイン導線を確認する。Caddy Basic認証を併用している場合は`curl --user admin`の対話入力を使い、passwordをコマンドへ直接書かない。
 
 ```bash
-curl --fail --silent --show-error --user admin https://seo.example.com/healthz
-curl --fail --silent --show-error --user admin https://seo.example.com/api-healthz
-curl --fail --silent --show-error --user admin https://seo.example.com/api-readyz
-curl --fail --silent --show-error --user admin "https://seo.example.com/api/projects?page=1&pageSize=5"
+curl --fail --silent --show-error https://seo.example.com/healthz
+curl --fail --silent --show-error https://seo.example.com/api-healthz
+curl --fail --silent --show-error https://seo.example.com/api-readyz
+# 未サインインのページ要求はサインイン画面へリダイレクトされる。
+curl --silent --output /dev/null --write-out '%{http_code}\n' https://seo.example.com/dashboard
+curl --fail --silent --show-error https://seo.example.com/login > /dev/null
 docker compose --env-file .env.production -f compose.yaml -f compose.production.yaml ps
 docker compose --env-file .env.production -f compose.yaml -f compose.production.yaml logs --tail 200 web api worker
 ```
 
-続けて管理画面またはAPIから小さいMockジョブを1件登録し、Workerにより`succeeded`へ進むことを確認する。Real APIモードやDiscord通知のスモークはクレジット、契約スコープ、Secretを確認した場合だけ行う。
+`/dashboard`が`302`を返し、`/login`が`200`を返すことを確認する。続けてブラウザで管理者アカウントによりサインインし、管理画面またはAPIから小さいMockジョブを1件登録して、Workerにより`succeeded`へ進むことを確認する。Real APIモードやDiscord通知のスモークはクレジット、契約スコープ、Secretを確認した場合だけ行う。
 
 | 対象 | 確認 |
 | --- | --- |

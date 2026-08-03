@@ -1,0 +1,65 @@
+.self-service-shell {
+    background: #f6f7f9;
+    color: #1f2933;
+    min-height: 100vh;
+}
+
+.self-service-header {
+    align-items: center;
+    background: #ffffff;
+    border-bottom: 1px solid #d9dee7;
+    display: flex;
+    gap: 1rem;
+    min-height: 64px;
+    padding: 0.75rem 1rem;
+}
+
+.brand {
+    color: #111827;
+    flex: 0 0 auto;
+    font-size: 1rem;
+    font-weight: 700;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.self-service-header-controls {
+    align-items: center;
+    display: flex;
+    flex: 1;
+    gap: 0.75rem;
+    justify-content: flex-end;
+}
+
+.account-link {
+    color: #374151;
+    font-size: 0.85rem;
+    text-decoration: none;
+}
+
+    .account-link:hover {
+        text-decoration: underline;
+    }
+
+.logout-form {
+    margin: 0;
+}
+
+.btn-link {
+    background: none;
+    border: none;
+    color: #1d4ed8;
+    cursor: pointer;
+    font-size: 0.85rem;
+    padding: 0;
+}
+
+    .btn-link:hover {
+        text-decoration: underline;
+    }
+
+.self-service-content {
+    margin: 0 auto;
+    max-width: 48rem;
+    padding: 2rem 1rem;
+}

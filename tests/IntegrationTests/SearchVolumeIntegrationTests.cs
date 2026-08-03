@@ -13,6 +13,8 @@ using SeoIntelligence.Infrastructure.Persistence;
 using SeoIntelligence.Infrastructure.Persistence.Entities;
 using SeoIntelligence.Infrastructure.Services;
 
+using IntegrationTests.Support;
+
 namespace IntegrationTests;
 
 public sealed class SearchVolumeIntegrationTests
@@ -1019,7 +1021,7 @@ public sealed class SearchVolumeIntegrationTests
         }
     }
 
-    private sealed class SearchVolumeApiFactory : WebApplicationFactory<Program>
+    private sealed class SearchVolumeApiFactory : ServiceKeyApiFactory
     {
         private readonly string databaseName = Guid.NewGuid().ToString("N");
 

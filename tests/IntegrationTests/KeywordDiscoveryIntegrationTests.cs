@@ -13,6 +13,8 @@ using SeoIntelligence.Infrastructure.Persistence;
 using SeoIntelligence.Infrastructure.Persistence.Entities;
 using SeoIntelligence.Infrastructure.Services;
 
+using IntegrationTests.Support;
+
 namespace IntegrationTests;
 
 public sealed class KeywordDiscoveryIntegrationTests
@@ -228,7 +230,7 @@ public sealed class KeywordDiscoveryIntegrationTests
         }
     }
 
-    private sealed class KeywordDiscoveryApiFactory(bool usePartialFailureClient = false) : WebApplicationFactory<Program>
+    private sealed class KeywordDiscoveryApiFactory(bool usePartialFailureClient = false) : ServiceKeyApiFactory
     {
         private readonly string databaseName = Guid.NewGuid().ToString("N");
 

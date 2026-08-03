@@ -1,0 +1,37 @@
+@inject NavigationManager Navigation
+
+@code {
+    /// <summary>
+    /// AuthorizeRouteView reports "not authorized" both for anonymous visitors and for signed-in
+    /// users who lack the required policy. Sending the second group to the sign-in page would be a
+    /// dead end, and the cookie handler's AccessDeniedPath does not apply inside Blazor routing, so
+    /// the two cases are separated here.
+    /// </summary>
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthenticationState { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (await IsAuthenticatedAsync())
+        {
+            Navigation.NavigateTo("/forbidden", forceLoad: true);
+            return;
+        }
+
+        var relativePath = Navigation.ToBaseRelativePath(Navigation.Uri);
+        var returnUrl = "/" + relativePath;
+
+        Navigation.NavigateTo($"/login?returnUrl={Uri.EscapeDataString(returnUrl)}", forceLoad: true);
+    }
+
+    private async Task<bool> IsAuthenticatedAsync()
+    {
+        if (AuthenticationState is null)
+        {
+            return false;
+        }
+
+        var state = await AuthenticationState;
+        return state.User.Identity?.IsAuthenticated ?? false;
+    }
+}

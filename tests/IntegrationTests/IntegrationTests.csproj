@@ -19,6 +19,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\SeoIntelligence.Api\SeoIntelligence.Api.csproj" />
     <ProjectReference Include="..\..\src\SeoIntelligence.Infrastructure\SeoIntelligence.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\SeoIntelligence.Web\SeoIntelligence.Web.csproj" />
   </ItemGroup>
 
   <ItemGroup>

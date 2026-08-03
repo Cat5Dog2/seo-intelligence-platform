@@ -1,4 +1,5 @@
 @page "/content-analysis"
+@attribute [Authorize(Policy = ApplicationPolicies.RequireAdmin)]
 @implements IDisposable
 @inject ISeoIntelligenceApiClient ApiClient
 @inject ProjectSelectionState ProjectState

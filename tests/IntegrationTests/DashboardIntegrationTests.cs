@@ -11,6 +11,8 @@ using SeoIntelligence.Domain.Common;
 using SeoIntelligence.Infrastructure.Persistence;
 using SeoIntelligence.Infrastructure.Persistence.Entities;
 
+using IntegrationTests.Support;
+
 namespace IntegrationTests;
 
 public sealed class DashboardIntegrationTests
@@ -556,7 +558,7 @@ public sealed class DashboardIntegrationTests
     private static string HashText(string value)
         => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
 
-    private sealed class DashboardApiFactory : WebApplicationFactory<Program>
+    private sealed class DashboardApiFactory : ServiceKeyApiFactory
     {
         private readonly string databaseName = Guid.NewGuid().ToString("N");
 

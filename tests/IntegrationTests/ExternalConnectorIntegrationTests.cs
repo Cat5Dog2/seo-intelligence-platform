@@ -11,6 +11,8 @@ using SeoIntelligence.Domain.Common;
 using SeoIntelligence.Infrastructure.Persistence;
 using SeoIntelligence.Infrastructure.Persistence.Entities;
 
+using IntegrationTests.Support;
+
 namespace IntegrationTests;
 
 public sealed class ExternalConnectorIntegrationTests
@@ -234,7 +236,7 @@ public sealed class ExternalConnectorIntegrationTests
         return JsonDocument.Parse(content);
     }
 
-    private sealed class ExternalConnectorApiFactory : WebApplicationFactory<Program>
+    private sealed class ExternalConnectorApiFactory : ServiceKeyApiFactory
     {
         private readonly string databaseName = Guid.NewGuid().ToString("N");
 

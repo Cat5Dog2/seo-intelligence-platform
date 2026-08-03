@@ -15,6 +15,7 @@
 | 0005 | Redisをキャッシュ、分散ロック、レート制御に使う | Accepted |
 | 0006 | 外部API DTOをOpenAPIから生成する | Accepted |
 | 0007 | 秘密情報はSecret Store参照とし監査ログを保持する | Accepted |
+| 0008 | 単一管理者ログインにASP.NET Core Identityを採用しAPIをサービスキーで保護する | Accepted |
 
 ## フォーマット
 
