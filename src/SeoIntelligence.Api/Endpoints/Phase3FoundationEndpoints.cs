@@ -105,7 +105,11 @@ internal static class Phase3FoundationEndpoints
         var ai = project.MapGroup(Phase3EndpointRoutes.Ai);
         ai.MapPost("/chat", ChatWithAiAsync);
         var reportShares = app.MapGroup(Phase3EndpointRoutes.ReportShares);
-        reportShares.MapGet("/{token}", GetSharedReportAsync);
+
+        // Report share links are handed to people outside the application, so this one endpoint is
+        // reachable without a service key; the share token itself is the access control. Applied to
+        // the endpoint rather than the group so anything added here later stays authenticated.
+        reportShares.MapGet("/{token}", GetSharedReportAsync).AllowAnonymous();
 
         return app;
     }

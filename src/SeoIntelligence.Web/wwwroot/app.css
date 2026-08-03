@@ -515,3 +515,107 @@ legend {
 .form-floating > .form-control-plaintext:focus::placeholder, .form-floating > .form-control:focus::placeholder {
     text-align: start;
 }
+
+/* Authentication pages (login, account) */
+.auth-page {
+    align-items: center;
+    background: #f6f7f9;
+    display: flex;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 2rem 1rem;
+}
+
+.auth-shell {
+    background: #ffffff;
+    border: 1px solid #d9dee7;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+    max-width: 24rem;
+    padding: 2rem;
+    width: 100%;
+}
+
+    .auth-shell h1 {
+        font-size: 1.25rem;
+        margin: 0 0 1.25rem;
+    }
+
+.auth-form .form-row {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin-bottom: 1rem;
+}
+
+.auth-form .form-row-inline {
+    align-items: center;
+    flex-direction: row;
+    gap: 0.5rem;
+}
+
+.auth-form label {
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.auth-form input[type="email"],
+.auth-form input[type="password"] {
+    border: 1px solid #cbd2dc;
+    border-radius: 4px;
+    font-size: 0.95rem;
+    padding: 0.5rem;
+}
+
+.auth-form small {
+    color: #6b7280;
+    font-size: 0.75rem;
+}
+
+.auth-form .btn-primary {
+    background: #1d4ed8;
+    border: none;
+    border-radius: 4px;
+    color: #ffffff;
+    cursor: pointer;
+    font-size: 0.95rem;
+    padding: 0.55rem 1.25rem;
+    width: 100%;
+}
+
+    .auth-form .btn-primary:hover {
+        background: #1e40af;
+    }
+
+.alert {
+    border-radius: 4px;
+    font-size: 0.85rem;
+    margin-bottom: 1rem;
+    padding: 0.65rem 0.75rem;
+}
+
+.alert-error {
+    background: #fee2e2;
+    border: 1px solid #fca5a5;
+    color: #991b1b;
+}
+
+.alert-success {
+    background: #dcfce7;
+    border: 1px solid #86efac;
+    color: #166534;
+}
+
+.account-summary {
+    margin-bottom: 2rem;
+}
+
+    .account-summary dt {
+        color: #6b7280;
+        font-size: 0.8rem;
+    }
+
+    .account-summary dd {
+        font-size: 0.95rem;
+        margin: 0.25rem 0 0;
+    }

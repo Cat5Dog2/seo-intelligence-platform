@@ -15,6 +15,8 @@ using SeoIntelligence.Infrastructure.Persistence;
 using SeoIntelligence.Infrastructure.Persistence.Entities;
 using SeoIntelligence.Infrastructure.Services;
 
+using IntegrationTests.Support;
+
 namespace IntegrationTests;
 
 public sealed class DataExportIntegrationTests
@@ -604,7 +606,7 @@ public sealed class DataExportIntegrationTests
 
     private sealed record ImportScenario(string ImportType, string Csv);
 
-    private sealed class DataExportApiFactory : WebApplicationFactory<Program>
+    private sealed class DataExportApiFactory : ServiceKeyApiFactory
     {
         private readonly string databaseName = Guid.NewGuid().ToString("N");
 

@@ -4,7 +4,10 @@ param(
     [string]$Configuration = "Debug",
     [int]$TimeoutSeconds = 30,
     [string]$SmokeProjectId = $env:SMOKE_PROJECT_ID,
-    [string]$DiscordChannelId = $env:SMOKE_DISCORD_CHANNEL_ID
+    [string]$DiscordChannelId = $env:SMOKE_DISCORD_CHANNEL_ID,
+    # Must match Secrets:ApiServiceKey for the environment the API runs under; the
+    # default matches appsettings.Development.json.
+    [string]$ApiServiceKey = $env:API_SERVICE_KEY
 )
 
 $ErrorActionPreference = "Stop"
@@ -18,6 +21,10 @@ if ([string]::IsNullOrWhiteSpace($SmokeProjectId)) {
 
 if ([string]::IsNullOrWhiteSpace($DiscordChannelId)) {
     $DiscordChannelId = $env:SMOKE_DISCORD_CHANNEL_ID
+}
+
+if ([string]::IsNullOrWhiteSpace($ApiServiceKey)) {
+    $ApiServiceKey = "local-development-service-key"
 }
 
 $logDirectory = "artifacts/smoke"
@@ -121,6 +128,7 @@ try {
             Method = $Method
             UseBasicParsing = $true
             TimeoutSec = 10
+            Headers = @{ "X-Service-Key" = $ApiServiceKey }
         }
 
         if ($null -ne $Body) {

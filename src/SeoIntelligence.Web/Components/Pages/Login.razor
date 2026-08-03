@@ -1,0 +1,57 @@
+@page "/login"
+@layout EmptyLayout
+@attribute [AllowAnonymous]
+
+<PageTitle>ログイン - SEO Intelligence</PageTitle>
+
+<div class="auth-shell">
+    <h1>ログイン</h1>
+
+    @if (LoginError == "invalid")
+    {
+        <div class="alert alert-error" role="alert">メールアドレスまたはパスワードが正しくありません。</div>
+    }
+    else if (LoginError == "disabled")
+    {
+        <div class="alert alert-error" role="alert">このアカウントは無効です。</div>
+    }
+    else if (LoginError == "lockout")
+    {
+        <div class="alert alert-error" role="alert">ログイン試行が多すぎます。しばらく待ってから再度お試しください。</div>
+    }
+
+    <form method="post" action="@GetFormAction()" class="auth-form">
+        <AntiforgeryToken />
+        <input type="hidden" name="returnUrl" value="@ReturnUrl" />
+
+        <div class="form-row">
+            <label for="email">メールアドレス</label>
+            <input id="email" name="email" type="email" autocomplete="username" required />
+        </div>
+
+        <div class="form-row">
+            <label for="password">パスワード</label>
+            <input id="password" name="password" type="password" autocomplete="current-password" required />
+        </div>
+
+        <div class="form-row form-row-inline">
+            <input id="remember-me" name="rememberMe" type="checkbox" value="true" />
+            <label for="remember-me">ログイン状態を保持</label>
+        </div>
+
+        <button type="submit" class="btn-primary">ログイン</button>
+    </form>
+</div>
+
+@code {
+    [SupplyParameterFromQuery]
+    public string? ReturnUrl { get; set; }
+
+    [SupplyParameterFromQuery]
+    public string? LoginError { get; set; }
+
+    private string GetFormAction()
+        => string.IsNullOrWhiteSpace(ReturnUrl)
+            ? "/login"
+            : $"/login?returnUrl={Uri.EscapeDataString(ReturnUrl)}";
+}

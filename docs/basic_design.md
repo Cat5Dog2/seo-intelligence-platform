@@ -137,7 +137,7 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | 環境 | 推奨構成 |
 | --- | --- |
 | 開発 | Docker Compose: Web/API, Worker, PostgreSQL, Redis, LocalStack/MinIO。APIキーは開発用Key VaultまたはUser Secrets。 |
-| 小規模VPS（暫定・個人利用） | Docker Compose: Web/API/Worker/PostgreSQL/Redis。API/WorkerでLocal Storage Volumeを共有し、別Composeの共通Caddyだけを公開境界にする。アプリ内認証実装までは外部認証ゲートを必須とする。 |
+| 小規模VPS（個人利用） | Docker Compose: Web/API/Worker/PostgreSQL/Redis。API/WorkerでLocal Storage Volumeを共有し、別Composeの共通Caddyだけを公開境界にする。アプリ内の単一管理者ログインとAPIサービスキーで保護し、外部認証ゲートは多層防御として併用を推奨する。 |
 | ステージング | Azure Container AppsまたはApp Service、PostgreSQL Flexible Server、Azure Cache for Redis、Key Vault、Application Insights。 |
 | 本番 | Azure Container Apps/Kubernetes/App Serviceのいずれか。API/Worker分離、Auto Scale、Private Endpoint、WAF、監視/バックアップ有効化。 |
 
@@ -151,7 +151,7 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | Worker/Job Queue | .NET Worker Service + Hangfire + PostgreSQL storage | 外部API連携、ポーリング、リトライ、レポート生成、Discord通知、定期実行、ジョブ管理画面。 |
 | DB | PostgreSQL + EF Core | 正規化データ、JSONBローデータ、全文検索補助、集計。 |
 | Cache/Coordination | Redis | キャッシュ、分散ロック、レート制御、一時状態管理。ジョブの永続化とスケジューリングはHangfireのPostgreSQL storageで行う。 |
-| Auth | 開発環境保護 + 必要時のみ単一管理者ログイン | 初期版は開発者本人のみ。外部公開時はASP.NET Core Identity等で単一管理者ログインを追加する。 |
+| Auth | ASP.NET Core Identity + Cookie（Web） / 共有サービスキー（API） | 全環境で単一管理者ログインを必須にする。WebからAPIへは`X-Service-Key`で認証する。ADR 0008を参照。 |
 | Observability | OpenTelemetry + Application Insights/Grafana | ログ、トレース、メトリクス、ジョブ監視。 |
 | Reports | ClosedXML / QuestPDF | Phase 3のExcel/PDF/共有URL出力。Phase 1はCSV出力のみ。 |
 | AI | IAiContentService abstraction | Azure OpenAI/OpenAI/社内LLMを差し替え可能にする。 |
@@ -302,7 +302,9 @@ DBテーブル、型、FK、インデックス、保持期間、マイグレー�
 | ai_sessions / ai_messages | INDEX(workspace_id, project_id, created_at), INDEX(actor), INDEX(session_id) | AI履歴、実行者監査、セッション追跡 |
 | audit_logs | INDEX(workspace_id, created_at), INDEX(correlation_id), INDEX(actor) | 監査追跡、相関ID検索 |
 
-初期版ではusers、roles、user_rolesを持たない。操作主体は固定値developerとしてjobs、external_api_calls、audit_logsに保存する。複数ユーザー化が必要になった時点で、Phase 4拡張としてユーザー/ロールテーブルとRBACを追加する。
+業務データ側のusers、roles、user_rolesは持たない。操作主体は固定値developerとしてjobs、external_api_calls、audit_logsに保存する。複数ユーザー化が必要になった時点で、Phase 4拡張として業務用のユーザー/ロールテーブルとRBACを追加する。
+
+認証用のアカウント情報はASP.NET Core Identityのテーブル群として同一DBに保持する。テーブル名はidentity_users、identity_roles、identity_user_roles、identity_user_claims、identity_user_logins、identity_user_tokens、identity_role_claimsとし、業務データとは分離して扱う。単一管理者運用のためロールはAdminのみ使用し、Userは将来拡張用に定義だけ行う。詳細はADR 0008を参照する。
 
 api_contract_scopesはラッコキーワードAPIの契約プラン、APIキー上限、データ利用範囲、確認日、確認者、適用期間を保持する。管理画面/APIでは管理せず、初期データと運用手順で登録する。契約内容を変更した場合はSeedDataまたはマイグレーション相当の保守手順で既存行をarchivedにして新しいscope_keyを発行し、過去データの再利用可否を後から追跡できるようにする。
 
@@ -720,8 +722,9 @@ Phase 3追加: [AI再生成] [PDF出力] [共有URL発行]
 
 | 項目 | 設計 |
 | --- | --- |
-| 認証 | 初期版は開発者本人のみの利用を前提に、ローカル実行ではOS/開発環境の保護に委ねる。本番相当環境へ公開する場合は単一管理者ログイン + Cookie/BFF構成にする。 |
-| 認可 | 初期版はRBACを実装せず、プロジェクト配下の業務APIはURL上のprojectIdでスコープを確定し、対象リソースが同一project_idに属することを必ず検証する。Phase 4で複数ユーザー化する場合にPolicy-based authorizationを追加する。 |
+| 認証 | 単一管理者ログインをASP.NET Core Identity + Cookieで実装する。Cookieは本番`__Host-SeoIntelligence.Auth`、HttpOnly、Secure、SameSite=Lax、8時間スライディング。パスワードは12文字以上かつ数字/大文字/小文字/記号必須、5回失敗で15分ロックアウト。ログインとパスワード変更にはレート制限とCSRFトークン検証を適用する。詳細はADR 0008。 |
+| サービス間認証 | WebからAPIへの呼び出しは`X-Service-Key`ヘッダーの共有シークレットで認証する。値はSecret Storeから取得し定数時間比較する。APIは既定で全エンドポイント要認証とし、`/healthz`、`/readyz`、`GET /api/report-shares/{token}`のみ匿名許可とする。 |
+| 認可 | ロールはAdmin/Userを定義するが、単一管理者運用ではAdminのみ使用する。プロジェクト配下の業務APIはURL上のprojectIdでスコープを確定し、対象リソースが同一project_idに属することを必ず検証する。Phase 4で複数ユーザー化する場合にPolicy-based authorizationを拡張する。 |
 | 秘密情報 | APIキーはKey Vault参照。設定値はOptions patternで注入し、ログ出力禁止。 |
 | 監査 | 外部API実行、キー操作、ジョブ操作、CSV/Excel出力、レポート出力/ダウンロード、AI実行をaudit_logsへ固定の操作主体developerで保存。 |
 | 入力検証 | FluentValidation。URL/ドメイン、キーワード数、limit、sortBy/orderBy、matchTypeをサーバー側で検証。 |

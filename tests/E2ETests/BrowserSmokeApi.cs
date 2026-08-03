@@ -65,10 +65,24 @@ internal sealed class BrowserSmokeApi(string apiUrl)
     }
 
     private HttpClient CreateHttpClient()
-        => new()
+    {
+        var client = new HttpClient
         {
             BaseAddress = new Uri(apiUrl, UriKind.Absolute)
         };
+
+        // The API rejects every call that does not carry the service key the Web host uses.
+        client.DefaultRequestHeaders.Add("X-Service-Key", ResolveServiceKey());
+        return client;
+    }
+
+    private static string ResolveServiceKey()
+    {
+        DotEnvEnvironment.LoadRepositoryDotEnv();
+        return Environment.GetEnvironmentVariable("E2E_API_SERVICE_KEY") is { Length: > 0 } value
+            ? value
+            : throw new InvalidOperationException("E2E_API_SERVICE_KEY is required when E2E_BROWSER_ENABLED=true.");
+    }
 
     private static async Task<JsonElement> ReadEnvelopeDataAsync(HttpResponseMessage response)
     {

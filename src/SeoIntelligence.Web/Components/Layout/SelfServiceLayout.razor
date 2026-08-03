@@ -1,0 +1,39 @@
+@inherits LayoutComponentBase
+
+@*
+    Layout for pages any signed-in account may open, regardless of role. It deliberately renders
+    none of the business components that MainLayout carries (project switcher, credit badge,
+    location/language selector): those read and write project data through the shared service key,
+    which the API cannot attribute to a role, so a non-Admin account must never reach them.
+*@
+
+<div class="self-service-shell">
+    <header class="self-service-header">
+        <AuthorizeView Policy="@ApplicationPolicies.RequireAdmin" Context="adminAccess">
+            <Authorized>
+                <a class="brand" data-testid="self-service-brand-link" href="/">SEO Intelligence</a>
+            </Authorized>
+            <NotAuthorized>
+                @* The project list requires the Admin policy, so linking there would bounce a
+                   non-Admin account straight back to /forbidden. *@
+                <a class="brand" data-testid="self-service-brand-link" href="/account">SEO Intelligence</a>
+            </NotAuthorized>
+        </AuthorizeView>
+
+        <AuthorizeView Context="signedIn">
+            <Authorized>
+                <div class="self-service-header-controls">
+                    <a class="account-link" href="/account">@signedIn.User.Identity?.Name</a>
+                    <form method="post" action="/logout" class="logout-form">
+                        <AntiforgeryToken />
+                        <button type="submit" class="btn-link">ログアウト</button>
+                    </form>
+                </div>
+            </Authorized>
+        </AuthorizeView>
+    </header>
+
+    <main class="self-service-content">
+        @Body
+    </main>
+</div>

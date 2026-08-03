@@ -11,12 +11,37 @@ internal sealed class BrowserSmokeFlow(
 {
     public async Task CompleteAsync()
     {
+        await SignInAsync();
         await SelectProjectAsync();
         await CompleteKeywordDiscoveryFlowAsync();
         await CompleteSearchVolumeFlowAsync();
         await CompleteAdminCredentialFlowAsync();
         await CompleteRankMonitoringFlowAsync();
         await CompleteReportFlowAsync();
+    }
+
+    /// <summary>
+    /// Every page except the sign-in page requires an authenticated session, so the flow starts by
+    /// signing in with the seeded administrator account.
+    /// </summary>
+    private async Task SignInAsync()
+    {
+        await page.GotoAsync($"{webUrl}/login", new PageGotoOptions { WaitUntil = WaitUntilState.NetworkIdle });
+        await page.FillAsync("#email", RequiredEnvironment("E2E_ADMIN_EMAIL"));
+        await page.FillAsync("#password", RequiredEnvironment("E2E_ADMIN_PASSWORD"));
+
+        await page.ClickAsync("button[type='submit']");
+        await page.WaitForURLAsync(
+            url => !url.Contains("/login", StringComparison.Ordinal),
+            new PageWaitForURLOptions { WaitUntil = WaitUntilState.NetworkIdle });
+    }
+
+    private static string RequiredEnvironment(string name)
+    {
+        DotEnvEnvironment.LoadRepositoryDotEnv();
+        return Environment.GetEnvironmentVariable(name) is { Length: > 0 } value
+            ? value
+            : throw new InvalidOperationException($"{name} is required when E2E_BROWSER_ENABLED=true.");
     }
 
     private async Task SelectProjectAsync()

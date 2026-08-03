@@ -25,6 +25,11 @@ export POSTGRES_PORT="${POSTGRES_PORT:-35432}"
 export REDIS_PORT="${REDIS_PORT:-36379}"
 export API_PORT="${API_PORT:-35251}"
 export WEB_PORT="${WEB_PORT:-35295}"
+# Compose injects this as Secrets__ApiServiceKey for both api and web.
+export API_SERVICE_KEY="${API_SERVICE_KEY:-container_smoke_service_key}"
+# The Web host fails closed when no Admin user exists and no seed is configured.
+export ADMIN_SEED_EMAIL="${ADMIN_SEED_EMAIL:-container-smoke@localhost}"
+export ADMIN_SEED_PASSWORD="${ADMIN_SEED_PASSWORD:-ContainerSmoke!Pass1}"
 
 DATA_PROTECTION_KEYS_PATH="/app/.data/data-protection-keys"
 
@@ -48,7 +53,7 @@ wait_for_http() {
     for url in "$@"; do
       # Redirect instead of `--output /dev/null`: with MSYS_NO_PATHCONV set,
       # Windows curl would receive the literal path and fail to create it.
-      if ! curl --fail --silent "$url" > /dev/null; then
+      if ! curl --fail --silent --header "X-Service-Key: ${API_SERVICE_KEY}" "$url" > /dev/null; then
         ok=false
         break
       fi
@@ -78,7 +83,14 @@ wait_for_http \
   "http://127.0.0.1:${API_PORT}/readyz" \
   "http://127.0.0.1:${API_PORT}/api/projects?page=1&pageSize=5" \
   "http://127.0.0.1:${WEB_PORT}/healthz" \
-  "http://127.0.0.1:${WEB_PORT}/"
+  "http://127.0.0.1:${WEB_PORT}/login"
+
+# The API rejects calls without the service key, and the health probes stay open.
+test "$(curl --silent --output /dev/null --write-out '%{http_code}' "http://127.0.0.1:${API_PORT}/api/projects")" = "401"
+test "$(curl --silent --output /dev/null --write-out '%{http_code}' "http://127.0.0.1:${API_PORT}/healthz")" = "200"
+
+# The Web host sends anonymous visitors to the sign-in page.
+test "$(curl --silent --output /dev/null --write-out '%{http_code}' "http://127.0.0.1:${WEB_PORT}/dashboard")" = "302"
 
 # Non-root execution.
 test "$(compose exec -T api id -u | tr -d '\r')" != "0"

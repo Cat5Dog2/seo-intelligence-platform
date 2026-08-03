@@ -1,9 +1,11 @@
 using System.Diagnostics;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using SeoIntelligence.Api.Common;
 using SeoIntelligence.Api.Endpoints;
 using SeoIntelligence.Api.Health;
+using SeoIntelligence.Api.Security;
 using SeoIntelligence.Contracts.Api;
 using SeoIntelligence.Application.Diagnostics;
 using SeoIntelligence.Infrastructure;
@@ -26,6 +28,7 @@ builder.Logging.Configure(options =>
 builder.Services.AddSingleton(SeoIntelligenceDiagnostics.ActivitySource);
 builder.Services.AddSingleton(SeoIntelligenceDiagnostics.Meter);
 builder.Services.AddSeoIntelligenceInfrastructure(builder.Configuration);
+builder.Services.AddApiServiceKeyAuthentication(builder.Configuration);
 builder.Services
     .AddHealthChecks()
     .AddCheck(
@@ -59,6 +62,9 @@ app.Use(async (context, next) =>
             stopwatch.ElapsedMilliseconds);
     }
 });
+
+app.UseAuthentication();
+app.UseAuthorization();
 
 app.MapGet(
     "/api",
@@ -108,17 +114,20 @@ app.MapPhase3FoundationEndpoints();
 
 app.MapGet("/openapi/v1.json", OpenApiDocumentEndpoint.GetV1);
 
+// Container health probes and the shared Caddy gate reach these before any service key is
+// available, so they stay anonymous. MapHealthChecks accepts any HTTP method by default;
+// constraining them to GET keeps the anonymous surface to what api_design.md documents.
 app.MapHealthChecks("/healthz", new HealthCheckOptions
 {
     Predicate = check => check.Tags.Contains("live"),
     ResponseWriter = HealthCheckResponseWriter.WriteAsync
-});
+}).AllowAnonymous().WithMetadata(new HttpMethodMetadata([HttpMethods.Get]));
 
 app.MapHealthChecks("/readyz", new HealthCheckOptions
 {
     Predicate = check => check.Tags.Contains("ready"),
     ResponseWriter = HealthCheckResponseWriter.WriteAsync
-});
+}).AllowAnonymous().WithMetadata(new HttpMethodMetadata([HttpMethods.Get]));
 
 app.Run();
 

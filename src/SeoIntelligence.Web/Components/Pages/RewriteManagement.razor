@@ -1,4 +1,5 @@
 @page "/rewrite"
+@attribute [Authorize(Policy = ApplicationPolicies.RequireAdmin)]
 @using System.Globalization
 @using System.Text.Json
 @implements IDisposable

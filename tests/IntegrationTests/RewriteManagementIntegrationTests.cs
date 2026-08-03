@@ -14,6 +14,8 @@ using SeoIntelligence.Infrastructure.Persistence;
 using SeoIntelligence.Infrastructure.Persistence.Entities;
 using SeoIntelligence.Infrastructure.Services;
 
+using IntegrationTests.Support;
+
 namespace IntegrationTests;
 
 public sealed class RewriteManagementIntegrationTests
@@ -451,7 +453,7 @@ public sealed class RewriteManagementIntegrationTests
     private static string HashText(string value)
         => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(KeywordNormalizer.Normalize(value)))).ToLowerInvariant();
 
-    private sealed class RewriteManagementApiFactory : WebApplicationFactory<Program>
+    private sealed class RewriteManagementApiFactory : ServiceKeyApiFactory
     {
         private readonly string databaseName = Guid.NewGuid().ToString("N");
 

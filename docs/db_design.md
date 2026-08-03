@@ -69,6 +69,10 @@ notification_channels
 
 external_connector_settings
   -> external_connector_runs
+
+identity_users
+  -> identity_user_roles -> identity_roles -> identity_role_claims
+  -> identity_user_claims / identity_user_logins / identity_user_tokens
 ```
 
 ## 5. テーブル定義
@@ -154,6 +158,20 @@ external_connector_settings
 | `external_connector_runs` | `id uuid PK`, `connector_setting_id uuid FK`, `workspace_id uuid FK`, `project_id uuid NULL FK`, `run_type text`, `status text`, `request_json jsonb`, `result_summary_json jsonb`, `error_json jsonb`, `started_at timestamptz`, `completed_at timestamptz`, `created_at` | 実データ連携前の接続テスト/スタブ実行履歴。 |
 | `ai_sessions` | `id uuid PK`, `workspace_id uuid FK`, `project_id uuid NULL FK`, `actor text`, `title text`, `created_at`, `updated_at` | AI会話セッション。 |
 | `ai_messages` | `id uuid PK`, `session_id uuid FK`, `message_role text`, `prompt text`, `response text`, `tool_calls_json jsonb`, `reference_data_json jsonb`, `redaction_status text`, `review_status text`, `token_usage jsonb`, `created_at` | プロンプト、出力、参照データ、トークン使用量。 |
+
+### 5.7 認証
+
+ASP.NET Core Identityの標準スキーマを本設計のsnake_case規約へマップしたもの。業務データではないため`workspace_id`/`project_id`は持たない。単一管理者運用のため`identity_users`は原則1行。
+
+| テーブル | 主なカラム | 制約/備考 |
+| --- | --- | --- |
+| `identity_users` | `id text PK`, `user_name text`, `normalized_user_name text`, `email text`, `normalized_email text`, `email_confirmed boolean`, `password_hash text`, `security_stamp text`, `concurrency_stamp text`, `lockout_end timestamptz`, `lockout_enabled boolean`, `access_failed_count integer`, `display_name text`, `is_enabled boolean`, `last_login_at timestamptz`, `created_at timestamptz`, `updated_at timestamptz` | `ux_identity_users_normalized_user_name`で一意。`password_hash`はIdentity既定のPBKDF2ハッシュ。平文パスワードは保存しない。`is_enabled=false`のアカウントはログインを拒否する。 |
+| `identity_roles` | `id text PK`, `name text`, `normalized_name text`, `concurrency_stamp text` | `ux_identity_roles_normalized_name`で一意。起動時に`Admin`と`User`をシードする。 |
+| `identity_user_roles` | `user_id text FK`, `role_id text FK` | 複合PK。 |
+| `identity_user_claims` | `id integer PK`, `user_id text FK`, `claim_type text`, `claim_value text` | 単一管理者運用では未使用。 |
+| `identity_user_logins` | `login_provider text`, `provider_key text`, `provider_display_name text`, `user_id text FK` | 外部ログイン用。SSO未実装のため未使用。 |
+| `identity_user_tokens` | `user_id text FK`, `login_provider text`, `name text`, `value text` | パスワードリセット等のトークン保管用。 |
+| `identity_role_claims` | `id integer PK`, `role_id text FK`, `claim_type text`, `claim_value text` | Phase 4のRBAC拡張用。 |
 
 ## 6. 主なリレーション
 
@@ -249,6 +267,7 @@ external_connector_settings
 ## 12. マイグレーション方針
 
 - EF Core migrationsを使用し、DDL変更はPRでレビューする。
+- ASP.NET Core Identityのテーブルは`SeoIntelligenceDbContext`が`IdentityDbContext<ApplicationUser, IdentityRole, string>`を継承することで同一migration系統に含める。テーブル名/カラム名は本設計のsnake_case規約に合わせ、`identity_`接頭辞で命名する。
 - `GIN(normalized_text gin_trgm_ops)`を使うため、初回マイグレーションで`CREATE EXTENSION IF NOT EXISTS pg_trgm`を適用する。
 - 既存データを失う変更、カラム型の縮小、NOT NULL化、ユニーク制約追加は事前データ検査SQLを用意する。
 - Hangfireの内部テーブルはアプリ業務テーブルと分けて管理し、業務監査の正本にしない。

@@ -117,3 +117,34 @@
         white-space: nowrap;
     }
 }
+
+.account-link {
+    color: #374151;
+    flex: 0 0 auto;
+    font-size: 0.85rem;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+    .account-link:hover {
+        text-decoration: underline;
+    }
+
+.logout-form {
+    flex: 0 0 auto;
+    margin: 0;
+}
+
+.btn-link {
+    background: none;
+    border: none;
+    color: #1d4ed8;
+    cursor: pointer;
+    font-size: 0.85rem;
+    padding: 0;
+    white-space: nowrap;
+}
+
+    .btn-link:hover {
+        text-decoration: underline;
+    }

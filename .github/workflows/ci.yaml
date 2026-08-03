@@ -41,9 +41,11 @@ jobs:
       - name: Validate Compose files
         env:
           POSTGRES_PASSWORD: compose-validation-only
+          API_SERVICE_KEY: compose-validation-only
         run: |
           docker compose config --quiet
           docker compose --env-file .env.production.example -f compose.yaml -f compose.production.yaml config --quiet
+          bash scripts/verify-production-compose.sh
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3

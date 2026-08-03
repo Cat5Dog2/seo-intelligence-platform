@@ -1,0 +1,69 @@
+@page "/account"
+@attribute [Authorize]
+@layout SelfServiceLayout
+
+<PageTitle>アカウント - SEO Intelligence</PageTitle>
+
+<h1>アカウント</h1>
+
+<AuthorizeView>
+    <Authorized>
+        <dl class="account-summary">
+            <dt>ログイン中のユーザー</dt>
+            <dd>@context.User.Identity?.Name</dd>
+        </dl>
+    </Authorized>
+</AuthorizeView>
+
+<h2>パスワード変更</h2>
+
+@if (PasswordChanged)
+{
+    <div class="alert alert-success" role="status">パスワードを変更しました。</div>
+}
+
+@if (!string.IsNullOrEmpty(PasswordError))
+{
+    <div class="alert alert-error" role="alert">@GetPasswordErrorMessage(PasswordError)</div>
+}
+
+<form method="post" action="/account/password" class="auth-form">
+    <AntiforgeryToken />
+
+    <div class="form-row">
+        <label for="current-password">現在のパスワード</label>
+        <input id="current-password" name="currentPassword" type="password" autocomplete="current-password" required />
+    </div>
+
+    <div class="form-row">
+        <label for="new-password">新しいパスワード</label>
+        <input id="new-password" name="newPassword" type="password" autocomplete="new-password" required />
+        <small>12文字以上で、大文字、小文字、数字、記号をそれぞれ1文字以上含めてください。</small>
+    </div>
+
+    <div class="form-row">
+        <label for="confirm-new-password">新しいパスワード（確認）</label>
+        <input id="confirm-new-password" name="confirmNewPassword" type="password" autocomplete="new-password" required />
+    </div>
+
+    <button type="submit" class="btn-primary">パスワードを変更</button>
+</form>
+
+@code {
+    [SupplyParameterFromQuery]
+    public bool PasswordChanged { get; set; }
+
+    [SupplyParameterFromQuery]
+    public string? PasswordError { get; set; }
+
+    private static string GetPasswordErrorMessage(string error)
+        => error switch
+        {
+            "current" => "現在のパスワードが正しくありません。",
+            "confirm" => "新しいパスワードと確認用パスワードが一致しません。",
+            "same" => "新しいパスワードは現在のパスワードと異なる必要があります。",
+            "new" => "新しいパスワードがパスワードポリシーを満たしていません。",
+            "user" => "ユーザーが見つかりませんでした。",
+            _ => "パスワードを変更できませんでした。"
+        };
+}

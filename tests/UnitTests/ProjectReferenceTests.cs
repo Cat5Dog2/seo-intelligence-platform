@@ -28,9 +28,13 @@ public sealed class ProjectReferenceTests
                 "src/SeoIntelligence.Application/SeoIntelligence.Application.csproj",
                 "src/SeoIntelligence.Infrastructure/SeoIntelligence.Infrastructure.csproj"
             ],
+            // Web is a composition root like Api and Worker. It reaches business data through the
+            // API over HTTP, but the administrator sign-in uses ASP.NET Core Identity backed by
+            // SeoIntelligenceDbContext, so it also composes the Infrastructure registrations.
             ["src/SeoIntelligence.Web/SeoIntelligence.Web.csproj"] =
             [
-                "src/SeoIntelligence.Application/SeoIntelligence.Application.csproj"
+                "src/SeoIntelligence.Application/SeoIntelligence.Application.csproj",
+                "src/SeoIntelligence.Infrastructure/SeoIntelligence.Infrastructure.csproj"
             ],
             ["src/SeoIntelligence.Worker/SeoIntelligence.Worker.csproj"] =
             [

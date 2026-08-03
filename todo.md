@@ -131,6 +131,7 @@ ISSUE-MVP-00X の続きから再開してください。
 - [x] ISSUE-P3-007 Phase 3 UIを実装する
 - [x] ISSUE-P3-008 Phase 3受入テストを整備する
 - [x] ISSUE-REF-001 コードベース保守性リファクタリングを実施する
+- [x] ISSUE-SEC-001 単一管理者ログインとAPIサービス認証を実装する
 - [ ] ISSUE-P4-001 エンタープライズ拡張を設計する
 - [ ] ISSUE-BACKLOG-001 推奨バックログを整理する
 
@@ -1145,6 +1146,182 @@ ISSUE-MVP-00X の続きから再開してください。
 - [x] WebのData Protection keysパスを`DataProtection__KeysPath`設定キーで指定可能にし、Composeのvolume targetと同一ソース化。
 - [x] `smoke-local.ps1`のpg_isreadyをコンテナ内`$POSTGRES_USER`/`$POSTGRES_DB`参照へ修正。
 - [x] VPS手順を`docker_deployment.md`へ一本化し、README/runbookは参照化（`chmod 600`のdrift解消）。
+
+## 横断セキュリティ
+
+### ISSUE-SEC-001 単一管理者ログインとAPIサービス認証を実装する
+
+参照ドキュメント: `docs/basic_design.md`, `docs/api_design.md`, `docs/db_design.md`, `docs/docker_deployment.md`, `docs/operations_runbook.md`, `docs/environment_setup.md`, `docs/test_plan.md`, `docs/adr/0007-secret-store-and-audit.md`
+
+関連: NFR-007, AC-014, AC-019。新規FRは追加しない。
+
+目的:
+
+- [x] `basic_design.md` と `api_design.md` が予告している「単一管理者ログイン + Cookie/BFF構成」をアプリ内に実装し、VPS公開時に外部認証ゲートだけへ依存している現状を解消する。
+
+前提と方針:
+
+- [x] 認証基盤はASP.NET Core Identityとし、同一VPSへ同居予定の `web-writing-tool` と実装方式を揃える。
+- [x] `web-writing-tool` とは独立した認証とする。DB、Data Protectionキー、Cookie名、ホスト名を分離し、SSOは行わない。
+- [x] 想定利用者は単一管理者1名。複数ユーザー管理画面、退会機能、リソース所有者ポリシーは `ISSUE-P4-001` の範囲とし本Issueでは実装しない。
+- [x] 監査ログの操作主体は既存データ互換のため固定値 `developer`（`SystemActor.Developer`）を維持する。
+
+範囲（Identity基盤）:
+
+- [x] `SeoIntelligenceDbContext` を `IdentityDbContext<ApplicationUser, IdentityRole, string>` 継承へ変更する。
+- [x] `ApplicationUser : IdentityUser` に `DisplayName`, `IsEnabled`, `LastLoginAt`, `CreatedAt`, `UpdatedAt` を追加する。
+- [x] ロール定数 `Admin` / `User` を定義する。単一ユーザー運用では `Admin` のみ使用する。
+- [x] Identityテーブル用のmigrationを1本追加する。既存業務テーブルのスキーマは変更しない。
+- [x] `AdminSeedOptions` と `IdentityDataSeeder` を実装し、既存Adminが存在する場合はシードをスキップする。
+- [x] パスワードポリシーを12文字以上、数字/大文字/小文字/記号必須にする。
+- [x] ロックアウトを5回失敗/15分にする。
+
+範囲（Web Cookie認証）:
+
+- [x] Cookie認証を構成する。本番 `__Host-SeoIntelligence.Auth`、HttpOnly、`SecurePolicy=Always`、`SameSite=Lax`、8時間スライディング、`LoginPath=/login`、`AccessDeniedPath=/forbidden`。
+- [x] `Login.razor` をSSRフォーム + `AntiforgeryToken` で実装し、`POST /login` へ送る。
+- [x] ログイン時に `IsEnabled` を検証し、`lockoutOnFailure: true` でサインインし、`LastLoginAt` を更新する。
+- [x] `returnUrl` のオープンリダイレクトを拒否する。
+- [x] `POST /logout` を実装する。
+- [x] 本人パスワード変更を実装する。
+- [x] `AddCascadingAuthenticationState()` と `Routes.razor` の `AuthorizeRouteView` + `RedirectToLogin` を実装する。
+- [x] 既存の全ページへ `@attribute [Authorize]` を付け、`/login` のみ `[AllowAnonymous]` にする。
+- [x] CSRFトークン検証フィルタを実装する。
+- [x] ログインとパスワード変更へレート制限を適用する。
+
+範囲（APIサービス認証）:
+
+- [x] `X-Service-Key` を検証する認証ハンドラーを実装し、定数時間比較を使う。
+- [x] サービスキーはSecret Storeから取得し、実値をログ、レスポンス、監査ログへ出さない。
+- [x] fallback policyで全エンドポイントを要認証にする。
+- [x] 匿名許可は `/healthz`, `/readyz`, `GET /api/report-shares/{token}` のみとする。
+- [x] 401を共通レスポンスエンベロープと共通エラー形式で返す。
+- [x] Web側のAPIクライアントへ `X-Service-Key` を付与する `DelegatingHandler` を追加する。
+
+範囲（運用・配備）:
+
+- [x] 共通Caddyの公開面を縮小し、`/api/report-shares/*` だけを `seo-api` へ通し、それ以外の `/api/*` は公開しない。
+- [x] `compose.yaml`, `compose.production.yaml`, `.env.production.example` へ認証関連の環境変数を追加する。
+- [x] `scripts/smoke-test.ps1`, `scripts/smoke-test.sh`, `scripts/smoke-local.ps1`, `scripts/container-smoke.sh` をサービスキー付きで動作するよう更新する。
+
+範囲（ドキュメント）:
+
+- [x] `docs/adr/0008-aspnet-core-identity-auth.md` を追加する。
+- [x] `basic_design.md` の「初期版はusers、roles、user_rolesを持たない」記述と認証/認可方針を更新する。
+- [x] `api_design.md` の認証・認可章と401の扱いを更新する。
+- [x] `db_design.md` へIdentityテーブルの扱いを追記する。
+- [x] `docker_deployment.md` と `operations_runbook.md` の「アプリ内認証は未実装」記述を更新する。
+- [x] `environment_setup.md` へ初期管理者シードとサービスキーの設定手順を追記する。
+- [x] `test_plan.md` へ認証系テスト観点を追記する。
+
+範囲外:
+
+- [x] 複数ユーザー管理、RBAC拡張、SSO、承認フローは `ISSUE-P4-001` で扱う。
+- [x] 退会機能、TOTP 2FAは本Issueでは実装しない。
+- [x] 業務API契約、URL、レスポンス形式、既存業務テーブルのスキーマは変更しない。
+
+受入条件:
+
+- [x] 未認証でWebへアクセスすると `/login` へリダイレクトされる。
+- [x] 初期管理者でログインでき、ログアウトできる。
+- [x] パスワードポリシー違反とロックアウトが機能する。
+- [x] サービスキーなしのAPI呼び出しが共通エラー形式の401になる。
+- [x] `/healthz`, `/readyz`, `GET /api/report-shares/{token}` は匿名で到達できる。
+- [x] パスワード、パスワードハッシュ、サービスキーの実値がレスポンス、ログ、監査ログに出ない。
+- [x] 監査ログの操作主体が `developer` のまま維持される。
+- [x] 既存の業務機能、API契約、画面導線、業務テーブルのスキーマが維持されている。
+
+検証:
+
+- [x] `dotnet build SeoIntelligence.sln`
+- [x] `dotnet test --filter "Category!=BrowserE2E"`
+- [x] `dotnet ef database update --project src/SeoIntelligence.Infrastructure --startup-project src/SeoIntelligence.Api`
+- [x] `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-local.ps1 -RunBrowserTests -SkipBuild`
+
+`-SkipMigration` は当初の想定コマンドに含めていたが、実際に成功したのは付けずに実行したもの。最終的な検証記録は本Issue末尾の「最終検証（2026-08-02）」を正とする。
+
+実施メモ:
+
+- Identityテーブルは既存 `SeoIntelligenceDbContext` を `IdentityDbContext<ApplicationUser, IdentityRole, string>` 継承へ変更し、migration `20260802064322_SingleAdminIdentity` を追加した。既存業務テーブルのスキーマは変更していない。テーブル名は本リポジトリのsnake_case規約に合わせ `identity_` 接頭辞とした。
+- Web が管理者サインインのため `SeoIntelligence.Infrastructure` を参照する構成になった。`ProjectReferenceTests` の期待依存グラフを更新し、理由をコメントで残した。業務データは従来どおりAPI経由。
+- Cookie設定、パスワードポリシー、ロックアウト、ログイン画面、CSRF、レート制限は `web-writing-tool` と同一方針に揃えた。退会機能とユーザー管理画面は単一利用者では不要のため実装していない。
+- 認証は `web-writing-tool` と完全に独立している。DB、Data Protectionキー（`SetApplicationName`）、Cookie名、ホスト名を分離しSSOは行わない。
+- ローカル実機検証: サービスキーなし401/正しいキー200/誤ったキー401、`/healthz`・`/readyz`・`GET /api/report-shares/{token}` の匿名到達、未サインイン時の `/login` リダイレクト、初期管理者シード、サインイン/ログアウト、CSRF欠落400、`returnUrl` オープンリダイレクト拒否、5回失敗ロックアウト、ロックアウト中の正しいパスワード拒否を確認した。
+- 当初BrowserE2Eは未実施としていたが、後日Playwrightブラウザが導入済みであることを確認して実行し、完走した（末尾の「最終検証（2026-08-02）」を参照）。
+
+レビュー反映（2026-08-02）:
+
+- [x] `/Error` と `/not-found` に `[Authorize]` を追加した。両画面は共通レイアウト経由でプロジェクト名などを描画するため、匿名表示は業務データ露出になる。`/Error` は障害時にAPIへ依存しないよう `EmptyLayout` へ変更した。
+- [x] ルート可能コンポーネントのうち匿名到達可能なのが `Login` だけであることを反射で検証するテストを追加した。
+- [x] `IdentityDataSeeder` をfail-closedにした。Adminが0人かつ `AdminSeed` 未設定なら起動を失敗させる。Composeとcontainer-smokeへ既定値を追加した。（※このとき行ったVPS overlayでの `ADMIN_SEED_EMAIL` / `ADMIN_SEED_PASSWORD` 必須化は、2回目レビューで撤回した。下記「レビュー2回目の反映」を参照。）
+- [x] シードを冪等にした。ロール付与前に落ちた場合は同一メールアドレスのユーザーを再利用してロール付与を再試行する。
+- [x] 業務画面へ `RequireAdmin` ポリシーを適用した。`/account`（本人パスワード変更）、`/forbidden`、`/logout` は本人操作のため認証済みのみを要求する。Adminポリシーを課すと非Adminが自分のパスワードを変更できずログアウトもできなくなるため。
+- [x] `GET /api/report-shares/{token}` の `AllowAnonymous` をグループからエンドポイントへ移した。
+- [x] `requirements.md` の API認証・認証・認可・個人情報・FR-003 と `basic_design.md` の技術スタック表を実装へ整合させた。
+- [x] Web認証のIntegrationテストを20件追加した（匿名許可ルート、Adminポリシー境界、サインイン/ログアウト、CSRF欠落・改ざん、ロックアウト、オープンリダイレクト、シードfail-closed、シード復旧）。APIの匿名許可メタデータが3件だけであることの検証も追加した。
+- [x] 副次バグを修正した。`UseStatusCodePagesWithReExecute` が CSRF拒否の400を保護済み `/not-found` へ再実行し、サインインリダイレクトへ置き換えていた。アカウント系エンドポイントを対象外にした。
+- [x] 再検証: `dotnet build`、`dotnet test --filter "Category!=BrowserE2E"`（212件成功）、Compose `config --quiet`（開発/VPS）、実機で `/Error`・`/not-found` を含む全ページの匿名リダイレクト、CSRF欠落400、シード未設定時の起動失敗を確認。
+
+レビュー2回目の反映（2026-08-02）:
+
+- [x] Production ComposeのAdminシードを`:?`必須から`${ADMIN_SEED_EMAIL:-}`へ変更した。初回サインイン後に資格情報を空にしても更新・再起動・Migrationが失敗しない。空値で明示的に上書きすることで、`compose.yaml`の開発用既定値が本番へ流入する経路も塞いでいる。
+- [x] CIのCompose検証stepへ`API_SERVICE_KEY`を追加した。CIと同一コマンドで失敗を再現し、修正後の成功を確認した。前回はCIと同じコマンドを実行せず、必須変数を手で渡して検証していたのが原因。
+- [x] 認可失敗の遷移先を認証状態で分岐させた。`RedirectToLogin` を `RedirectToSignInOrForbidden` へ置き換え、認証済みなら `/forbidden`、未認証なら `/login` へ送る。フルページ遷移はCookieの`AccessDeniedPath`が同じ分岐を行っており、本コンポーネントはBlazor回路内の遷移を担当する。
+- [x] `/healthz` と `/readyz` に `HttpMethodMetadata` でGET制約を付け、`api_design.md` の契約と一致させた。匿名到達可能なエンドポイントの検証テストも `GET` 期待へ更新した。
+- [x] `screen_design.md` の `/Error` レイアウト記述を実装（`EmptyLayout`）へ合わせ、認可失敗の遷移仕様を追記した。
+- [x] テストを14件追加した（合計107件）。全業務ページのAdminポリシー網羅、Userロールでの`/forbidden`遷移、Userの`/account`・ログアウト利用、パスワード変更成功と新旧パスワードの入れ替わり、現在パスワード不一致・確認不一致・長さ不足・大文字なし・現在と同一の5種、`/logout`と`/account/password`のCSRF欠落・改ざん、資格情報を空にした既存DBでの再起動。
+- [x] 再検証: `dotnet build`、`dotnet test --filter "Category!=BrowserE2E"`（226件成功）、CIと同一のCompose検証コマンド、`git diff --check`。
+
+レビュー3回目の反映（2026-08-02）:
+
+- [x] `/account` と `/forbidden` を `SelfServiceLayout` へ変更した。両画面はレイアウト未指定のため `MainLayout` が適用され、`ProjectSwitcher`（プロジェクト一覧取得）、`CreditBadge`（クレジット集計取得）、`LocationLanguageSelector`（`UpdateProjectAsync` によるプロジェクト設定更新）が動作していた。Web→APIは共有サービスキー認証でロールを判別できないため、非Adminがこれらの画面から業務データを参照・更新できる権限昇格だった。
+- [x] 非Adminで `/account`・`/forbidden` を開いたとき、業務コンポーネントが描画されず業務APIも1件も呼ばれないことを検証するテストを追加した。テストファクトリへAPI呼び出し記録用のハンドラーを追加している。レイアウト指定を外すとこのテストが失敗することも確認した。
+- [x] `scripts/verify-production-compose.sh` を追加し、CIのCompose検証stepから実行するようにした。`ADMIN_SEED_*` 未指定時に本番レンダリング結果の `AdminSeed__Email` / `AdminSeed__Password` が空であることをアサートする。`compose.production.yaml` の上書きを削除すると検知して失敗することを確認した。
+- [x] `todo.md` のAdminSeed必須化に関する旧記述へ、2回目レビューで撤回した旨を追記した。
+- [x] `screen_design.md` と ADR 0008 へ、セルフサービス画面が専用レイアウトを使う理由（サービスキー認証ではAPI側でロールを判別できない）を追記した。
+- [x] 再検証: `dotnet build`、`dotnet test --filter "Category!=BrowserE2E"`（Unit 50 / Contract 59 / E2E 10 / Integration 109 = 228件成功）、`bash scripts/verify-production-compose.sh`、CIと同一のCompose検証コマンド、`git diff --check`。
+
+レビュー4回目の反映（2026-08-02）:
+
+- [x] `/forbidden` の「戻る」リンクと `SelfServiceLayout` のブランドリンクを、`RequireAdmin` ポリシーの有無で切り替えるようにした。従来はどちらも `/` を指しており、`/` は `RequireAdmin` のため非Adminがクリックすると `/forbidden` へ戻るループになっていた。非Adminには `/account` を提示する。
+- [x] 業務コンポーネント非描画・業務API非呼び出しのテストへ `/Error` を追加した。ADRが `RequireAdmin` を持たない画面として `/account`、`/forbidden`、`/Error` の3つを挙げているため、将来 `EmptyLayout` 指定が外れた場合も検知できるようにした。
+- [x] 非Adminへ到達不能なリンクを出さないこと、Adminには `/` を提示することのテストを追加した。分岐を戻すとテストが失敗することも確認した。
+- [x] 前回の記述「229件成功」を実測値へ訂正した。実際は228件で、単純な計上誤り。
+- [x] 再検証: `dotnet build`、`dotnet test --filter "Category!=BrowserE2E"`（Unit 50 / Contract 59 / E2E 10 / Integration 112 = 231件成功）、`bash scripts/verify-production-compose.sh`、CIと同一のCompose検証コマンド、`git diff --check`。
+
+レビュー5回目の反映（2026-08-02）:
+
+- [x] リンク分岐テストの偽陽性を解消した。`/forbidden` にはレイアウトのブランドリンク、アカウントリンク、ページ本体の戻るリンクが並ぶため、全アンカーの集合に対する検証では1つの正しいリンクが別の誤りを隠せていた。`self-service-brand-link` と `forbidden-back-link` の `data-testid` を付け、Admin／非Adminそれぞれで各リンクの `href` を個別に検証する。
+- [x] 偽陽性シナリオでの検知を確認した。(1) ブランドリンクを正しいまま戻るリンクだけ `/account` に変更 → 失敗、(2) 戻るリンクを丸ごと削除 → Admin・非Admin両テストが失敗。
+- [x] 再検証: `dotnet build`、`dotnet test --filter "Category!=BrowserE2E"`（Unit 50 / Contract 59 / E2E 10 / Integration 112 = 231件成功）、`bash scripts/verify-production-compose.sh`、CIと同一のCompose検証コマンド、`git diff --check`。
+
+BrowserE2Eと回路内遷移の検証（2026-08-02）:
+
+- [x] `RedirectToSignInOrForbidden` のBlazor回路内遷移を実機確認した。`User` ロールでサインインし、回路内クリックで `RequireAdmin` 画面へ遷移させると `/forbidden` へ送られる（`/login` ではない）。フルページ遷移との判別は遷移先で行える。フルページは Cookie の `AccessDeniedPath` により `/forbidden?ReturnUrl=%2Fdashboard`、回路内は本コンポーネントによりクエリなしの `/forbidden` になる。
+- [x] BrowserE2E が完走した（`smoke-local.ps1 -RunBrowserTests -SkipBuild`）。サインイン、プロジェクト選択、キーワード探索、検索ボリューム、管理APIキー、順位監視、レポートの全フローが通過。
+
+検索ボリューム既存バグの修正（2026-08-02、ユーザー指示により本Issueに含める）:
+
+- [x] `POST /api/projects/{projectId}/search-volume/jobs` が必ず500になる既存バグを修正した。`main`（294a4ad）を別worktreeでビルドして同一リクエストを投げ、同じ500と同じ例外が出ることを確認済みで、認証追加に起因しないバグだった。
+- [x] 原因は `MasterNameEntry` への positional constructor 射影の後にその射影結果へフィルタを適用していたこと。EF Core はコンストラクタ越しにメンバーを列へ戻せず、SQLへ変換できなかった。object initializer（member-init）射影へ変更して解消した。
+- [x] クエリ組み立てを `MasterNameQuery` へ抽出し、述語も含めて1箇所に集約した。
+- [x] ContractTests に変換可否をピン留めするテストを4件追加した。`ToQueryString()` はDB接続を開かずにクエリをコンパイルするため、依存サービスなしで変換失敗を検出できる。既存のAPI Integrationテストは接続文字列なしで動くため relational provider を経由せず、このバグを検出できなかった。
+- [x] 修正前のクエリ形が実際に変換不能であることを一時テストで確認してから削除した。
+- [x] 未同期マスタ判定（`entries.AnyAsync()`）は実PostgreSQLで確認した。未知のlocationを指定すると全ルックアップを通過して`AnyAsync`へ到達し、`SELECT EXISTS (SELECT 1 FROM locations ...)` が発行されて400（`location must be a name from the synchronized location master data.`）が返る。変換エラーは発生しない。
+- [x] `AnyAsync` は終端演算子のため `ToQueryString()` では固定できない。自動テストは未整備であり、テストファイルのコメントに明記した。relational providerを使うテスト基盤（Testcontainers等）を入れる際に対象とする。
+
+最終検証（2026-08-02）:
+
+- [x] `dotnet build SeoIntelligence.sln`（警告0、エラー0）
+- [x] `dotnet test --filter "Category!=BrowserE2E"`（Unit 50 / Contract 63 / E2E 10 / Integration 112 = 235件成功）
+- [x] `scripts/smoke-local.ps1 -RunBrowserTests -SkipBuild`（BrowserE2E 1件成功、Comprehensive local smoke test succeeded）
+- [x] `bash scripts/verify-production-compose.sh`
+- [x] CIと同一のCompose検証コマンド
+- [x] `git diff --check`
+
+補足:
+
+- スモークの Discord テスト通知は任意ステップで、ローカル `.env` の `SMOKE_DISCORD_CHANNEL_ID` が現在のDBに存在しないため除外した。Secret参照が設定済みの環境でのみ実行する既存仕様どおり。
 
 ## Phase 4
 

@@ -14,6 +14,8 @@ using SeoIntelligence.Infrastructure.Persistence;
 using SeoIntelligence.Infrastructure.Persistence.Entities;
 using SeoIntelligence.Infrastructure.Services;
 
+using IntegrationTests.Support;
+
 namespace IntegrationTests;
 
 public sealed class CompetitiveAnalysisIntegrationTests
@@ -191,7 +193,7 @@ public sealed class CompetitiveAnalysisIntegrationTests
         }
     }
 
-    private sealed class CompetitiveAnalysisApiFactory : WebApplicationFactory<Program>
+    private sealed class CompetitiveAnalysisApiFactory : ServiceKeyApiFactory
     {
         private readonly string databaseName = Guid.NewGuid().ToString("N");
 

@@ -7,6 +7,8 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
+using IntegrationTests.Support;
+
 namespace IntegrationTests;
 
 public sealed partial class ApiCommonSpecTests
@@ -213,7 +215,7 @@ public sealed partial class ApiCommonSpecTests
         }
     }
 
-    private sealed class ApiFactory(string storagePath) : WebApplicationFactory<Program>
+    private sealed class ApiFactory(string storagePath) : ServiceKeyApiFactory
     {
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {

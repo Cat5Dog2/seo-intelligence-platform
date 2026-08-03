@@ -10,6 +10,9 @@ param(
     [int]$JobTimeoutSeconds = 90,
     [string]$SmokeProjectId = $env:SMOKE_PROJECT_ID,
     [string]$DiscordChannelId = $env:SMOKE_DISCORD_CHANNEL_ID,
+    # Must match Secrets:ApiServiceKey for the environment the API runs under; the
+    # default matches appsettings.Development.json.
+    [string]$ApiServiceKey = $env:API_SERVICE_KEY,
     [switch]$SkipBuild,
     [switch]$SkipMigration,
     [switch]$SkipMigrationVerification,
@@ -56,9 +59,23 @@ $previousEnvironment = @{
     E2E_API_URL = $env:E2E_API_URL
 }
 
+if ([string]::IsNullOrWhiteSpace($ApiServiceKey)) {
+    $ApiServiceKey = "local-development-service-key"
+}
+
+$script:ApiServiceKey = $ApiServiceKey
+
 $env:ASPNETCORE_ENVIRONMENT = if ($env:ASPNETCORE_ENVIRONMENT) { $env:ASPNETCORE_ENVIRONMENT } else { "Development" }
 $env:RakkoKeyword__Mode = "Mock"
 $env:Api__BaseUrl = $ApiUrl
+$env:ServiceAuthentication__ServiceKeyRef = "ApiServiceKey"
+$env:Secrets__ApiServiceKey = $ApiServiceKey
+$env:E2E_API_SERVICE_KEY = $ApiServiceKey
+# Seeded by the Web host on startup when no Admin user exists yet.
+$env:AdminSeed__Email = if ($env:AdminSeed__Email) { $env:AdminSeed__Email } else { "developer@localhost" }
+$env:AdminSeed__Password = if ($env:AdminSeed__Password) { $env:AdminSeed__Password } else { "LocalDev!Passw0rd" }
+$env:E2E_ADMIN_EMAIL = $env:AdminSeed__Email
+$env:E2E_ADMIN_PASSWORD = $env:AdminSeed__Password
 $env:Storage__Provider = "Local"
 $env:Storage__BasePath = $sharedStorageBasePath
 New-Item -ItemType Directory -Force -Path $sharedStorageBasePath | Out-Null
@@ -257,6 +274,7 @@ function Invoke-SmokeJsonRequest {
         Method = $Method
         UseBasicParsing = $true
         TimeoutSec = 15
+        Headers = @{ "X-Service-Key" = $script:ApiServiceKey }
     }
 
     if ($null -ne $Body) {
@@ -467,8 +485,18 @@ try {
         Wait-HttpEndpoint -Name "Web health" -Url "$WebUrl/healthz" -ProcessEntry $webProcess
         Invoke-WebRequest -Uri "$WebUrl/readyz" -UseBasicParsing -TimeoutSec 10 | Out-Null
 
+        $loginResponse = Invoke-WebRequest -Uri "$WebUrl/login" -UseBasicParsing -TimeoutSec 10
+        if ($loginResponse.Content -notmatch 'name="password"') {
+            throw "The sign-in page did not render the credential form: $WebUrl/login"
+        }
+
+        # Protected pages must send anonymous visitors to the sign-in page. Invoke-WebRequest
+        # follows the redirect, so the landing page is what proves the redirect happened.
         foreach ($path in @("/", "/keywords", "/search-volume", "/admin")) {
-            Invoke-WebRequest -Uri "$WebUrl$path" -UseBasicParsing -TimeoutSec 10 | Out-Null
+            $protectedResponse = Invoke-WebRequest -Uri "$WebUrl$path" -UseBasicParsing -TimeoutSec 10
+            if ($protectedResponse.Content -notmatch 'name="password"') {
+                throw "An anonymous request to $path was not redirected to the sign-in page."
+            }
         }
     }
 

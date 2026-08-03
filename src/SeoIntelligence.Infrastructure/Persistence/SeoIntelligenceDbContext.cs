@@ -1,10 +1,13 @@
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using SeoIntelligence.Infrastructure.Identity;
 using SeoIntelligence.Infrastructure.Persistence.Entities;
 
 namespace SeoIntelligence.Infrastructure.Persistence;
 
 public sealed class SeoIntelligenceDbContext(DbContextOptions<SeoIntelligenceDbContext> options)
-    : DbContext(options)
+    : IdentityDbContext<ApplicationUser, IdentityRole, string>(options)
 {
     public DbSet<WorkspaceEntity> Workspaces => Set<WorkspaceEntity>();
     public DbSet<ProjectEntity> Projects => Set<ProjectEntity>();
@@ -61,8 +64,11 @@ public sealed class SeoIntelligenceDbContext(DbContextOptions<SeoIntelligenceDbC
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        base.OnModelCreating(modelBuilder);
+
         modelBuilder.HasPostgresExtension("pg_trgm");
 
+        modelBuilder.ApplyIdentityConfigurations();
         modelBuilder.ApplyAdministrationConfigurations();
         ConfigureLocations(modelBuilder);
         ConfigureLanguages(modelBuilder);

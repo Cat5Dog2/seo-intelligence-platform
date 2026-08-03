@@ -4,7 +4,7 @@
 
 ## 1. 対象構成
 
-本書は、Web、API、Worker、PostgreSQL、RedisをDocker Composeで起動し、別Composeの共通Caddyから公開する単一利用者向けの暫定VPS構成を対象とする。アプリ内認証が実装されるまで、正式な本番相当構成ではなく、外部認証ゲートで保護した個人利用構成として扱う。
+本書は、Web、API、Worker、PostgreSQL、RedisをDocker Composeで起動し、別Composeの共通Caddyから公開する単一利用者向けVPS構成を対象とする。アプリ内の単一管理者ログイン（ASP.NET Core Identity）とAPIサービスキーで保護する。詳細は `docs/adr/0008-aspnet-core-identity-auth.md` を参照する。
 
 ```text
 Common Caddy
@@ -53,7 +53,22 @@ cp .env.production.example .env.production
 chmod 600 .env.production
 ```
 
-`.env.production`の`POSTGRES_PASSWORD`を空欄から変更する。値は任意の文字で安全だが、`openssl rand -hex 32` などの生成値を推奨する。Real APIを利用するまでは`RakkoKeyword__Mode=Mock`のままにする。Secret実値は`Secrets__<参照名>`形式でAPIとWorkerの両方へ同じ値が渡るよう、このファイルまたは外部Secret Storeで管理する。`APP_ENV_FILE=.env.production`の行は変更しない（api/workerがこのファイルをenv_fileとして読むための設定）。
+`.env.production`の`POSTGRES_PASSWORD`を空欄から変更する。値は任意の文字で安全だが、`openssl rand -hex 32` などの生成値を推奨する。Real APIを利用するまでは`RakkoKeyword__Mode=Mock`のままにする。Secret実値は`Secrets__<参照名>`形式でAPIとWorkerの両方へ同じ値が渡るよう、このファイルまたは外部Secret Storeで管理する。`APP_ENV_FILE=.env.production`の行は変更しない（api/worker/webがこのファイルをenv_fileとして読むための設定）。
+
+あわせて認証まわりの必須値を設定する。
+
+| 変数 | 必須 | 内容 |
+| --- | --- | --- |
+| `API_SERVICE_KEY` | 必須 | WebがAPIへ提示する共有シークレット。`openssl rand -hex 32` で生成する。未設定だと`config`が失敗する。 |
+| `ADMIN_SEED_EMAIL` | 初回のみ | 初期管理者のメールアドレス。Adminユーザーが1件も存在しない場合だけ作成される。 |
+| `ADMIN_SEED_PASSWORD` | 初回のみ | 初期管理者のパスワード。12文字以上、大文字/小文字/数字/記号を各1文字以上含める。 |
+| `ADMIN_SEED_DISPLAY_NAME` | 任意 | 画面表示名。未設定時は`Admin`。 |
+
+初回サインイン後は画面の「アカウント」からパスワードを変更し、`.env.production`の`ADMIN_SEED_EMAIL`と`ADMIN_SEED_PASSWORD`を空にする。Adminユーザーが既に存在すればシードは実行されないため、空のままで更新・再起動・Migrationを含む以降のCompose操作は成功する。
+
+`compose.production.yaml`のAdminシード指定は削除しないこと。削除すると`compose.yaml`の開発用既定値がProductionへ入り、Adminが失われたDBで既知の資格情報から管理者が再作成されてしまう。空値で上書きする現在の形を維持する。
+
+Adminが1人も存在せず、かつシード資格情報も空の場合、Webコンテナは起動に失敗する。誰もサインインできない状態でhealthyになることを防ぐための意図的な動作である。
 
 共通CaddyのComposeと共有するexternal networkを一度だけ作成する。
 
@@ -96,14 +111,12 @@ api/webにはコンテナhealthcheck（`/readyz`・`/healthz`）があり、`up 
 
 ### 3.3 Caddy設定例
 
-`seo-web`と`seo-api`は`CADDY_NETWORK`上の一意なaliasである。共有URLなどの`/api/*`を使うため、同一ホスト上でAPIとWebを振り分ける。
+`seo-web`と`seo-api`は`CADDY_NETWORK`上の一意なaliasである。
+
+APIの公開面は最小化する。Webは内部network経由でAPIを呼ぶため、`/api/*`をインターネットへ出す必要があるのはレポート共有URLだけである。共有URLは社外へ渡す前提で匿名アクセスを許可しており、共有トークン自体がアクセス制御になる。
 
 ```caddyfile
 seo.example.com {
-    basic_auth {
-        admin <CADDY_PASSWORD_HASH>
-    }
-
     handle /api-healthz {
         rewrite * /healthz
         reverse_proxy seo-api:8080
@@ -114,8 +127,9 @@ seo.example.com {
         reverse_proxy seo-api:8080
     }
 
-    @api path /api /api/*
-    handle @api {
+    # レポート共有URLだけをAPIへ通す。それ以外の /api/* は公開しない。
+    @report_shares path /api/report-shares/*
+    handle @report_shares {
         reverse_proxy seo-api:8080
     }
 
@@ -125,9 +139,13 @@ seo.example.com {
 }
 ```
 
-Caddyの`reverse_proxy`はBlazor Interactive Serverの`/_blazor` WebSocketも中継する。パスワードは平文でCaddyfileへ書かず、Caddyの対話的なpassword hash生成機能で作成したhashを使う。
+Caddyの`reverse_proxy`はBlazor Interactive Serverの`/_blazor` WebSocketも中継する。
 
-アプリ内の認証・認可は未実装である。外部公開時は、少なくともCaddyのBasic認証、VPN、Cloudflare Accessなどの認証ゲートを必須とする。これは将来のアプリ内単一管理者ログインを不要にするものではない。
+APIは`X-Service-Key`ヘッダーが一致しない要求を401で拒否するため、仮に`/api/*`を広く公開してしまってもWeb以外からは利用できない。Caddy側の絞り込みは多層防御である。
+
+`web-writing-tool`など他アプリと同一VPSへ同居させる場合は、**別サブドメインで公開する**こと。認証Cookieは`__Host-`接頭辞を使うため、同一ホスト名でパス分割するとCookie名が衝突する。
+
+アプリ内に単一管理者ログインを実装済みだが、Caddy Basic認証、VPN、Cloudflare Accessなどの外部認証ゲートは多層防御として併用を推奨する。併用する場合、パスワードは平文でCaddyfileへ書かず、Caddyの対話的なpassword hash生成機能で作成したhashを使う。ただし共有URLを社外へ渡す運用では、`/api/report-shares/*`を外部ゲートの対象外にする必要がある。
 
 ## 4. 更新手順
 
@@ -212,6 +230,7 @@ API、DB、Redisにはホスト`ports`を設定していない。調査目的で
 
 ## 7. 現行実装の制約
 
-- アプリ内の単一管理者ログインは未実装であり、VPS公開時は外部の認証ゲートが必要である。
+- 利用者は単一管理者1名を前提とする。複数ユーザー管理、RBAC、SSOは `ISSUE-P4-001` の範囲であり未実装である。
+- 二要素認証は未実装である。
 - Local Storageの成果物URLは現時点では`storage://local/...`形式で、期限だけをqueryへ付与する。ブラウザへファイル本体を配信するHTTP adapterは別Issueであり、Docker化だけではこのURLを直接ダウンロードできない。
 - MinIO adapterはreadiness確認のみである。署名付きS3 adapterが実装されるまで、`Storage__Provider=MinIO`を成果物保存へ使用しない。

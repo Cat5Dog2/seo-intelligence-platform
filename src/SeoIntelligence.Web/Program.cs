@@ -3,8 +3,11 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using SeoIntelligence.Application.Configuration;
 using SeoIntelligence.Application.Diagnostics;
+using SeoIntelligence.Infrastructure.Identity;
 using SeoIntelligence.Web.Components;
 using SeoIntelligence.Web.Configuration;
+using SeoIntelligence.Web.Endpoints;
+using SeoIntelligence.Web.Security;
 using SeoIntelligence.Web.Services;
 
 var builder = WebApplication.CreateBuilder(new WebApplicationOptions
@@ -35,6 +38,7 @@ builder.Services.AddSingleton(SeoIntelligenceDiagnostics.ActivitySource);
 builder.Services.AddSingleton(SeoIntelligenceDiagnostics.Meter);
 builder.Services.Configure<SeoIntelligenceApiOptions>(builder.Configuration.GetSection(SeoIntelligenceApiOptions.SectionName));
 builder.Services.AddScoped<ProjectSelectionState>();
+builder.Services.AddSeoIntelligenceWebAuthentication(builder.Configuration, builder.Environment);
 var dataProtectionKeysPath = builder.Configuration["DataProtection:KeysPath"];
 if (string.IsNullOrWhiteSpace(dataProtectionKeysPath))
 {
@@ -55,7 +59,7 @@ builder.Services.AddHttpClient<ISeoIntelligenceApiClient, SeoIntelligenceApiClie
         : options.BaseUrl;
 
     client.BaseAddress = new Uri(baseUrl, UriKind.Absolute);
-});
+}).AddHttpMessageHandler<ServiceKeyHttpMessageHandler>();
 builder.Services
     .AddHealthChecks()
     .AddCheck(
@@ -72,26 +76,49 @@ if (!app.Environment.IsDevelopment())
     // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
     app.UseHsts();
 }
-app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
+// Status-code pages exist for page navigation. The account endpoints answer with API-style
+// status codes (for example 400 when an antiforgery token is rejected), and re-executing
+// /not-found would replace those with a page - and, because /not-found requires
+// authentication, turn them into a sign-in redirect that hides the real status code.
+app.UseWhen(
+    context => !IsAccountEndpointPath(context.Request.Path),
+    branch => branch.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true));
 app.UseHttpsRedirection();
 
+app.UseAuthentication();
+app.UseAuthorization();
+app.UseRateLimiter();
 app.UseAntiforgery();
 
 app.MapHealthChecks("/healthz", new HealthCheckOptions
 {
     Predicate = check => check.Tags.Contains("live")
-});
+}).AllowAnonymous();
 
 app.MapHealthChecks("/readyz", new HealthCheckOptions
 {
     Predicate = check => check.Tags.Contains("ready")
-});
+}).AllowAnonymous();
 
 app.MapStaticAssets();
+app.MapAccountEndpoints();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
-app.Run();
+await SeedIdentityAsync(app);
+await app.RunAsync();
+
+static bool IsAccountEndpointPath(PathString path)
+    => path.StartsWithSegments("/login")
+        || path.StartsWithSegments("/logout")
+        || path.StartsWithSegments("/account");
+
+static async Task SeedIdentityAsync(WebApplication app)
+{
+    using var scope = app.Services.CreateScope();
+    var seeder = scope.ServiceProvider.GetRequiredService<IIdentityDataSeeder>();
+    await seeder.SeedAsync();
+}
 
 static void RegisterSeoIntelligenceOptions(IServiceCollection services, IConfiguration configuration)
 {

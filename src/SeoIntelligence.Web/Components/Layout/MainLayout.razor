@@ -7,6 +7,15 @@
             <ProjectSwitcher />
             <LocationLanguageSelector />
             <CreditBadge />
+            <AuthorizeView>
+                <Authorized>
+                    <a class="account-link" href="/account">@context.User.Identity?.Name</a>
+                    <form method="post" action="/logout" class="logout-form">
+                        <AntiforgeryToken />
+                        <button type="submit" class="btn-link">ログアウト</button>
+                    </form>
+                </Authorized>
+            </AuthorizeView>
         </div>
     </header>
 

@@ -16,6 +16,8 @@ using SeoIntelligence.Infrastructure.Persistence;
 using SeoIntelligence.Infrastructure.Persistence.Entities;
 using SeoIntelligence.Infrastructure.Services;
 
+using IntegrationTests.Support;
+
 namespace IntegrationTests;
 
 public sealed class ReportIntegrationTests
@@ -492,7 +494,7 @@ public sealed class ReportIntegrationTests
     private static string HashText(string value)
         => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
 
-    private sealed class ReportApiFactory : WebApplicationFactory<Program>
+    private sealed class ReportApiFactory : ServiceKeyApiFactory
     {
         private readonly string databaseName = Guid.NewGuid().ToString("N");
         private readonly IReadOnlyDictionary<string, string?> additionalConfiguration;
