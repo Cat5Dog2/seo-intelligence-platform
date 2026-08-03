@@ -728,12 +728,8 @@ internal sealed class SearchVolumeService(
         ValidationErrors errors,
         CancellationToken cancellationToken)
     {
-        var entries = dbContext.Locations
-            .AsNoTracking()
-            .Where(entity => entity.Provider == SeoIntelligenceSeedData.RakkoKeywordProvider)
-            .Select(entity => new MasterNameEntry(entity.LocationCode, entity.LocationName, entity.Status));
         return await ResolveCanonicalNameAsync(
-            entries,
+            MasterNameQuery.ForLocations(dbContext),
             location,
             "location",
             compatibilityAlias: "JP",
@@ -747,12 +743,8 @@ internal sealed class SearchVolumeService(
         ValidationErrors errors,
         CancellationToken cancellationToken)
     {
-        var entries = dbContext.Languages
-            .AsNoTracking()
-            .Where(entity => entity.Provider == SeoIntelligenceSeedData.RakkoKeywordProvider)
-            .Select(entity => new MasterNameEntry(entity.LanguageCode, entity.LanguageName, entity.Status));
         return await ResolveCanonicalNameAsync(
-            entries,
+            MasterNameQuery.ForLanguages(dbContext),
             language,
             "language",
             compatibilityAlias: "ja",
@@ -771,11 +763,8 @@ internal sealed class SearchVolumeService(
         CancellationToken cancellationToken)
     {
         var normalizedValue = value.ToUpperInvariant();
-        var canonical = await entries
-            .Where(entry =>
-                entry.Status == StatusValues.Active &&
-                entry.Name.ToUpper() == normalizedValue)
-            .Select(entry => entry.Name)
+        var canonical = await MasterNameQuery
+            .ActiveNamesMatching(entries, normalizedValue)
             .FirstOrDefaultAsync(cancellationToken);
         if (canonical is not null)
         {
@@ -785,11 +774,8 @@ internal sealed class SearchVolumeService(
         if (string.Equals(value, compatibilityAlias, StringComparison.OrdinalIgnoreCase))
         {
             var aliasTarget = compatibilityName.ToUpperInvariant();
-            var canonicalAlias = await entries
-                .Where(entry =>
-                    entry.Status == StatusValues.Active &&
-                    entry.Name.ToUpper() == aliasTarget)
-                .Select(entry => entry.Name)
+            var canonicalAlias = await MasterNameQuery
+                .ActiveNamesMatching(entries, aliasTarget)
                 .FirstOrDefaultAsync(cancellationToken);
             if (canonicalAlias is not null)
             {
@@ -797,20 +783,14 @@ internal sealed class SearchVolumeService(
             }
         }
 
-        var legacyName = await entries
-            .Where(entry =>
-                entry.Code.ToUpper() == normalizedValue &&
-                entry.Code.ToUpper() != entry.Name.ToUpper())
-            .Select(entry => entry.Name)
+        var legacyName = await MasterNameQuery
+            .NamesForLegacyCode(entries, normalizedValue)
             .FirstOrDefaultAsync(cancellationToken);
         if (legacyName is not null)
         {
             var normalizedLegacyName = legacyName.ToUpperInvariant();
-            var activeLegacyTarget = await entries
-                .Where(entry =>
-                    entry.Status == StatusValues.Active &&
-                    entry.Name.ToUpper() == normalizedLegacyName)
-                .Select(entry => entry.Name)
+            var activeLegacyTarget = await MasterNameQuery
+                .ActiveNamesMatching(entries, normalizedLegacyName)
                 .FirstOrDefaultAsync(cancellationToken);
             if (activeLegacyTarget is not null)
             {
@@ -1089,7 +1069,67 @@ internal sealed record SearchVolumeStatusSnapshot(
     decimal EstimatedCredit,
     string? Message);
 
-internal sealed record MasterNameEntry(string Code, string Name, string Status);
+/// <summary>
+/// Projection over the location/language master tables. The members are assigned through an object
+/// initializer rather than a positional constructor: EF Core can see through a member-init
+/// projection when a later Where filters on it, but not through a constructor call, which made the
+/// canonical-name lookups fail to translate.
+/// </summary>
+internal sealed record MasterNameEntry
+{
+    public string Code { get; set; } = string.Empty;
+
+    public string Name { get; set; } = string.Empty;
+
+    public string Status { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// Builds the master-name queries used to canonicalize a requested location or language. They live
+/// here so the composed query shapes stay translatable and can be pinned by a contract test.
+/// </summary>
+internal static class MasterNameQuery
+{
+    public static IQueryable<MasterNameEntry> ForLocations(SeoIntelligenceDbContext dbContext)
+        => dbContext.Locations
+            .AsNoTracking()
+            .Where(entity => entity.Provider == SeoIntelligenceSeedData.RakkoKeywordProvider)
+            .Select(entity => new MasterNameEntry
+            {
+                Code = entity.LocationCode,
+                Name = entity.LocationName,
+                Status = entity.Status
+            });
+
+    public static IQueryable<MasterNameEntry> ForLanguages(SeoIntelligenceDbContext dbContext)
+        => dbContext.Languages
+            .AsNoTracking()
+            .Where(entity => entity.Provider == SeoIntelligenceSeedData.RakkoKeywordProvider)
+            .Select(entity => new MasterNameEntry
+            {
+                Code = entity.LanguageCode,
+                Name = entity.LanguageName,
+                Status = entity.Status
+            });
+
+    public static IQueryable<string> ActiveNamesMatching(
+        IQueryable<MasterNameEntry> entries,
+        string normalizedName)
+        => entries
+            .Where(entry =>
+                entry.Status == StatusValues.Active &&
+                entry.Name.ToUpper() == normalizedName)
+            .Select(entry => entry.Name);
+
+    public static IQueryable<string> NamesForLegacyCode(
+        IQueryable<MasterNameEntry> entries,
+        string normalizedCode)
+        => entries
+            .Where(entry =>
+                entry.Code.ToUpper() == normalizedCode &&
+                entry.Code.ToUpper() != entry.Name.ToUpper())
+            .Select(entry => entry.Name);
+}
 
 internal sealed record SearchVolumeMetricsSnapshot(
     int? SearchVolume,
