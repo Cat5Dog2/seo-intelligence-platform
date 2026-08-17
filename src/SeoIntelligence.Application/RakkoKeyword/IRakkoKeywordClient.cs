@@ -107,6 +107,13 @@ public interface IRakkoKeywordClient
         RakkoSearchRankResultsRequest request,
         CancellationToken cancellationToken = default)
         => throw new NotSupportedException("Phase 2 Rakko search rank results API is not implemented by this client.");
+
+    Task<RakkoKeywordCallResult<RakkoExternalSearchResults>> GetSearchRankSerpAsync(
+        RakkoKeywordClientContext context,
+        string requestId,
+        int entryNo,
+        CancellationToken cancellationToken = default)
+        => throw new NotSupportedException("Phase 2 Rakko search rank SERP API is not implemented by this client.");
 }
 
 public sealed record RakkoKeywordClientContext(
@@ -142,7 +149,10 @@ public sealed record RakkoOtherKeywordsRequest(
 
 public sealed record RakkoQuestionSearchRequest(
     string Keyword,
-    int? Limit = null);
+    int? Limit = null,
+    string SortBy = "relativeDemand",
+    string OrderBy = "desc",
+    IReadOnlyDictionary<string, object?>? Filter = null);
 
 public sealed record RakkoRankingKeywordsRequest(
     string Keyword,
@@ -310,7 +320,10 @@ public sealed record RakkoKeywordMetrics(
 
 public sealed record RakkoQuestions(IReadOnlyList<RakkoQuestion> Items);
 
-public sealed record RakkoQuestion(string Question);
+public sealed record RakkoQuestion(
+    string Question,
+    decimal? RelativeDemand = null,
+    string? FirstSeenRange = null);
 
 public sealed record RakkoSearchVolumeRegistration(long RequestId);
 
@@ -342,7 +355,8 @@ public sealed record RakkoExternalSearchResultItem(
     decimal? Position,
     decimal? EstimatedTraffic,
     decimal? TrafficValue,
-    string RawJson);
+    string RawJson,
+    decimal? EntryNo = null);
 
 public sealed record RakkoSearchVolumeResultItem(
     string Keyword,

@@ -11,7 +11,7 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | 対象システム | SEO・コンテンツ・競合分析・順位監視プラットフォーム |
 | 前提技術 | ASP.NET Core Web API / Minimal APIs / OpenAPI / Hangfire / PostgreSQL |
 | 関連文書 | requirements.md / basic_design.md / db_design.md |
-| 外部仕様 | rakko-keyword-api-docs.json（OpenAPI 3.1、ラッコキーワードAPI v1.12.0） |
+| 外部仕様 | rakko-keyword-api-docs.json（OpenAPI 3.1、ラッコキーワードAPI v1.14.0） |
 
 ## 改訂履歴
 
@@ -19,6 +19,7 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | --- | --- | --- | --- |
 | 1.0 | 2026-05-30 | 初版作成。内部API、共通仕様、外部API連携、主要DTO制約を定義。 | ChatGPT |
 | 1.1 | 2026-07-26 | ラッコキーワードAPI v1.12.0対応。地域/言語マスタ取得を`/v1/metadata/*`へ移行。 | Claude |
+| 1.2 | 2026-08-17 | ラッコキーワードAPI v1.14.0対応。よくある質問検索のfilter/sortBy/orderBy/相対需要と、SERP詳細取得を外部APIマッピングへ追加。 | Claude |
 
 ## 1. 目的
 
@@ -389,7 +390,7 @@ MVPの一括検索ボリューム画面でCSVファイルを選択した場合�
 | POST | `/v1/suggest-keywords` | `SuggestKeywordsDto` | サジェスト収集、検索ソース別候補語取得 |
 | POST | `/v1/related-keywords` | `RelatedKeywordsDto` | 関連語、ロングテール、除外語候補 |
 | POST | `/v1/other-keywords` | `OtherKeywordsDto` | LSI/PAA、検索意図、見出し候補 |
-| POST | `/v1/question-search` | `SearchQuestionDto` | FAQ、FAQPage候補 |
+| POST | `/v1/question-search` | `SearchQuestionDto` | FAQ、FAQPage候補。v1.14.0で相対需要/出現時期のfilter・sortByと最大1,000件取得に対応（内部APIの`limit`上限は1〜100のまま） |
 | POST | `/v1/ranking-keywords` | `RankingKeywordsDto` | 同時ランクイン、クラスタリング |
 | POST | `/v1/search-volume` | `SearchVolumeHistoryDto` | 一括検索ボリューム調査登録 |
 | GET | `/v1/search-volume/{requestId}/status` | なし | 一括調査ステータス確認 |

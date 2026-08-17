@@ -258,6 +258,7 @@ public sealed class QuestionEntity
     public string QuestionText { get; set; } = string.Empty;
     public string Source { get; set; } = string.Empty;
     public decimal Importance { get; set; }
+    public string? FirstSeenRange { get; set; }
     public DateTime CreatedAt { get; set; }
 }
 

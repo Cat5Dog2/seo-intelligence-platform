@@ -350,6 +350,7 @@ public sealed class SeoIntelligenceDbContext(DbContextOptions<SeoIntelligenceDbC
             entity.Property(e => e.QuestionText).HasColumnName("question_text").IsRequired();
             entity.Property(e => e.Source).HasColumnName("source").IsRequired();
             entity.Property(e => e.Importance).HasColumnName("importance").HasPrecision(8, 4);
+            entity.Property(e => e.FirstSeenRange).HasColumnName("first_seen_range");
             entity.Property(e => e.CreatedAt).HasColumnName("created_at").HasColumnType("timestamptz");
 
             entity.HasIndex(e => e.ProjectId).HasDatabaseName("ix_questions_project_id");
@@ -887,6 +888,7 @@ public sealed class SeoIntelligenceDbContext(DbContextOptions<SeoIntelligenceDbC
             entity.Property(e => e.JobId).HasColumnName("job_id");
             entity.Property(e => e.ProjectId).HasColumnName("project_id");
             entity.Property(e => e.KeywordId).HasColumnName("keyword_id");
+            entity.Property(e => e.EntryNo).HasColumnName("entry_no");
             entity.Property(e => e.Target).HasColumnName("target").IsRequired();
             entity.Property(e => e.Position).HasColumnName("position");
             entity.Property(e => e.RankedUrl).HasColumnName("ranked_url").IsRequired();

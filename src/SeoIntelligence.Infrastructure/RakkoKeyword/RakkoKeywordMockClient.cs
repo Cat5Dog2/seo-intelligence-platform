@@ -135,12 +135,20 @@ internal sealed class RakkoKeywordMockClient(
         var response = new SearchQuestionResponseDto
         {
             Result = true,
-            Meta = new RakkoKeywordMetaDto { ConsumedCredit = 3m },
+            Meta = new RakkoKeywordMetaDto { ConsumedCredit = 1.5m },
             Data = new RakkoKeywordItemsDataDto<QuestionItemDto>
             {
                 Items =
                 [
-                    new QuestionItemDto { Question = $"How do I use {request.Keyword}?" }
+                    new QuestionItemDto
+                    {
+                        Question = $"How do I use {request.Keyword}?",
+                        Metrics = new QuestionMetricsDto
+                        {
+                            RelativeDemand = 87m,
+                            FirstSeenRange = "last_30_days"
+                        }
+                    }
                 ]
             },
             Errors = []
@@ -691,6 +699,7 @@ internal sealed class RakkoKeywordMockClient(
                 [
                     JsonItem(new
                     {
+                        entryNo = 1,
                         keyword = "seo",
                         metrics = new { seoDifficulty = 31, searchVolume = 1200, cpc = 0.9m, competition = 12 },
                         rankings = new[]
@@ -714,6 +723,64 @@ internal sealed class RakkoKeywordMockClient(
             RakkoKeywordClientSupport.SearchRankResultsEndpoint,
             "POST",
             dto,
+            response,
+            RakkoKeywordDtoMapper.ToApplication,
+            cancellationToken);
+    }
+
+    public Task<RakkoKeywordCallResult<RakkoExternalSearchResults>> GetSearchRankSerpAsync(
+        RakkoKeywordClientContext context,
+        string requestId,
+        int entryNo,
+        CancellationToken cancellationToken = default)
+    {
+        var response = new SearchRankSerpCacheResponseDto
+        {
+            Result = true,
+            Meta = new RakkoKeywordMetaDto { ConsumedCredit = 0m },
+            Data = new RakkoKeywordItemsDataDto<JsonElement>
+            {
+                Query = JsonItem(new { requestId, entryNo }),
+                Summary = JsonItem(new
+                {
+                    keyword = "seo",
+                    returnedCount = 1,
+                    fetchedDate = "2026-06-30"
+                }),
+                Items =
+                [
+                    JsonItem(new
+                    {
+                        position = 1,
+                        page = new
+                        {
+                            url = "https://example.com/seo",
+                            title = "SEO Guide",
+                            description = "SEO guide for beginners."
+                        },
+                        metrics = new
+                        {
+                            estimatedTraffic = 120m,
+                            trafficValue = 45m,
+                            rankingKeywordCount = 8
+                        },
+                        topKeyword = new
+                        {
+                            keyword = "seo basics",
+                            position = 3,
+                            metrics = new { seoDifficulty = 42, searchVolume = 500 }
+                        }
+                    })
+                ]
+            },
+            Errors = []
+        };
+
+        return ExecuteAsync(
+            context,
+            RakkoKeywordClientSupport.SearchRankSerpEndpoint,
+            "GET",
+            requestBody: null,
             response,
             RakkoKeywordDtoMapper.ToApplication,
             cancellationToken);

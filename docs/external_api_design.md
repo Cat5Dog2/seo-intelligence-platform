@@ -18,6 +18,7 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | --- | --- | --- | --- |
 | 1.0 | 2026-05-30 | 初版作成。外部API認証、クライアント、クレジット、キャッシュ、契約テストを定義。 | ChatGPT |
 | 1.1 | 2026-07-26 | ラッコキーワードAPI v1.12.0対応。地域/言語マスタを`/v1/metadata/*`へ移行、消費クレジット料率を反映。 | Claude |
+| 1.2 | 2026-08-17 | ラッコキーワードAPI v1.14.0対応。SERP詳細取得エンドポイントを追加し、よくある質問検索の料率変更(3→1.5)を反映。 | Claude |
 
 ## 1. 目的
 
@@ -54,7 +55,7 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | `/v1/suggest-keywords` | 検索ソース別サジェスト | `keyword_suggestions`、`keywords` |
 | `/v1/related-keywords` | 関連語探索 | `related_keywords`、`keywords` |
 | `/v1/other-keywords` | LSI/PAA | `lsi_paa_items` |
-| `/v1/question-search` | FAQ | `questions` |
+| `/v1/question-search` | FAQ（v1.14.0で相対需要`relativeDemand`・出現時期`firstSeenRange`を返す） | `questions` |
 | `/v1/ranking-keywords` | 同時ランクイン | `ranking_keywords` |
 | `/v1/search-volume` | 一括検索ボリューム登録 | `search_volume_jobs`、`job_external_requests` |
 | `/v1/search-volume/{requestId}/status` | 調査ステータス | `job_external_requests` |
@@ -69,7 +70,8 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | `/v1/co-occurrence` | 共起語 | `co_occurrence_words`、`co_occurrence_page_details` |
 | `/v1/search-rank` | 順位チェック登録 | `rank_check_jobs`、`job_external_requests` |
 | `/v1/search-rank/{requestId}/status` | 順位チェックステータス | `job_external_requests` |
-| `/v1/search-rank/{requestId}/results` | 順位結果 | `rank_results` |
+| `/v1/search-rank/{requestId}/results` | 順位結果（v1.14.0で`entryNo`が必須項目として追加） | `rank_results` |
+| `/v1/search-rank/{requestId}/results/{entryNo}/serp` | 順位チェック時に取得したSERP詳細（クレジット消費なし） | 取込先は未定。現状はクライアント経由の取得のみ |
 
 ## 5. クレジット消費監視
 
@@ -79,7 +81,7 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | 集計単位 | 全体、プロジェクト、APIキー、ジョブ、日次、月次。 |
 | 集計境界 | 日次はAsia/Tokyo 0:00、月次はAsia/Tokyo 毎月1日0:00で区切る。 |
 | 予算管理 | 日次/月次予算、予算上限、承認制、予算超過による事前停止はアプリ内では管理しない。 |
-| 実行前表示 | 推定消費クレジットを表示・監査できるようにするが、アプリ内の予算上限設定は持たない。検索ボリューム登録は0.03/キーワード（seoDifficulty有効時は追加0.75/キーワード）、外部リクエスト単位で最低15クレジットとして見積る。 |
+| 実行前表示 | 推定消費クレジットを表示・監査できるようにするが、アプリ内の予算上限設定は持たない。検索ボリューム登録は0.03/キーワード（seoDifficulty有効時は追加0.75/キーワード）、外部リクエスト単位で最低15クレジットとして見積る。よくある質問検索はv1.14.0で1リクエスト1.5クレジット（v1.12.0は3）。実績値は`meta.consumedCredit`をそのまま記録するため、料率変更はコード変更なしで追随する。 |
 | 402処理 | 再試行せずfailed_fatal。クレジット不足としてDiscord通知し、契約側の残量確認を運用手順へ誘導する。 |
 
 ## 6. キャッシュ・再利用

@@ -304,6 +304,22 @@ internal sealed class RakkoKeywordRealClient(
             RakkoKeywordDtoMapper.ToApplication,
             cancellationToken);
 
+    public Task<RakkoKeywordCallResult<RakkoExternalSearchResults>> GetSearchRankSerpAsync(
+        RakkoKeywordClientContext context,
+        string requestId,
+        int entryNo,
+        CancellationToken cancellationToken = default)
+        => SendAsync<object, SearchRankSerpCacheResponseDto, RakkoExternalSearchResults>(
+            context,
+            RakkoKeywordClientSupport.SearchRankSerpEndpoint,
+            RakkoKeywordClientSupport.SearchRankSerpPath(requestId, entryNo),
+            HttpMethod.Get,
+            requestBody: null,
+            requiresApiKey: true,
+            useLongTimeout: true,
+            RakkoKeywordDtoMapper.ToApplication,
+            cancellationToken);
+
     private async Task<RakkoKeywordCallResult<TApplication>> SendAsync<TRequest, TResponse, TApplication>(
         RakkoKeywordClientContext context,
         string endpoint,
