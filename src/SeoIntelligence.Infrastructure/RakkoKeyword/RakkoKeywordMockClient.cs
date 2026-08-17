@@ -260,7 +260,8 @@ internal sealed class RakkoKeywordMockClient(
             requestBody: null,
             response,
             RakkoKeywordDtoMapper.ToApplication,
-            cancellationToken);
+            cancellationToken,
+            requestPath: RakkoKeywordClientSupport.SearchVolumeStatusPath(requestId));
     }
 
     public Task<RakkoKeywordCallResult<RakkoSearchVolumeResults>> GetSearchVolumeResultsAsync(
@@ -310,7 +311,8 @@ internal sealed class RakkoKeywordMockClient(
             dto,
             response,
             RakkoKeywordDtoMapper.ToApplication,
-            cancellationToken);
+            cancellationToken,
+            requestPath: RakkoKeywordClientSupport.SearchVolumeResultsPath(requestId));
     }
 
     public Task<RakkoKeywordCallResult<RakkoLocationCatalog>> ListLocationsAsync(
@@ -679,7 +681,8 @@ internal sealed class RakkoKeywordMockClient(
             requestBody: null,
             response,
             RakkoKeywordDtoMapper.ToApplication,
-            cancellationToken);
+            cancellationToken,
+            requestPath: RakkoKeywordClientSupport.SearchRankStatusPath(requestId));
     }
 
     public Task<RakkoKeywordCallResult<RakkoExternalSearchResults>> GetSearchRankResultsAsync(
@@ -725,7 +728,8 @@ internal sealed class RakkoKeywordMockClient(
             dto,
             response,
             RakkoKeywordDtoMapper.ToApplication,
-            cancellationToken);
+            cancellationToken,
+            requestPath: RakkoKeywordClientSupport.SearchRankResultsPath(requestId));
     }
 
     public Task<RakkoKeywordCallResult<RakkoExternalSearchResults>> GetSearchRankSerpAsync(
@@ -783,7 +787,8 @@ internal sealed class RakkoKeywordMockClient(
             requestBody: null,
             response,
             RakkoKeywordDtoMapper.ToApplication,
-            cancellationToken);
+            cancellationToken,
+            requestPath: RakkoKeywordClientSupport.SearchRankSerpPath(requestId, entryNo));
     }
 
     private async Task<RakkoKeywordCallResult<TApplication>> ExecuteAsync<TResponse, TApplication>(
@@ -793,7 +798,8 @@ internal sealed class RakkoKeywordMockClient(
         object? requestBody,
         TResponse response,
         Func<TResponse, TApplication> map,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? requestPath = null)
         where TResponse : IRakkoKeywordResponseDto
     {
         var stopwatch = Stopwatch.StartNew();
@@ -807,7 +813,8 @@ internal sealed class RakkoKeywordMockClient(
                 requestBody,
                 configuredStatusCode,
                 stopwatch,
-                cancellationToken);
+                cancellationToken,
+                requestPath);
         }
 
         var responseBytes = JsonSerializer.SerializeToUtf8Bytes(response, RakkoKeywordJson.SerializerOptions);
@@ -823,7 +830,8 @@ internal sealed class RakkoKeywordMockClient(
                 response.Meta.ConsumedCredit,
                 Convert.ToInt32(stopwatch.ElapsedMilliseconds),
                 CacheHit: false,
-                ErrorCode: null),
+                ErrorCode: null,
+                RequestPath: requestPath ?? endpoint),
             cancellationToken);
 
         return RakkoKeywordCallResult<TApplication>.Success(
@@ -840,7 +848,8 @@ internal sealed class RakkoKeywordMockClient(
         object? requestBody,
         int statusCode,
         Stopwatch stopwatch,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? requestPath = null)
     {
         var errors = new[] { RakkoKeywordClientSupport.DefaultErrorMessage(statusCode) };
         var response = new RakkoKeywordErrorResponseDto
@@ -862,7 +871,8 @@ internal sealed class RakkoKeywordMockClient(
                 ConsumedCredit: 0m,
                 Convert.ToInt32(stopwatch.ElapsedMilliseconds),
                 CacheHit: false,
-                RakkoKeywordClientSupport.ToErrorCode(statusCode)),
+                RakkoKeywordClientSupport.ToErrorCode(statusCode),
+                RequestPath: requestPath ?? endpoint),
             cancellationToken);
 
         return RakkoKeywordCallResult<TApplication>.Failure(

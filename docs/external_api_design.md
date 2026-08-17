@@ -10,7 +10,7 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | 作成日 | 2026-05-30 |
 | 対象 | ラッコキーワードAPI、Discord、AI、将来GSC/GA4/CMS/BIコネクタ |
 | 関連文書 | api_design.md / job_design.md / db_design.md / operations_runbook.md |
-| 外部仕様 | rakko-keyword-api-docs.json（OpenAPI 3.1、API v1.12.0） |
+| 外部仕様 | rakko-keyword-api-docs.json（OpenAPI 3.1、API v1.14.0）。人間向けMarkdown版は rakko-keyword-api-docs.md |
 
 ## 改訂履歴
 
@@ -18,7 +18,7 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | --- | --- | --- | --- |
 | 1.0 | 2026-05-30 | 初版作成。外部API認証、クライアント、クレジット、キャッシュ、契約テストを定義。 | ChatGPT |
 | 1.1 | 2026-07-26 | ラッコキーワードAPI v1.12.0対応。地域/言語マスタを`/v1/metadata/*`へ移行、消費クレジット料率を反映。 | Claude |
-| 1.2 | 2026-08-17 | ラッコキーワードAPI v1.14.0対応。SERP詳細取得エンドポイントを追加し、よくある質問検索の料率変更(3→1.5)を反映。 | Claude |
+| 1.2 | 2026-08-17 | ラッコキーワードAPI v1.14.0対応。SERP詳細取得エンドポイントを追加し、よくある質問検索の料率変更(3→1.5)を反映。監査へ実リクエストpathを含める方針を明記。 | Claude |
 
 ## 1. 目的
 
@@ -47,6 +47,7 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | タイムアウト | 通常30秒、非同期登録/結果取得は60秒を初期値とする。 |
 | User-Agent | アプリ名、バージョン、環境を含める。 |
 | Correlation | 内部`correlation_id`をログとDBに保存する。 |
+| 監査対象 | `external_api_calls.endpoint`は`/v1/search-rank/{requestId}/results`のようなテンプレートのまま保存し、検索と集計に使う。Storageへ保存するリクエストJSONと`request_hash`には実際に呼び出したpathを含める。これがないと`requestId`や`entryNo`だけが異なる呼び出しが同一ハッシュになり、監査から対象リソースを特定できない。 |
 
 ## 4. エンドポイント用途
 

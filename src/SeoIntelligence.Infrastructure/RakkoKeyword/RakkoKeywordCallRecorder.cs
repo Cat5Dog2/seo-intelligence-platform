@@ -30,7 +30,8 @@ internal sealed record RakkoKeywordCallRecordRequest(
     decimal ConsumedCredit,
     int DurationMs,
     bool CacheHit,
-    string? ErrorCode);
+    string? ErrorCode,
+    string? RequestPath = null);
 
 internal sealed class RakkoKeywordCallRecorder(
     IObjectStorage storage,
@@ -42,7 +43,15 @@ internal sealed class RakkoKeywordCallRecorder(
         RakkoKeywordCallRecordRequest request,
         CancellationToken cancellationToken = default)
     {
-        var requestEnvelope = new RawRequestEnvelope(request.Method, request.Endpoint, request.RequestBody);
+        // Endpointは`/v1/search-rank/{requestId}/results`のようなテンプレートのままにして、
+        // external_api_calls.endpointでの検索・集計を維持する。実際に呼んだpathは別項目として
+        // 保存・ハッシュ化する。これがないとrequestIdやentryNoだけが違う呼び出しが
+        // 同一のrequest hashになり、監査からどのリソースを取得したのか特定できない。
+        var requestEnvelope = new RawRequestEnvelope(
+            request.Method,
+            request.Endpoint,
+            request.RequestPath ?? request.Endpoint,
+            request.RequestBody);
         var requestBytes = JsonSerializer.SerializeToUtf8Bytes(requestEnvelope, RakkoKeywordJson.SerializerOptions);
         var compressedRequest = Compress(requestBytes);
         var requestHash = ComputeSha256Hex(compressedRequest);
@@ -129,7 +138,7 @@ internal sealed class RakkoKeywordCallRecorder(
     private static string ComputeSha256Hex(byte[] content)
         => Convert.ToHexString(SHA256.HashData(content)).ToLowerInvariant();
 
-    private sealed record RawRequestEnvelope(string Method, string Endpoint, object? Body);
+    private sealed record RawRequestEnvelope(string Method, string Endpoint, string Path, object? Body);
 }
 
 internal interface IRakkoKeywordExternalApiCallStore

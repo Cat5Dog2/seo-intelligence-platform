@@ -1369,6 +1369,13 @@ vendor仕様の構造差分(説明文を除く16件):
 - [x] `dotnet test --filter Category=Contract`
 - [x] `dotnet test --filter Category=Integration`
 
+レビュー指摘への対応(2026-08-17):
+
+- [x] 監査(`external_api_calls`)とrequest hashへ実リクエストpathを含める。テンプレートendpointだけを記録していたため、`requestId`/`entryNo`違いの呼び出しが同一ハッシュになり対象を特定できなかった。SERP取得だけでなく、search-volume status/results、search-rank status/resultsの既存4エンドポイントにも同じ問題があったため一括で修正した。
+- [x] Real clientを通したSERP契約テストを追加する(HTTP GETのpath、`X-API-Key`、`X-Correlation-Id`、レスポンス変換、監査pathを検証)。
+- [x] `ToEntryNo` の境界テスト(非整数、0、負数、`int.MaxValue`超過)を追加する。
+- [x] 正本ドキュメントの旧版表記(`requirements.md`/`basic_design.md`/`external_api_design.md`のヘッダーと付録)、`SearchQuestionDto.limit`の旧上限200、エンドポイント一覧のSERP GET欠落を修正する。
+
 補足:
 
 - 内部API `/keyword-discovery/suggest` の `limit` 上限は1〜100のまま据え置いた。vendorの上限拡大(1,000)は上限のみの変更で、内部契約を変える必要がないため。

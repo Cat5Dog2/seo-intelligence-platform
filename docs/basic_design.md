@@ -10,7 +10,7 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | 作成日 | 2026-05-30 |
 | 対象システム | ラッコキーワードAPIを中核にしたSEO・コンテンツ・競合分析・順位監視プラットフォーム |
 | 想定技術 | .NET 10 LTS / ASP.NET Core / Blazor Web App / PostgreSQL / Redis / Worker Service |
-| 入力仕様 | rakko-keyword-api-docs.json（OpenAPI 3.1、API v1.12.0） |
+| 入力仕様 | rakko-keyword-api-docs.json（OpenAPI 3.1、API v1.14.0） |
 | 関連設計 | requirements.md / api_design.md / db_design.md / screen_design.md / job_design.md / test_plan.md / external_api_design.md / operations_runbook.md / environment_setup.md / adr/ |
 | 作成方針 | 上記で列挙した全ユースケースを、API連携・DB・非同期ジョブ・AI支援・外部連携を組み合わせて実現する。 |
 
@@ -561,6 +561,7 @@ public interface IRakkoKeywordClient
 | POST | /v1/search-rank | 検索順位チェック登録 | SearchRankHistoryDto | 順位チェック登録 |
 | GET | /v1/search-rank/{requestId}/status | 検索順位チェックステータス取得 | - | 順位チェックジョブの完了監視 |
 | POST | /v1/search-rank/{requestId}/results | 検索順位チェック結果データ取得 | SearchRankResultsDto | 順位結果、順位分布、推定流入、アラート基礎データ |
+| GET | /v1/search-rank/{requestId}/results/{entryNo}/serp | 検索順位チェックSERP取得 | - | 順位チェック時のSERP詳細(順位・タイトル・推定流入・トップKW)、クレジット消費なし |
 
 ## 9. 非同期ジョブ設計
 
@@ -853,7 +854,8 @@ API別の保存先、カラム、リレーション、インデックスの正�
 
 ## 付録D. 参照資料
 
-- rakko-keyword-api-docs.json（OpenAPI 3.1、ラッコキーワードAPI v1.12.0、アップロードファイル）
+- rakko-keyword-api-docs.json（OpenAPI 3.1、ラッコキーワードAPI v1.14.0、アップロードファイル）
+- rakko-keyword-api-docs.md（Markdown版、人間向け。JSONと同一のAPI v1.14.0）
 
 - requirements.md
 

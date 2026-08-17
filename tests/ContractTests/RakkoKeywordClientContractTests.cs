@@ -647,12 +647,125 @@ public sealed class RakkoKeywordClientContractTests
         }
     }
 
+    [Fact]
+    [Trait("Category", "Contract")]
+    public async Task SearchRankSerpCallsAreDistinguishableInTheAuditTrail()
+    {
+        var storagePath = CreateTempStoragePath();
+        await using var provider = BuildProvider(storagePath);
+
+        try
+        {
+            await using var scope = provider.CreateAsyncScope();
+            var client = scope.ServiceProvider.GetRequiredService<IRakkoKeywordClient>();
+            var context = CreateContext(correlationId: "corr-contract-serp-audit");
+
+            var first = await client.GetSearchRankSerpAsync(context, "request-a", entryNo: 1);
+            var sameCall = await client.GetSearchRankSerpAsync(context, "request-a", entryNo: 1);
+            var otherEntry = await client.GetSearchRankSerpAsync(context, "request-a", entryNo: 2);
+            var otherRequest = await client.GetSearchRankSerpAsync(context, "request-b", entryNo: 1);
+
+            // GETにボディが無く、endpointはテンプレートのままなので、実pathを監査へ含めない限り
+            // 4回の呼び出しがすべて同じrequest hashになり、どのSERPを取得したのか追跡できない。
+            Assert.Equal(first.ExternalCall.RequestHash, sameCall.ExternalCall.RequestHash);
+            Assert.NotEqual(first.ExternalCall.RequestHash, otherEntry.ExternalCall.RequestHash);
+            Assert.NotEqual(first.ExternalCall.RequestHash, otherRequest.ExternalCall.RequestHash);
+            Assert.NotEqual(otherEntry.ExternalCall.RequestHash, otherRequest.ExternalCall.RequestHash);
+        }
+        finally
+        {
+            DeleteTempStoragePath(storagePath);
+        }
+    }
+
     [Theory]
     [Trait("Category", "Contract")]
     [InlineData("01HQZX5Y4JMQK8XNQ7WVZXZ5Y4", 3, "/v1/search-rank/01HQZX5Y4JMQK8XNQ7WVZXZ5Y4/results/3/serp")]
     [InlineData("req/with space", 12, "/v1/search-rank/req%2Fwith%20space/results/12/serp")]
     public void SearchRankSerpPathEscapesRequestIdAndKeepsEntryNo(string requestId, int entryNo, string expected)
         => Assert.Equal(expected, RakkoKeywordClientSupport.SearchRankSerpPath(requestId, entryNo));
+
+    [Fact]
+    [Trait("Category", "Contract")]
+    public async Task RealClientSendsSearchRankSerpPathAndRecordsItForAudit()
+    {
+        var handler = new CapturingHandler("""
+            {
+              "result": true,
+              "meta": { "consumedCredit": 0 },
+              "data": {
+                "query": { "requestId": "rank-request-real-2", "entryNo": 7 },
+                "summary": { "keyword": "seo", "returnedCount": 1, "fetchedDate": "2026-06-30" },
+                "items": [
+                  {
+                    "position": 2,
+                    "page": {
+                      "url": "https://example.com/seo",
+                      "title": "SEO Guide",
+                      "description": "SEO guide for beginners."
+                    },
+                    "metrics": {
+                      "estimatedTraffic": 120,
+                      "trafficValue": 45,
+                      "rankingKeywordCount": 8
+                    },
+                    "topKeyword": {
+                      "keyword": "seo basics",
+                      "position": 3,
+                      "metrics": { "seoDifficulty": 42, "searchVolume": 500 }
+                    }
+                  }
+                ]
+              },
+              "errors": []
+            }
+            """);
+        using var httpClient = new HttpClient(handler)
+        {
+            BaseAddress = new Uri("https://api.example.test")
+        };
+        var recorder = new CapturingRecorder();
+        var options = Options.Create(new RakkoKeywordOptions
+        {
+            Mode = RakkoKeywordOptions.RealMode,
+            BaseUrl = "https://api.example.test",
+            ApiKeySecretRef = "rakko-keyword-api-key-dev",
+            EnvironmentName = "Testing"
+        });
+        var client = new RakkoKeywordRealClient(
+            httpClient,
+            new FakeSecretStore("secret-value"),
+            recorder,
+            options,
+            NullLogger<RakkoKeywordRealClient>.Instance);
+
+        var result = await client.GetSearchRankSerpAsync(
+            CreateContext(apiKeySecretRef: "rakko-keyword-api-key-dev", correlationId: "corr-serp-real-1"),
+            "rank-request-real-2",
+            entryNo: 7);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(0m, result.ConsumedCredit);
+        Assert.Equal("search_rank_serp", result.Data!.Source);
+
+        var item = Assert.Single(result.Data.Items);
+        Assert.Equal(2m, item.Position);
+        Assert.Equal("https://example.com/seo", item.Url);
+        Assert.Equal("SEO Guide", item.Title);
+        Assert.Equal(120m, item.EstimatedTraffic);
+        Assert.Equal(45m, item.TrafficValue);
+
+        Assert.Equal("/v1/search-rank/rank-request-real-2/results/7/serp", handler.RequestUri!.AbsolutePath);
+        Assert.Empty(handler.RequestBody);
+        Assert.Equal("secret-value", Assert.Single(handler.Headers["X-API-Key"]));
+        Assert.Equal("corr-serp-real-1", Assert.Single(handler.Headers["X-Correlation-Id"]));
+
+        // endpointは集計用にテンプレートのまま残し、監査にはrequestId/entryNoを含む実pathを残す。
+        // これがないと対象SERPを識別できず、request hashも呼び出し間で衝突する。
+        Assert.Equal(RakkoKeywordClientSupport.SearchRankSerpEndpoint, recorder.LastRequest!.Endpoint);
+        Assert.Equal("/v1/search-rank/rank-request-real-2/results/7/serp", recorder.LastRequest.RequestPath);
+        Assert.Null(recorder.LastRequest.ErrorCode);
+    }
 
     private static RakkoKeywordClientContext CreateContext(
         string? apiKeySecretRef = null,
