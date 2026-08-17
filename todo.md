@@ -1375,6 +1375,7 @@ vendor仕様の構造差分(説明文を除く16件):
 - [x] Real clientを通したSERP契約テストを追加する(HTTP GETのpath、`X-API-Key`、`X-Correlation-Id`、レスポンス変換、監査pathを検証)。
 - [x] `ToEntryNo` の境界テスト(非整数、0、負数、`int.MaxValue`超過)を追加する。
 - [x] 正本ドキュメントの旧版表記(`requirements.md`/`basic_design.md`/`external_api_design.md`のヘッダーと付録)、`SearchQuestionDto.limit`の旧上限200、エンドポイント一覧のSERP GET欠落を修正する。
+- [x] `basic_design.md`付録の外部DTO制約表に残っていた`SearchQuestionDto`の`limit: 1〜200`を1〜1,000へ修正し、`filter`/`sortBy`/`orderBy`を追記する。付録表の全DTOのlimitを仕様JSONと機械照合し、他に差分がないことを確認済み。
 
 補足:
 
