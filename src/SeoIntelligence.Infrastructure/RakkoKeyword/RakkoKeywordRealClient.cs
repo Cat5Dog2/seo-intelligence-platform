@@ -304,6 +304,22 @@ internal sealed class RakkoKeywordRealClient(
             RakkoKeywordDtoMapper.ToApplication,
             cancellationToken);
 
+    public Task<RakkoKeywordCallResult<RakkoExternalSearchResults>> GetSearchRankSerpAsync(
+        RakkoKeywordClientContext context,
+        string requestId,
+        int entryNo,
+        CancellationToken cancellationToken = default)
+        => SendAsync<object, SearchRankSerpCacheResponseDto, RakkoExternalSearchResults>(
+            context,
+            RakkoKeywordClientSupport.SearchRankSerpEndpoint,
+            RakkoKeywordClientSupport.SearchRankSerpPath(requestId, entryNo),
+            HttpMethod.Get,
+            requestBody: null,
+            requiresApiKey: true,
+            useLongTimeout: true,
+            RakkoKeywordDtoMapper.ToApplication,
+            cancellationToken);
+
     private async Task<RakkoKeywordCallResult<TApplication>> SendAsync<TRequest, TResponse, TApplication>(
         RakkoKeywordClientContext context,
         string endpoint,
@@ -327,6 +343,7 @@ internal sealed class RakkoKeywordRealClient(
                 return await CompleteFailureAsync<TApplication>(
                     context,
                     endpoint,
+                    path,
                     method.Method,
                     requestBody,
                     statusCode: 403,
@@ -339,16 +356,17 @@ internal sealed class RakkoKeywordRealClient(
 
             using var httpRequest = CreateHttpRequest(method, path, requestBody);
             httpRequest.Headers.Add("X-API-Key", secret.Value);
-            return await SendHttpRequestAsync(context, endpoint, method, requestBody, httpRequest, useLongTimeout, map, stopwatch, cancellationToken);
+            return await SendHttpRequestAsync(context, endpoint, path, method, requestBody, httpRequest, useLongTimeout, map, stopwatch, cancellationToken);
         }
 
         using var unauthenticatedRequest = CreateHttpRequest(method, path, requestBody);
-        return await SendHttpRequestAsync(context, endpoint, method, requestBody, unauthenticatedRequest, useLongTimeout, map, stopwatch, cancellationToken);
+        return await SendHttpRequestAsync(context, endpoint, path, method, requestBody, unauthenticatedRequest, useLongTimeout, map, stopwatch, cancellationToken);
     }
 
     private async Task<RakkoKeywordCallResult<TApplication>> SendHttpRequestAsync<TRequest, TResponse, TApplication>(
         RakkoKeywordClientContext context,
         string endpoint,
+        string path,
         HttpMethod method,
         TRequest? requestBody,
         HttpRequestMessage httpRequest,
@@ -388,6 +406,7 @@ internal sealed class RakkoKeywordRealClient(
                 return await CompleteFailureAsync<TApplication>(
                     context,
                     endpoint,
+                    path,
                     method.Method,
                     requestBody,
                     (int)response.StatusCode,
@@ -404,6 +423,7 @@ internal sealed class RakkoKeywordRealClient(
                 return await CompleteFailureAsync<TApplication>(
                     context,
                     endpoint,
+                    path,
                     method.Method,
                     requestBody,
                     statusCode: 500,
@@ -430,7 +450,8 @@ internal sealed class RakkoKeywordRealClient(
                     responseDto.Meta.ConsumedCredit,
                     Convert.ToInt32(stopwatch.ElapsedMilliseconds),
                     CacheHit: false,
-                    ErrorCode: null),
+                    ErrorCode: null,
+                    RequestPath: path),
                 cancellationToken);
 
             return RakkoKeywordCallResult<TApplication>.Success(
@@ -450,6 +471,7 @@ internal sealed class RakkoKeywordRealClient(
             return await CompleteFailureAsync<TApplication>(
                 context,
                 endpoint,
+                path,
                 method.Method,
                 requestBody,
                 statusCode: 503,
@@ -471,6 +493,7 @@ internal sealed class RakkoKeywordRealClient(
             return await CompleteFailureAsync<TApplication>(
                 context,
                 endpoint,
+                path,
                 method.Method,
                 requestBody,
                 statusCode: 500,
@@ -539,6 +562,7 @@ internal sealed class RakkoKeywordRealClient(
     private async Task<RakkoKeywordCallResult<TApplication>> CompleteFailureAsync<TApplication>(
         RakkoKeywordClientContext context,
         string endpoint,
+        string path,
         string method,
         object? requestBody,
         int statusCode,
@@ -564,7 +588,8 @@ internal sealed class RakkoKeywordRealClient(
                 consumedCredit,
                 Convert.ToInt32(stopwatch.ElapsedMilliseconds),
                 CacheHit: false,
-                errorCode),
+                errorCode,
+                RequestPath: path),
             cancellationToken);
 
         return RakkoKeywordCallResult<TApplication>.Failure(

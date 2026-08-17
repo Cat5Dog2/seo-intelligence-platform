@@ -189,6 +189,7 @@ public sealed class RankResultEntity
     public Guid JobId { get; set; }
     public Guid ProjectId { get; set; }
     public Guid KeywordId { get; set; }
+    public int? EntryNo { get; set; }
     public string Target { get; set; } = string.Empty;
     public int Position { get; set; }
     public string RankedUrl { get; set; } = string.Empty;

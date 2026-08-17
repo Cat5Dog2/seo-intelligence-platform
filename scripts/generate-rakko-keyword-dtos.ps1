@@ -50,7 +50,8 @@ $phase2Schemas = @(
     "SearchRankHistoryResponseDto",
     "SearchRankStatusResponseDto",
     "SearchRankResultsDto",
-    "SearchRankResultsResponseDto"
+    "SearchRankResultsResponseDto",
+    "SearchRankSerpCacheResponseDto"
 )
 
 $requiredSchemas = @($mvpSchemas + $phase2Schemas)

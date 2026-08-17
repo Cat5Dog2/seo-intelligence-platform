@@ -10,7 +10,7 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | 作成日 | 2026-05-30 |
 | 対象システム | ラッコキーワードAPIを中核にしたSEO・コンテンツ・競合分析・順位監視プラットフォーム |
 | 想定技術 | .NET 10 LTS / ASP.NET Core / Blazor Web App / PostgreSQL / Redis / Worker Service |
-| 入力仕様 | rakko-keyword-api-docs.json（OpenAPI 3.1、API v1.12.0） |
+| 入力仕様 | rakko-keyword-api-docs.json（OpenAPI 3.1、API v1.14.0） |
 | 関連設計 | basic_design.md / api_design.md / db_design.md / screen_design.md / job_design.md / test_plan.md / external_api_design.md / operations_runbook.md / environment_setup.md / adr/ |
 | 作成方針 | 上記で列挙した全ユースケースを、API連携・DB・非同期ジョブ・AI支援・外部連携を組み合わせて実現する。 |
 
@@ -24,6 +24,7 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | 1.1 | 2026-05-30 | API設計書・DB設計書との責務分担を追加し、リスク/設計成果物の参照関係を整理。 | ChatGPT |
 | 1.2 | 2026-05-30 | 画面、ジョブ、テスト、外部API、運用、環境構築、ADR文書を設計成果物へ追加。 | ChatGPT |
 | 1.3 | 2026-07-26 | ラッコキーワードAPI v1.12.0（OpenAPI 3.1）へ追随。地域/言語マスタを`/v1/metadata/*`へ移行。 | Claude |
+| 1.4 | 2026-08-17 | ラッコキーワードAPI v1.14.0へ追随。よくある質問検索の相対需要/出現時期、検索順位チェックのentryNoとSERP詳細取得を反映。 | Claude |
 
 ## 目次
 
@@ -159,7 +160,7 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 
 | 分類 | 前提・制約 |
 | --- | --- |
-| API仕様 | OpenAPI 3.1 / ラッコキーワードAPI v1.12.0を基準とする。 |
+| API仕様 | OpenAPI 3.1 / ラッコキーワードAPI v1.14.0を基準とする。 |
 | 利用者 | 初期版の利用者は開発者本人1名とする。システム内では単一ワークスペース/単一管理者として扱い、操作主体は固定のdeveloperとして監査する。 |
 | 外部API認証 | ラッコキーワードAPIへは原則としてX-API-Keyヘッダーで認証する。地域/言語マスタの一部は認証不要。 |
 | 内部API認証 | 本システムの内部APIはWebからのみ呼び出され、`X-Service-Key`ヘッダーの共有シークレットで認証する。匿名で到達できるのは`/healthz`、`/readyz`、`GET /api/report-shares/{token}`だけとする。 |
@@ -407,10 +408,12 @@ Phase 1の実装開始時は、FR-001からFR-005、FR-010からFR-030、FR-110�
 | POST | /v1/search-rank | 検索順位チェック登録 | SearchRankHistoryDto | 順位チェック登録 |
 | GET | /v1/search-rank/{requestId}/status | 検索順位チェックステータス取得 | - | 順位チェックジョブの完了監視 |
 | POST | /v1/search-rank/{requestId}/results | 検索順位チェック結果データ取得 | SearchRankResultsDto | 順位結果、順位分布、推定流入、アラート基礎データ |
+| GET | /v1/search-rank/{requestId}/results/{entryNo}/serp | 検索順位チェックSERP取得 | - | 順位チェック時のSERP詳細(順位・タイトル・推定流入・トップKW)、クレジット消費なし |
 
 ## 付録B. 参照資料
 
-- rakko-keyword-api-docs.json（OpenAPI 3.1、ラッコキーワードAPI v1.12.0、アップロードファイル）
+- rakko-keyword-api-docs.json（OpenAPI 3.1、ラッコキーワードAPI v1.14.0、アップロードファイル）
+- rakko-keyword-api-docs.md（Markdown版、人間向け。JSONと同一のAPI v1.14.0）
 
 - basic_design.md
 

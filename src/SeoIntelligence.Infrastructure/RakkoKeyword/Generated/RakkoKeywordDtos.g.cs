@@ -11,8 +11,8 @@ namespace SeoIntelligence.Infrastructure.RakkoKeyword.Generated;
 internal static class RakkoKeywordOpenApiMetadata
 {
     public const string SourcePath = "docs/rakko-keyword-api-docs.json";
-    public const string OpenApiVersion = "1.12.0";
-    public const string SourceSha256 = "1baa6d5a2731a69135a67b3df46abd7b5b32e435dd8c13dbefc7f12cb22bba7e";
+    public const string OpenApiVersion = "1.14.0";
+    public const string SourceSha256 = "926a9f7fca6e3e643619621ca7f4e5fb6dc2ff4e58214a19aae04e0015a9d30f";
 
     public static readonly IReadOnlySet<string> MvpSchemaNames = new HashSet<string>(StringComparer.Ordinal)
     {
@@ -91,6 +91,15 @@ internal sealed class SearchQuestionDto
 {
     [JsonPropertyName("keyword")]
     public string Keyword { get; init; } = string.Empty;
+
+    [JsonPropertyName("filter")]
+    public object? Filter { get; init; }
+
+    [JsonPropertyName("sortBy")]
+    public string? SortBy { get; init; }
+
+    [JsonPropertyName("orderBy")]
+    public string? OrderBy { get; init; }
 
     [JsonPropertyName("limit")]
     public int? Limit { get; init; }
@@ -299,6 +308,18 @@ internal sealed class QuestionItemDto
 {
     [JsonPropertyName("question")]
     public string Question { get; init; } = string.Empty;
+
+    [JsonPropertyName("metrics")]
+    public QuestionMetricsDto? Metrics { get; init; }
+}
+
+internal sealed class QuestionMetricsDto
+{
+    [JsonPropertyName("relativeDemand")]
+    public decimal RelativeDemand { get; init; }
+
+    [JsonPropertyName("firstSeenRange")]
+    public string? FirstSeenRange { get; init; }
 }
 
 internal sealed class RankingKeywordItemDto

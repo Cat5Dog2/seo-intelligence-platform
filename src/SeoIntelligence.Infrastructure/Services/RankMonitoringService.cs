@@ -846,6 +846,7 @@ internal sealed class RankMonitoringService(
                     JobId = jobId,
                     ProjectId = project.Id,
                     KeywordId = keyword.Id,
+                    EntryNo = ToEntryNo(item.EntryNo),
                     Target = target,
                     Position = position.Value,
                     RankedUrl = rankedUrl,
@@ -1186,6 +1187,14 @@ internal sealed class RankMonitoringService(
 
         return normalized;
     }
+
+    // ラッコキーワードAPI v1.14.0のentryNoはリクエスト内のキーワード登録順(1始まりの整数)。
+    // GET /v1/search-rank/{requestId}/results/{entryNo}/serp のパスに使う。
+    // 境界値はContractTestsで固定している(InternalsVisibleTo経由)。
+    internal static int? ToEntryNo(decimal? entryNo)
+        => entryNo is null || entryNo.Value != decimal.Truncate(entryNo.Value) || entryNo.Value < 1m || entryNo.Value > int.MaxValue
+            ? null
+            : (int)entryNo.Value;
 
     private static IReadOnlyList<ParsedRanking> ParseRankings(RakkoExternalSearchResultItem item)
     {

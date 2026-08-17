@@ -11,8 +11,8 @@ namespace SeoIntelligence.Infrastructure.RakkoKeyword.Generated;
 internal static class RakkoKeywordPhase2OpenApiMetadata
 {
     public const string SourcePath = "docs/rakko-keyword-api-docs.json";
-    public const string OpenApiVersion = "1.12.0";
-    public const string SourceSha256 = "1baa6d5a2731a69135a67b3df46abd7b5b32e435dd8c13dbefc7f12cb22bba7e";
+    public const string OpenApiVersion = "1.14.0";
+    public const string SourceSha256 = "926a9f7fca6e3e643619621ca7f4e5fb6dc2ff4e58214a19aae04e0015a9d30f";
 
     public static readonly IReadOnlySet<string> SchemaNames = new HashSet<string>(StringComparer.Ordinal)
     {
@@ -32,7 +32,8 @@ internal static class RakkoKeywordPhase2OpenApiMetadata
         "SearchRankHistoryResponseDto",
         "SearchRankStatusResponseDto",
         "SearchRankResultsDto",
-        "SearchRankResultsResponseDto"
+        "SearchRankResultsResponseDto",
+        "SearchRankSerpCacheResponseDto"
     };
 }
 
@@ -271,6 +272,10 @@ internal sealed class SearchRankStatusResponseDto : RakkoKeywordResponseDto<Sear
 }
 
 internal sealed class SearchRankResultsResponseDto : RakkoKeywordResponseDto<RakkoKeywordItemsDataDto<JsonElement>>
+{
+}
+
+internal sealed class SearchRankSerpCacheResponseDto : RakkoKeywordResponseDto<RakkoKeywordItemsDataDto<JsonElement>>
 {
 }
 

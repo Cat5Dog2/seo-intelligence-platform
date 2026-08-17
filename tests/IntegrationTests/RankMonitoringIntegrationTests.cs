@@ -106,6 +106,8 @@ public sealed class RankMonitoringIntegrationTests
                 Assert.Equal("example.com", currentResult.Target);
                 Assert.Equal(8, currentResult.Position);
                 Assert.Equal("https://example.com/seo", currentResult.RankedUrl);
+                // v1.14.0: SERP詳細取得(GET .../results/{entryNo}/serp)に使うentryNoを保存する。
+                Assert.Equal(3, currentResult.EntryNo);
                 Assert.Equal("rank_drop", alertEvent.EventType);
                 Assert.Equal(jobId, alertEvent.JobId);
                 Assert.Equal(delivery.Id, alertEvent.NotificationDeliveryId);
@@ -453,7 +455,8 @@ public sealed class RankMonitoringIntegrationTests
                             Position: position,
                             EstimatedTraffic: traffic,
                             TrafficValue: null,
-                            RawJson: rawJson)
+                            RawJson: rawJson,
+                            EntryNo: 3m)
                     ],
                     QueryJson: null,
                     SummaryJson: """{"rankingPositionDistribution":{"top10":1}}"""),

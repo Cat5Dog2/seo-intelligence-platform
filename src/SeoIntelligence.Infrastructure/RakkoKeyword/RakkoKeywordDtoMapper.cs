@@ -40,6 +40,9 @@ internal static class RakkoKeywordDtoMapper
         => new()
         {
             Keyword = request.Keyword,
+            Filter = request.Filter,
+            SortBy = request.SortBy,
+            OrderBy = request.OrderBy,
             Limit = request.Limit
         };
 
@@ -225,7 +228,12 @@ internal static class RakkoKeywordDtoMapper
                 .ToArray());
 
     public static RakkoQuestions ToApplication(SearchQuestionResponseDto response)
-        => new(response.Data.Items.Select(item => new RakkoQuestion(item.Question)).ToArray());
+        => new(response.Data.Items
+            .Select(item => new RakkoQuestion(
+                item.Question,
+                item.Metrics?.RelativeDemand,
+                item.Metrics?.FirstSeenRange))
+            .ToArray());
 
     public static RakkoKeywordCandidates ToApplication(RankingKeywordsResponseDto response)
         => new(
@@ -295,6 +303,9 @@ internal static class RakkoKeywordDtoMapper
 
     public static RakkoExternalSearchResults ToApplication(CoOccurrenceResponseDto response)
         => ToExternalSearchResults("co_occurrence", response.Data);
+
+    public static RakkoExternalSearchResults ToApplication(SearchRankSerpCacheResponseDto response)
+        => ToExternalSearchResults("search_rank_serp", response.Data);
 
     public static RakkoSearchRankRegistration ToApplication(SearchRankHistoryResponseDto response)
         => new(response.Data.RequestId);
@@ -372,7 +383,8 @@ internal static class RakkoKeywordDtoMapper
             Position: GetDecimal(item, "position") ?? GetDecimal(ranking, "position") ?? GetDecimal(topKeyword, "position") ?? GetDecimal(metrics, "position") ?? GetDecimal(firstRanking, "position"),
             EstimatedTraffic: GetDecimal(item, "estimatedTraffic") ?? GetDecimal(metrics, "estimatedTraffic") ?? GetDecimal(ranking, "estimatedTraffic") ?? GetDecimal(performance, "estimatedTraffic") ?? GetDecimal(firstRanking, "estimatedTraffic"),
             TrafficValue: GetDecimal(item, "trafficValue") ?? GetDecimal(metrics, "trafficValue") ?? GetDecimal(performance, "trafficValue"),
-            RawJson: item.GetRawText());
+            RawJson: item.GetRawText(),
+            EntryNo: GetDecimal(item, "entryNo"));
     }
 
     private static JsonElement? GetObject(JsonElement? element, string propertyName)

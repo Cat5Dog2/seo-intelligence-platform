@@ -132,6 +132,7 @@ ISSUE-MVP-00X の続きから再開してください。
 - [x] ISSUE-P3-008 Phase 3受入テストを整備する
 - [x] ISSUE-REF-001 コードベース保守性リファクタリングを実施する
 - [x] ISSUE-SEC-001 単一管理者ログインとAPIサービス認証を実装する
+- [x] ISSUE-EXT-001 ラッコキーワードAPI v1.14.0へ追随する
 - [ ] ISSUE-P4-001 エンタープライズ拡張を設計する
 - [ ] ISSUE-BACKLOG-001 推奨バックログを整理する
 
@@ -1322,6 +1323,64 @@ BrowserE2Eと回路内遷移の検証（2026-08-02）:
 補足:
 
 - スモークの Discord テスト通知は任意ステップで、ローカル `.env` の `SMOKE_DISCORD_CHANNEL_ID` が現在のDBに存在しないため除外した。Secret参照が設定済みの環境でのみ実行する既存仕様どおり。
+
+### ISSUE-EXT-001 ラッコキーワードAPI v1.14.0へ追随する
+
+参照ドキュメント: `docs/rakko-keyword-api-docs.json`, `docs/rakko-keyword-api-docs.md`, `docs/external_api_design.md`, `docs/api_design.md`, `docs/db_design.md`, `docs/adr/0006-openapi-dto-generation.md`
+
+関連: FR-010, FR-011, AC-001
+
+目的: ラッコキーワードAPIのvendor仕様がv1.12.0からv1.14.0へ更新されたため、生成DTO、クライアント、永続化、設計ドキュメントを追随させる。
+
+vendor仕様の構造差分(説明文を除く16件):
+
+- よくある質問検索: `filter`(質問文/相対需要/出現時期)、`sortBy`(relativeDemand|firstSeenRange)、`orderBy`を追加。`limit`上限が200→1,000。返却順が出現頻度順→相対需要順。消費クレジットが3→1.5。
+- よくある質問検索レスポンス: `items[].metrics`(`relativeDemand` 1〜100、`firstSeenRange` enum|null)がrequiredに追加。`data.query`のrequiredに`sortBy`/`orderBy`/`limit`が追加。
+- 検索順位チェック結果: `items[].entryNo`がrequiredに追加。
+- 新規エンドポイント `GET /v1/search-rank/{requestId}/results/{entryNo}/serp` と `SearchRankSerpCacheResponseDto`(クレジット消費なし)。
+- `info.version` 1.12.0 → 1.14.0。
+
+範囲:
+
+- [x] `docs/rakko-keyword-api-docs.md`(vendor提供のMarkdown版)をリポジトリの追跡対象に加える。
+- [x] `QuestionItemDto.metrics` と `QuestionMetricsDto` を生成DTOへ追加する。
+- [x] `SearchQuestionDto` に `filter` / `sortBy` / `orderBy` を追加する。
+- [x] `SearchRankSerpCacheResponseDto` を生成DTOと生成スクリプトの必須スキーマ一覧へ追加する。
+- [x] `scripts/generate-rakko-keyword-dtos.ps1` で `OpenApiVersion` / `SourceSha256` を更新する。
+- [x] `RakkoQuestion` に相対需要/出現時期、`RakkoQuestionSearchRequest` にソート/フィルタ、`RakkoExternalSearchResultItem` に `EntryNo` を追加する。
+- [x] `IRakkoKeywordClient.GetSearchRankSerpAsync` をReal/Mock双方に実装する。
+- [x] `questions.first_seen_range` と `rank_results.entry_no` を追加するmigrationを作成する。
+- [x] 相対需要(1〜100)を0〜1へ正規化して `questions.importance` に保存する(相対需要が無い場合は既定値0.5)。
+- [x] 検索順位チェック結果の `entryNo` を `rank_results.entry_no` へ保存する。
+- [x] 設計ドキュメントの版表記、外部APIマッピング、エンドポイント表、クレジット料率、DB列を更新する。
+
+受入条件:
+
+- [x] `RakkoKeywordDtoShapeContractTests` と `GeneratedDtoMetadataMatchesVendorOpenApiSpec` が通る。
+- [x] SERP詳細取得がMockクライアントで成功し、消費クレジットが0で記録される。
+- [x] 質問の相対需要と出現時期がDBへ保存される。
+- [x] 順位チェック結果の `entryNo` がDBへ保存される。
+- [x] 契約スコープ(`scope_key`)の世代交代は行わない(プラン・データ利用範囲・検索指標の意味論が不変のため)。
+
+検証:
+
+- [x] `powershell -File scripts/generate-rakko-keyword-dtos.ps1 -ValidateOnly`
+- [x] `dotnet build`
+- [x] `dotnet test --filter Category=Contract`
+- [x] `dotnet test --filter Category=Integration`
+
+レビュー指摘への対応(2026-08-17):
+
+- [x] 監査(`external_api_calls`)とrequest hashへ実リクエストpathを含める。テンプレートendpointだけを記録していたため、`requestId`/`entryNo`違いの呼び出しが同一ハッシュになり対象を特定できなかった。SERP取得だけでなく、search-volume status/results、search-rank status/resultsの既存4エンドポイントにも同じ問題があったため一括で修正した。
+- [x] Real clientを通したSERP契約テストを追加する(HTTP GETのpath、`X-API-Key`、`X-Correlation-Id`、レスポンス変換、監査pathを検証)。
+- [x] `ToEntryNo` の境界テスト(非整数、0、負数、`int.MaxValue`超過)を追加する。
+- [x] 正本ドキュメントの旧版表記(`requirements.md`/`basic_design.md`/`external_api_design.md`のヘッダーと付録)、`SearchQuestionDto.limit`の旧上限200、エンドポイント一覧のSERP GET欠落を修正する。
+- [x] `basic_design.md`付録の外部DTO制約表に残っていた`SearchQuestionDto`の`limit: 1〜200`を1〜1,000へ修正し、`filter`/`sortBy`/`orderBy`を追記する。付録表の全DTOのlimitを仕様JSONと機械照合し、他に差分がないことを確認済み。
+
+補足:
+
+- 内部API `/keyword-discovery/suggest` の `limit` 上限は1〜100のまま据え置いた。vendorの上限拡大(1,000)は上限のみの変更で、内部契約を変える必要がないため。
+- SERP詳細の業務テーブルへの取込(見出し/競合分析への活用)は本Issueの範囲外とし、クライアント層までの実装に留めた。
 
 ## Phase 4
 

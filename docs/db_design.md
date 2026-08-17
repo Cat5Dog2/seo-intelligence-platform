@@ -17,6 +17,7 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | 版 | 日付 | 内容 | 作成/更新 |
 | --- | --- | --- | --- |
 | 1.0 | 2026-05-30 | 初版作成。論理テーブル、主要カラム、制約、インデックス、保持方針を定義。 | ChatGPT |
+| 1.1 | 2026-08-17 | ラッコキーワードAPI v1.14.0対応。`questions.first_seen_range`と`rank_results.entry_no`を追加。 | Claude |
 
 ## 1. 目的
 
@@ -111,7 +112,7 @@ identity_users
 | `project_keyword_scores` | `id uuid PK`, `project_id uuid FK`, `keyword_id uuid FK`, `location text`, `language text`, `source_call_id uuid NULL FK`, `opportunity_score numeric(8,4)`, `score_components_json jsonb`, `scored_at timestamptz` | プロジェクト別の機会スコア正本。関連度や係数がプロジェクト依存のため`keyword_metrics`から分離する。 |
 | `keyword_suggestions` | `id uuid PK`, `seed_id uuid FK`, `keyword_id uuid FK`, `engine text`, `suggest_class text`, `engine_count integer`, `first_seen_range text`, `created_at` | サジェスト結果。 |
 | `related_keywords` | `id uuid PK`, `seed_id uuid FK`, `keyword_id uuid FK`, `match_type text`, `metrics_snapshot_json jsonb`, `created_at` | 関連語結果。 |
-| `questions` | `id uuid PK`, `project_id uuid FK`, `seed_keyword_id uuid NULL FK`, `question_text text`, `source text`, `importance numeric(8,4)`, `created_at` | FAQ/PAA質問。 |
+| `questions` | `id uuid PK`, `project_id uuid FK`, `seed_keyword_id uuid NULL FK`, `question_text text`, `source text`, `importance numeric(8,4)`, `first_seen_range text NULL`, `created_at` | FAQ/PAA質問。`importance`はラッコキーワードAPI v1.14.0の相対需要(1〜100)を0〜1へ正規化した値。相対需要が無い場合は0.5。 |
 | `lsi_paa_items` | `id uuid PK`, `seed_keyword_id uuid FK`, `type text`, `keyword_id uuid NULL FK`, `question_text text`, `importance numeric(8,4)`, `created_at` | LSI/PAA。 |
 | `ranking_keywords` | `id uuid PK`, `seed_keyword_id uuid FK`, `keyword_id uuid FK`, `word_count integer`, `relevance numeric(8,4)`, `metrics_snapshot_json jsonb`, `created_at` | 同時ランクイン語。 |
 | `search_volume_jobs` | `job_id uuid PK/FK`, `location text`, `language text`, `aggregation_months integer`, `request_options_json jsonb`, `status_json jsonb` | `job_id -> jobs.id`。 |
@@ -142,7 +143,7 @@ identity_users
 | `cannibalization_candidates` | `id uuid PK`, `project_id uuid FK`, `keyword_id uuid FK`, `primary_url text`, `competing_urls_json jsonb`, `severity_score numeric(8,4)`, `evidence_json jsonb`, `recommendation_json jsonb`, `status text`, `detected_at timestamptz` | カニバリ候補。 |
 | `rank_check_jobs` | `job_id uuid PK/FK`, `depth integer`, `match_type text`, `with_metrics boolean`, `request_options_json jsonb`, `status_json jsonb` | `job_id -> jobs.id`。 |
 | `rank_check_targets` | `id uuid PK`, `job_id uuid FK`, `target text`, `target_type text` | URL/ドメイン等の順位チェック対象。 |
-| `rank_results` | `id uuid PK`, `job_id uuid FK`, `project_id uuid FK`, `keyword_id uuid FK`, `target text`, `position integer`, `ranked_url text`, `estimated_traffic numeric(18,4)`, `metrics_snapshot_json jsonb`, `source_call_id uuid NULL FK`, `contract_scope_key text`, `checked_at timestamptz` | 順位履歴。外部API結果の出自と契約スコープを追跡する。 |
+| `rank_results` | `id uuid PK`, `job_id uuid FK`, `project_id uuid FK`, `keyword_id uuid FK`, `entry_no integer NULL`, `target text`, `position integer`, `ranked_url text`, `estimated_traffic numeric(18,4)`, `metrics_snapshot_json jsonb`, `source_call_id uuid NULL FK`, `contract_scope_key text`, `checked_at timestamptz` | 順位履歴。外部API結果の出自と契約スコープを追跡する。`entry_no`はラッコキーワードAPI v1.14.0のリクエスト内キーワード登録順で、`GET /v1/search-rank/{requestId}/results/{entryNo}/serp`のSERP詳細取得に使う。 |
 | `alerts` | `id uuid PK`, `project_id uuid FK`, `alert_type text`, `condition_json jsonb`, `notification_channel_id uuid NULL FK`, `status text`, `last_triggered_at timestamptz`, `created_at`, `updated_at` | アラート定義。発火履歴の正本は`alert_events`。 |
 | `alert_events` | `id uuid PK`, `alert_id uuid FK`, `project_id uuid FK`, `job_id uuid NULL FK`, `keyword_id uuid NULL FK`, `event_type text`, `previous_value_json jsonb`, `current_value_json jsonb`, `evidence_json jsonb`, `notification_delivery_id uuid NULL FK`, `triggered_at timestamptz`, `resolved_at timestamptz NULL` | アラート発火履歴の正本。順位差分、圏外化、競合抜かれ等の根拠と通知結果を保持する。 |
 | `reports` | `id uuid PK`, `project_id uuid FK`, `report_type text`, `period text`, `format text`, `current_version integer`, `file_uri text`, `share_token_hash text NULL`, `share_expires_at timestamptz NULL`, `share_revoked_at timestamptz NULL`, `status text`, `generated_by text`, `created_at`, `updated_at` | `format`はpdf/excel。共有URLはトークンハッシュのみ保存し、実トークンは保存しない。 |

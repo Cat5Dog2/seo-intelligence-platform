@@ -68,7 +68,10 @@ public sealed class KeywordDiscoveryIntegrationTests
             Assert.True(await dbContext.Keywords.AnyAsync(entity => entity.NormalizedText == "SEO" && entity.Language == "ja"));
             Assert.Equal(2, await dbContext.KeywordSuggestions.CountAsync());
             Assert.Equal(1, await dbContext.RelatedKeywords.CountAsync());
-            Assert.Equal(1, await dbContext.Questions.CountAsync(entity => entity.ProjectId == projectId));
+            // v1.14.0: 相対需要(1〜100)を0〜1のimportanceへ正規化し、出現時期も保存する。
+            var question = Assert.Single(await dbContext.Questions.Where(entity => entity.ProjectId == projectId).ToListAsync());
+            Assert.Equal(0.87m, question.Importance);
+            Assert.Equal("last_30_days", question.FirstSeenRange);
             Assert.Equal(2, await dbContext.LsiPaaItems.CountAsync());
             Assert.Equal(1, await dbContext.RankingKeywords.CountAsync());
             Assert.Equal(5, await dbContext.ExternalApiCalls.CountAsync(entity => entity.ProjectId == projectId));

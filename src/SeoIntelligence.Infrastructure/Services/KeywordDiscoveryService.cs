@@ -27,6 +27,9 @@ internal sealed class KeywordDiscoveryService(
     public const string SeedSource = "keyword_discovery";
     public const string ResultResourceType = "keyword_seed";
 
+    // よくある質問検索が相対需要を返さない場合の既定重要度。
+    private const decimal DefaultQuestionImportance = 0.5m;
+
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private static readonly IReadOnlyList<string> DefaultSources = ["suggest", "related", "other", "question", "ranking"];
     private static readonly IReadOnlyList<string> DefaultEngines = ["google"];
@@ -362,6 +365,7 @@ internal sealed class KeywordDiscoveryService(
                     continue;
                 }
 
+                var importance = ToQuestionImportance(question.RelativeDemand);
                 dbContext.Questions.Add(new QuestionEntity
                 {
                     Id = UuidV7.New(),
@@ -369,7 +373,8 @@ internal sealed class KeywordDiscoveryService(
                     SeedKeywordId = seedKeyword.Id,
                     QuestionText = questionText,
                     Source = "question",
-                    Importance = 0.5m,
+                    Importance = importance,
+                    FirstSeenRange = OptionalText(question.FirstSeenRange),
                     CreatedAt = NowUtc()
                 });
                 candidates.Add(new KeywordCandidate(
@@ -380,7 +385,7 @@ internal sealed class KeywordDiscoveryService(
                     KeywordId: null,
                     Type: "faq",
                     Question: questionText,
-                    Importance: 0.5m));
+                    Importance: importance));
             }
 
             await dbContext.SaveChangesAsync(cancellationToken);
@@ -957,6 +962,13 @@ internal sealed class KeywordDiscoveryService(
 
     private static string? OptionalText(string? value)
         => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    // ラッコキーワードAPI v1.14.0のrelativeDemandは検索結果内での1〜100の相対値。
+    // importanceは0〜1で保持するため100で割る。相対需要が無い場合は既定値を使う。
+    private static decimal ToQuestionImportance(decimal? relativeDemand)
+        => relativeDemand is null
+            ? DefaultQuestionImportance
+            : Math.Clamp(relativeDemand.Value / 100m, 0m, 1m);
 
     private static Result<T> Failure<T>(ErrorCode code, string message)
         => Result<T>.Failure(new Error(code, message));

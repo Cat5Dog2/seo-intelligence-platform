@@ -10,7 +10,7 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | 作成日 | 2026-05-30 |
 | 対象システム | ラッコキーワードAPIを中核にしたSEO・コンテンツ・競合分析・順位監視プラットフォーム |
 | 想定技術 | .NET 10 LTS / ASP.NET Core / Blazor Web App / PostgreSQL / Redis / Worker Service |
-| 入力仕様 | rakko-keyword-api-docs.json（OpenAPI 3.1、API v1.12.0） |
+| 入力仕様 | rakko-keyword-api-docs.json（OpenAPI 3.1、API v1.14.0） |
 | 関連設計 | requirements.md / api_design.md / db_design.md / screen_design.md / job_design.md / test_plan.md / external_api_design.md / operations_runbook.md / environment_setup.md / adr/ |
 | 作成方針 | 上記で列挙した全ユースケースを、API連携・DB・非同期ジョブ・AI支援・外部連携を組み合わせて実現する。 |
 
@@ -24,6 +24,7 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | 1.1 | 2026-05-30 | API設計書・DB設計書を追加し、基本設計の正本範囲と詳細設計への参照を整理。 | ChatGPT |
 | 1.2 | 2026-05-30 | 画面設計、ジョブ設計、テスト計画、外部API連携、運用、環境構築、ADRへの参照を追加。 | ChatGPT |
 | 1.3 | 2026-07-26 | ラッコキーワードAPI v1.12.0（OpenAPI 3.1）へ追随。地域/言語マスタを`/v1/metadata/*`へ移行。 | Claude |
+| 1.4 | 2026-08-17 | ラッコキーワードAPI v1.14.0へ追随。質問の相対需要/出現時期の保存と、SERP詳細取得エンドポイントを追加。 | Claude |
 
 ## 目次
 
@@ -560,6 +561,7 @@ public interface IRakkoKeywordClient
 | POST | /v1/search-rank | 検索順位チェック登録 | SearchRankHistoryDto | 順位チェック登録 |
 | GET | /v1/search-rank/{requestId}/status | 検索順位チェックステータス取得 | - | 順位チェックジョブの完了監視 |
 | POST | /v1/search-rank/{requestId}/results | 検索順位チェック結果データ取得 | SearchRankResultsDto | 順位結果、順位分布、推定流入、アラート基礎データ |
+| GET | /v1/search-rank/{requestId}/results/{entryNo}/serp | 検索順位チェックSERP取得 | - | 順位チェック時のSERP詳細(順位・タイトル・推定流入・トップKW)、クレジット消費なし |
 
 ## 9. 非同期ジョブ設計
 
@@ -820,7 +822,7 @@ Observability__OtlpEndpoint=...
 | SuggestKeywordsDto | keyword | keyword: 1文字以上。<br>modes: google / bing / youtube / googleVideo / amazon / rakuten / googleShopping / googleImage。省略時は google。<br>increaseKeyword: 省略時は false。<br>filter: 検索ボリューム、SEO難易度、CPC、競合性、出現時期、サジェストクラス等。<br>sortBy: keyword / suggestClass / seoDifficulty / searchVolume / cpc / competition / firstSeenRange。省略時は searchVolume。<br>orderBy: asc / desc。省略時は desc。<br>limit: 1以上。省略時は全件。 |
 | RelatedKeywordsDto | keyword | keyword: 1文字以上。<br>matchType: partialMatch / phraseMatch / prefixMatch / suffixMatch / wordMatch。省略時は partialMatch。<br>filter: 検索ボリューム、SEO難易度、CPC、競合性、出現時期等。<br>sortBy: seoDifficulty / searchVolume / cpc / competition / firstSeenRange。省略時は searchVolume。<br>orderBy: asc / desc。省略時は desc。<br>limit: 1〜25000。省略時は 1000。 |
 | OtherKeywordsDto | keyword | keyword: 1文字以上。<br>sortBy: importance / seoDifficulty / searchVolume / cpc / competition / firstSeenRange。省略時は importance。<br>orderBy: asc / desc。省略時は desc。 |
-| SearchQuestionDto | keyword | keyword: 1文字以上。<br>limit: 1〜200。省略時は 100。 |
+| SearchQuestionDto | keyword | keyword: 1文字以上。<br>filter: 質問文（含む/含まない）、相対需要（1〜100）、出現時期。<br>sortBy: relativeDemand / firstSeenRange。省略時は relativeDemand。<br>orderBy: asc / desc。省略時は desc。<br>limit: 1〜1000。省略時は 100。 |
 | RankingKeywordsDto | keyword | keyword: 1文字以上。<br>searchTop: 3 / 5 / 10 / 20 / 30 / 50。省略時は 20。<br>searchRange: 10 / 20 / 30 / 50 / 100。省略時は 50。<br>filter: キーワード、SEO難易度、検索ボリューム、CPC、競合性、関連度等。<br>sortBy: seoDifficulty / searchVolume / cpc / competition / relevance。省略時は relevance。<br>orderBy: asc / desc。省略時は desc。<br>limit: 1〜5000。省略時は 500。 |
 | SearchVolumeHistoryDto | keywords | keywords: 1〜50000件。<br>seoDifficulty: 省略時は false。<br>dataCompletion: 省略時は true。<br>location: 地域名（`/v1/metadata/locations`の一覧参照。市区町村レベルはカンマ区切り正式名）。省略時は Japan。<br>language: 言語名（`/v1/metadata/languages`の一覧参照）。省略時は Japanese。<br>deduplicate: 省略時は true。<br>aggregationPeriodMonths: 12 / 24 / 36 / 48。省略時は 12。 |
 | SearchVolumeResultsDto | - | noiseReduction: 省略時は true。<br>filter: キーワード、SEO難易度、検索ボリューム、CPC、競合性等。<br>sortBy: keyword / seoDifficulty / searchVolume / rateOfChange / cpc / competition / firstSeenRange。省略時は searchVolume。<br>orderBy: asc / desc。省略時は desc。<br>limit: 1〜50000。省略時は 100。 |
@@ -852,7 +854,8 @@ API別の保存先、カラム、リレーション、インデックスの正�
 
 ## 付録D. 参照資料
 
-- rakko-keyword-api-docs.json（OpenAPI 3.1、ラッコキーワードAPI v1.12.0、アップロードファイル）
+- rakko-keyword-api-docs.json（OpenAPI 3.1、ラッコキーワードAPI v1.14.0、アップロードファイル）
+- rakko-keyword-api-docs.md（Markdown版、人間向け。JSONと同一のAPI v1.14.0）
 
 - requirements.md
 

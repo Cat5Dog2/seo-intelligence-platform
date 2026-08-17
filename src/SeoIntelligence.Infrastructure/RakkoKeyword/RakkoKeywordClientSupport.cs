@@ -24,6 +24,7 @@ internal static class RakkoKeywordClientSupport
     public const string SearchRankEndpoint = "/v1/search-rank";
     public const string SearchRankStatusEndpoint = "/v1/search-rank/{requestId}/status";
     public const string SearchRankResultsEndpoint = "/v1/search-rank/{requestId}/results";
+    public const string SearchRankSerpEndpoint = "/v1/search-rank/{requestId}/results/{entryNo}/serp";
 
     public static string SearchVolumeStatusPath(long requestId)
         => $"/v1/search-volume/{requestId}/status";
@@ -36,6 +37,9 @@ internal static class RakkoKeywordClientSupport
 
     public static string SearchRankResultsPath(string requestId)
         => $"/v1/search-rank/{Uri.EscapeDataString(requestId)}/results";
+
+    public static string SearchRankSerpPath(string requestId, int entryNo)
+        => $"/v1/search-rank/{Uri.EscapeDataString(requestId)}/results/{entryNo.ToString(CultureInfo.InvariantCulture)}/serp";
 
     public static bool IsSuccessStatusCode(int statusCode)
         => statusCode is >= 200 and <= 299;
