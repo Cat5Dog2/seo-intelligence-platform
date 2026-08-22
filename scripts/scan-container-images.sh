@@ -82,13 +82,15 @@ read_reviewed_digests() {
 
   RUNTIME_REVIEWED_DIGESTS=()
   local line service tag digest
+  # Carriage returns are stripped because a Windows checkout stores the lock file with CRLF, and
+  # a trailing CR makes every digest comparison fail while printing two identical-looking values.
   while IFS= read -r line || [[ -n "$line" ]]; do
     [[ -z "${line// }" || "$line" == \#* ]] && continue
     # <service><TAB><tag><TAB><digest>; only the tag and digest matter here, the service name is
     # what verify-production-compose.sh binds each image to.
     IFS=$'	' read -r service tag digest <<< "$line"
     RUNTIME_REVIEWED_DIGESTS+=("${tag}"$'	'"${digest}")
-  done < "$DIGEST_LOCK_FILE"
+  done < <(tr -d '\r' < "$DIGEST_LOCK_FILE")
 
   if [[ "${#RUNTIME_REVIEWED_DIGESTS[@]}" -eq 0 ]]; then
     echo "ERROR: $DIGEST_LOCK_FILE lists no images." >&2

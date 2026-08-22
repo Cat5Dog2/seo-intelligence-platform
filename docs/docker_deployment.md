@@ -215,7 +215,7 @@ bash scripts/deploy-production.sh update
 
 実行順は build → スキャン → 停止 → **バックアップ** → Migration → 再作成で、途中で失敗すれば中断する。
 
-**バックアップはスクリプトが取得する。** 手動手順にしない理由は、正しい取得タイミングが「アプリ停止後・Migration前」という狭い窓であり、外すと復旧が必要になったときに初めて判明するためである。取得先は `backups/<UTCタイムスタンプ>/` で、PostgreSQLのdump、`seo-storage`、`web-data-protection`の3点を取り、いずれかが空ならMigrationへ進まず中断する。
+**バックアップはスクリプトが取得する。** 手動手順にしない理由は、正しい取得タイミングが「アプリ停止後・Migration前」という狭い窓であり、外すと復旧が必要になったときに初めて判明するためである。取得先は `backups/<UTCタイムスタンプ>/` で、PostgreSQLのdump、`seo-storage`、`web-data-protection`の3点を取る。取得後にすべて読み戻して検証し、1つでも復元できない状態ならMigrationへ進まず中断する（検証内容は5.1の表）。
 
 取得後はVPS外の暗号化された保管先へ転送する。5.1は手動で取得する場合の参照手順として残す。
 
@@ -260,11 +260,16 @@ docker compose --project-name seo-intelligence-prod --env-file .env.production -
 
 | 検証 | 理由 |
 | --- | --- |
+| web/api/workerが停止している | 稼働中に取得するとdumpとStorage archiveが別時点になる。ジョブが2つの取得の間にファイルを書けば、復元しても整合しない。 |
 | 出力先が絶対パスである | `docker run -v` は `/` または `./` で始まらないsourceを名前付きVolumeとして扱い、`/`を含む名前は拒否される。相対パスではバックアップ自体が失敗する。 |
 | 出力先が既存でない | 既存のバックアップを上書きしない。 |
 | 対象Volumeが存在する | 存在しないVolumeを指定するとDockerが空のVolumeを作り、「空だが妥当な」archiveができてしまう。 |
-| `postgres.dump` が `PGDMP` で始まる | 切り詰められたdumpやエラー出力だけのファイルを弾く。 |
-| `web-data-protection.tar.gz` に1件以上のファイルがある | 空ディレクトリのtar.gz自体は非空なので、サイズ検査では空を検出できない。Data Protection keyが無ければサインイン中のセッションは復元できない。 |
+| `postgres.dump` を `pg_restore --list` で読み戻せる | マジックストリングの確認では不十分。切り詰められたdumpも先頭は `PGDMP` である。読み戻せないdumpは復元できない。 |
+| dumpが1件以上のオブジェクトを含む | 目次が空のdumpはDBを取得できていない。 |
+| 各archiveを `tar -tzv` で読み戻せる | 読み戻しの失敗を「エントリ0件」と区別する。Storageは0件を許容するため、区別しないと壊れたarchiveが通る。 |
+| `web-data-protection.tar.gz` に1件以上の `.xml` **ファイル**がある | 空ディレクトリのtar.gz自体は非空なのでサイズ検査では検出できず、ディレクトリだけでもエントリ数では1件になる。Data Protection keyが無ければサインイン中のセッションは復元できない。 |
+
+`seo-storage` は新規デプロイで空があり得るため0件を許容する。
 
 出力先は `backups/<UTCタイムスタンプ>/`（引数で変更可）。取得後はVPS外の暗号化された保管先へ転送する。同一ホストにある限りバックアップとして機能しない。
 

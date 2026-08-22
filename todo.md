@@ -1555,6 +1555,25 @@ vendor仕様の構造差分(説明文を除く16件):
 - [x] バックアップを`scripts/backup-production.sh`へ切り出した。デプロイスクリプトから呼び、手動取得でも同じものを使う。文書へ手順を書き写さないのは、バックアップの失敗が「復元が必要になるまで気づかない」種類のためである。
 - [x] `scripts/verify-backup-production.sh`を追加し、`docker`をPATHスタブへ置き換えて本体を検証する。healthy成功、相対パスの絶対化、既存ディレクトリ拒否、Volume不在拒否、不正dump拒否、空DP key拒否、空Storage許容の7ケース。CIへ組み込んだ。
 
+12次レビューによる追加是正:
+
+- [x] **High**: dumpの完全性検証が先頭5バイトの`PGDMP`確認だけだった。切り詰められたcustom dumpも先頭は`PGDMP`である。固定PostgreSQLイメージで`pg_restore --list`まで成功すること、かつ目次が1件以上のオブジェクトを含むことを必須にした。
+- [x] **High**: `tar -tzf`の失敗を末尾の`|| true`が握りつぶしていた。Storageは0件を許容するため、壊れたarchiveでもMigrationへ進んでいた。一覧を先に取得して終了コードを確認する形にした。
+- [x] バックアップがアプリ停止を検査していなかった。稼働中に直接実行するとdumpとStorage archiveが別時点になる。web/api/workerが停止済みかを検査して拒否する。
+- [x] Data Protection keyの判定が「エントリ数」で、空のサブディレクトリだけでも通っていた。`tar -tzv`で**通常ファイル**のみを数え、`.xml`が1件以上あることを要求する。
+- [x] デプロイ文書の「3成果物のいずれかが空なら中断」が実装と不一致だった（Storageの空は許容）。検証内容の表へ置き換えた。
+
+CRLF起因のバグ（検証中に発覚）:
+
+- [x] コミット時に`image-digests.lock`がCRLF化し、digest比較が「同じ値に見えるのに不一致」で失敗するようになった。`scan-container-images.sh`と`backup-production.sh`のlock解析でCRを除去した。後者は不正なimage参照を生成していた。
+- [x] `.gitattributes`を追加し、`*.sh`・lockファイル・compose/Dockerfileの改行をLFに固定した。CRLFのシェルスクリプトはVPS上で`bad interpreter`になる。パーサ側のCR除去は二重の防御として残す。
+
+テストの強化:
+
+- [x] 相対パステストがDockerの実引数を検査しておらず、正規化を削除しても通る状態だった。スタブが受け取ったargvをトレースへ記録して検証する形にした。
+- [x] バックアップテストを7→14ケースへ拡張した。pg_restore不可、目次が空、archive読み戻し失敗（Storage/DP keyの両方）、ディレクトリのみ、key以外のファイルのみ、アプリ稼働中、を追加した。
+- [x] 相対パス正規化の削除と`tar`失敗の握りつぶし復活で、いずれも落ちることを確認済み。
+
 判断の記録（4次）:
 
 - 実VPSでのCaddy/Cloudflare経由のクライアントIP置換確認だけは、環境依存のためローカルで代替できない。partitionロジック自体はテストで固定済み。

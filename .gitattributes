@@ -1,0 +1,11 @@
+# Files that shell scripts parse, or that run as shell scripts, must keep LF in the working tree.
+#
+# Without this, a Windows checkout rewrites them to CRLF. A trailing carriage return then ends up
+# inside parsed values - a digest comparison fails while printing two identical-looking strings -
+# and a CRLF shell script fails on the VPS with "bad interpreter". The parsers strip CR anyway,
+# but that is a second line of defence rather than the fix.
+*.sh text eol=lf
+image-digests.lock text eol=lf
+Dockerfile text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
