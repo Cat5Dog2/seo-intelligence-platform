@@ -1,4 +1,5 @@
 using SeoIntelligence.Application.Common;
+using SeoIntelligence.Application.Services;
 using SeoIntelligence.Contracts.Api;
 
 namespace SeoIntelligence.Api.Common;
@@ -7,6 +8,18 @@ internal static class ApiResponseResults
 {
     public static IResult Ok<T>(HttpContext context, T data, ApiResponseMeta? meta = null)
         => Results.Json(ApiResponseEnvelope<T>.Success(context.GetCorrelationId(), data, meta));
+
+    /// <summary>
+    /// Returns a generated file as the response body. The common envelope is skipped on purpose:
+    /// it has no way to carry bytes, and wrapping the file in JSON would force every caller to
+    /// decode it before it could be saved. Failures still answer with the envelope.
+    /// <c>Results.Stream</c> disposes the stream once the response is written.
+    /// </summary>
+    public static IResult File(ArtifactContent content)
+        => Results.Stream(
+            content.Content,
+            contentType: content.ContentType,
+            fileDownloadName: content.FileName);
 
     public static IResult Created<T>(HttpContext context, T data, ApiResponseMeta? meta = null)
         => Results.Json(

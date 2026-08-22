@@ -29,7 +29,7 @@ public sealed class Phase3ApplicationContractTests
                 ReportType: "monthly",
                 Period: "2026-06",
                 Format: "pdf",
-                DownloadUrl: "storage://local/reports/report.pdf?expiresAt=2026-06-05T00%3A15%3A00Z",
+                DownloadUrl: "/api/report-shares/sample-token/content",
                 DownloadExpiresAt: DateTimeOffset.Parse("2026-06-05T00:15:00Z")),
             JsonOptions));
         Assert.Equal("monthly", sharedReport.RootElement.GetProperty("reportType").GetString());

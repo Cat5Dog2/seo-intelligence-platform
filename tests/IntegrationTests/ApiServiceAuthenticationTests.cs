@@ -158,7 +158,7 @@ public sealed class ApiServiceAuthenticationTests
 
     [Fact]
     [Trait("Category", "Security")]
-    public async Task ExactlyThreeEndpointsOptOutOfServiceKeyAuthentication()
+    public async Task ExactlyFourEndpointsOptOutOfServiceKeyAuthentication()
     {
         var storagePath = CreateTempStoragePath();
         await using var factory = new ServiceAuthenticationApiFactory(storagePath);
@@ -176,9 +176,13 @@ public sealed class ApiServiceAuthenticationTests
             .Order(StringComparer.Ordinal)
             .ToArray();
 
+        // Both share endpoints are anonymous because the recipient of a share link holds no
+        // service key: one returns the report metadata, the other the file itself. The share
+        // token is the access control for both, and both revalidate it.
         Assert.Equal(
             [
                 "GET /api/report-shares/{token}",
+                "GET /api/report-shares/{token}/content",
                 "GET /healthz",
                 "GET /readyz"
             ],

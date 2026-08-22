@@ -90,8 +90,8 @@
 | --- | --- | --- |
 | CSV出力 | csv export | Phase 1対象データをCSVとしてStorageへ保存する処理。 |
 | データ出力 | data_export | CSV/Excel出力履歴。MVPはCSVのみ。 |
-| ダウンロードURL | downloadUrl | Storage上のファイルへ短時間だけアクセスできるURL。発行を監査する。 |
-| file_uri | file_uri | Storage上の成果物URI。APIレスポンスでは必要に応じて短時間URLに変換する。 |
+| ダウンロードURL | downloadUrl | 成果物を配信する認証必須のAPIパス（`.../content`）。署名付きの期限付きURLではない。発行と取得をそれぞれ監査する。 |
+| file_uri | file_uri | Storage上の成果物URI（`storage://`）。クライアントからは解決できないため、配信は`.../content`が行う。 |
 | CSV入力 | csv input | MVPではブラウザ内でパースし、APIにはファイル本体ではなく`keywords`配列を送る。 |
 | インポート | data_import | Phase 3対象。Storageへアップロード済みファイルをWorkerが検証・取込する。 |
 

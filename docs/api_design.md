@@ -191,7 +191,21 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 }
 ```
 
-ジョブ登録APIの202 Accepted、`GET /api/jobs/{jobId}`、個別ジョブ状態取得APIはいずれも共通レスポンスエンベロープで`data`にジョブレスポンスを格納する。`resultResource`は完了後に`resourceType`、`resourceId`、`downloadUrl`、`expiresAt`などを持つ。ダウンロードURLの発行、失効、ダウンロードは`audit_logs`に記録する。
+ジョブ登録APIの202 Accepted、`GET /api/jobs/{jobId}`、個別ジョブ状態取得APIはいずれも共通レスポンスエンベロープで`data`にジョブレスポンスを格納する。`resultResource`は完了後に`resourceType`、`resourceId`、`downloadUrl`などを持つ。成果物のダウンロードURLに期限は持たせない（6.1節）。URLの発行と、ファイル本体の取得開始は`audit_logs`へ記録する。
+
+### 6.1 成果物ダウンロード
+
+`.../download` はダウンロード先URLを返すだけで、ファイル本体は `.../content` が返す。返すURLは認証必須のAPIパスであり、署名付きの期限付きURLではない。期限を持たせないのは、アクセス制御が毎リクエストの認証で行われ、URL単体では何も取得できないためである。期限が意味を持つ匿名の共有URLだけは、共有トークンの期限と失効を毎回検証して強制する。`content`系はレスポンスエンベロープを使わず、本体をそのままストリーミングし、`Content-Type` と `Content-Disposition: attachment` を付ける。エラー時のみ共通エンベロープを返す。
+
+監査は発行と取得を分けて記録する。`download` は `*_url_issued`、`content` は `*_downloaded` を記録する。`*_downloaded` の `via` には `api_content_endpoint` または `share_url` を入れる。
+
+取得の正本は `*_downloaded` である。画面のジョブ一覧からは `download` を経由せず直接ダウンロードへ遷移するため、`*_url_issued` は必ずしも対になって残らない。
+
+`*_downloaded` が意味するのは**取得の開始**、すなわちStorageからの読み取りに成功し、ファイルを呼び出し元へ引き渡した時点である。読み取りに失敗した場合（存在確認後の削除、権限エラー等）は記録しない。一方、引き渡し後の転送中断やクライアント切断は検知せず、記録は残る。転送完了の保証が必要な用途には使わない。
+
+共有2経路はレート制限の対象で、超過時は共通エンベロープの`RateLimit.Exceeded`を429で返す。`Retry-After`ヘッダーは**任意**である。再開時刻を提示できる固定窓制限では付与するが、同時実行数制限では権限がいつ空くかを提示できないため付与しない。クライアントは`Retry-After`が無い場合も再試行できるよう実装する。
+
+`content`系はサービスキーを要求するため、ブラウザから直接開くことはできない。画面からのダウンロードはWebホストの `/downloads/projects/{projectId}/exports/{exportId}` と `/downloads/projects/{projectId}/reports/{reportId}` を使う。これらは管理者Cookieで認可し、WebホストがサービスキーでAPIを呼び、応答をそのまま中継する。例外は共有URL経由の `/api/report-shares/{token}/content` で、共有トークン自体がアクセス制御になるため匿名で到達できる。
 
 ## 7. 内部API一覧
 
@@ -270,7 +284,8 @@ API認証情報の作成/ローテーションでは、`secretValue`系と`keyRe
 | MVP | GET | `/api/projects/{projectId}/search-volume/jobs/{jobId}/results` | 検索ボリューム結果取得 |
 | MVP | POST | `/api/projects/{projectId}/exports/csv` | Phase 1対象データのCSVエクスポートジョブ登録 |
 | MVP | GET | `/api/projects/{projectId}/exports/{exportId}` | エクスポート状態/ファイル情報取得。MVPはCSVのみ |
-| MVP | GET | `/api/projects/{projectId}/exports/{exportId}/download` | CSVファイルダウンロード。発行/ダウンロードを監査する |
+| MVP | GET | `/api/projects/{projectId}/exports/{exportId}/download` | ダウンロードURL発行。発行を監査する |
+| MVP | GET | `/api/projects/{projectId}/exports/{exportId}/content` | CSVファイル本体をストリーミング配信する。ダウンロードを監査する |
 
 `/api/projects/{projectId}/keyword-discovery/suggest` は、`syncPreferred=true` かつ `limit<=50` を軽量条件として同期実行し、同期条件外では `202 Accepted`、`jobId`、`statusUrl` を返す。
 
@@ -316,10 +331,12 @@ API認証情報の作成/ローテーションでは、`secretValue`系と`keyRe
 | Phase 3 | POST | `/api/projects/{projectId}/cannibalization/refresh` | カニバリ候補の再計算ジョブ登録 |
 | Phase 3 | POST | `/api/projects/{projectId}/reports` | レポート生成 |
 | Phase 3 | GET | `/api/projects/{projectId}/reports/{reportId}` | レポート詳細取得 |
-| Phase 3 | GET | `/api/projects/{projectId}/reports/{reportId}/download` | レポートファイルの短時間ダウンロードURL発行。発行操作を監査する |
+| Phase 3 | GET | `/api/projects/{projectId}/reports/{reportId}/download` | レポートファイルのダウンロードURL解決。発行操作を監査する |
+| Phase 3 | GET | `/api/projects/{projectId}/reports/{reportId}/content` | レポートファイル本体をストリーミング配信する。ダウンロードを監査する |
 | Phase 3 | POST | `/api/projects/{projectId}/reports/{reportId}/share` | 共有URL発行 |
 | Phase 3 | DELETE | `/api/projects/{projectId}/reports/{reportId}/share` | 共有URL失効 |
-| Phase 3 | GET | `/api/report-shares/{token}` | 共有URLによるレポート取得 |
+| Phase 3 | GET | `/api/report-shares/{token}` | 共有URLによるレポートメタデータ取得。匿名アクセス可 |
+| Phase 3 | GET | `/api/report-shares/{token}/content` | 共有URLによるレポートファイル本体の配信。匿名アクセス可。トークンを再検証する |
 | Phase 3 | POST | `/api/projects/{projectId}/exports` | CSV/Excelエクスポートジョブ登録 |
 | Phase 3 | POST | `/api/projects/{projectId}/imports/upload-url` | インポート元ファイル用の期限付きURL発行 |
 | Phase 3 | POST | `/api/projects/{projectId}/imports` | CSV/Excelインポートジョブ登録 |
@@ -350,7 +367,7 @@ ISSUE-P3-001では、上記Phase 3 APIのContracts/DTO、ルートグループ�
 | `ProjectDashboardResponse` | ダッシュボード | Phase 1項目として`keywordDiscoverySummary`、`searchVolumeSummary`、`opportunityScoreSummary`、`creditUsageSummary`、`jobSummary`、`notificationSummary`を返す。Phase 2では`competitorSummary`、`influxSummary`、`contentAnalysisSummary`、`briefSummary`、`rankSummary`、`rankAlertSummary`を追加する。Phase 3では`rewriteSummary`、`cannibalizationSummary`、`reportSummary`、`aiSummary`を追加する。 |
 | `ContentAnalyzeRequest` | コンテンツ分析 | `keyword`、`includeContentSearch`、`includeHeadline`、`includeCoOccurrence`、`limit` |
 | `RankCheckJobRequest` | 順位チェック | `keywords`、`targets`、`matchType`、`depth`、`withMetrics`、`deduplicate` |
-| `ReportRequest` | レポート生成 | `reportType`、`period`、`format`（pdf/excel）、`sections`、`shareExpiresAt`。生成完了後は`reports.file_uri`を保持し、ダウンロードは専用APIで短時間URLを返す。 |
+| `ReportRequest` | レポート生成 | `reportType`、`period`、`format`（pdf/excel）、`sections`、`shareExpiresAt`。生成完了後は`reports.file_uri`を保持し、`download`が取得先URLを、`content`がファイル本体を返す。 |
 | `ExportRequest` | エクスポート | `exportType`、`format`（csv/excel）、`filter`、`columns` |
 | `ImportRequest` | インポート | `importType`（keywords/rankings/competitors/briefs/tasks）、`format`（csv/excel）、`sourceFileUri`、`validationMode`（初期実装はstrict） |
 | `ConnectorSettingsRequest` | 外部連携スタブ設定 | `connectorType`、`name`、`authRef`、`settings`、`status`。Secret/OAuth実値はSecret Store参照のみ |
@@ -366,7 +383,7 @@ ISSUE-P3-001では、上記Phase 3 APIのContracts/DTO、ルートグループ�
 | 順位チェック | `targets`は1から50件。各targetはURLまたはドメインと`targetType`を持つ。`depth`は30/40/50/60/70/80/90/100。 |
 | ページング | `pageSize`は1から200。外部API結果の大容量取得はジョブまたはエクスポートに寄せる。 |
 | 共有URL | `shareExpiresAt`は未来日時のみ。共有トークンは十分なランダム値をレスポンスへ一度だけ返し、DBにはハッシュのみ保存する。未知または改ざんトークンは404、期限切れまたは明示失効済みトークンは410を返す。 |
-| レポート | `format`はpdfまたはexcel。`period`は月次レポートでは`YYYY-MM`を基本とし、生成済みファイルのダウンロードはスコープ確認後に短時間URLを発行する。 |
+| レポート | `format`はpdfまたはexcel。`period`は月次レポートでは`YYYY-MM`を基本とし、生成済みファイルのダウンロードはスコープ確認後に`content`のURLを返す。 |
 | CSV/Excel | インポートはPhase 3。ファイルはStorageへ直接アップロードし、APIサーバーはファイル本体を保持しない。`keywords`は`keyword`、`rankings`は`keyword,target,position`、`competitors`は`domain`、`briefs`は`title`、`tasks`は`targetUrl`を必須列とする。 |
 
 MVPの一括検索ボリューム画面でCSVファイルを選択した場合、ファイル本体はAPIへアップロードしない。Blazor UIがブラウザ内でCSVをパースし、空行除外・重複除外・上限検証後に`SearchVolumeJobRequest.keywords`へJSON配列として設定する。

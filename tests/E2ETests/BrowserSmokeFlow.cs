@@ -158,12 +158,40 @@ internal sealed class BrowserSmokeFlow(
 
         await WaitForEnabledAsync("report-download-button");
         await page.GetByTestId("report-download-button").ClickAsync();
-        await page.GetByTestId("report-download-url-link").WaitForAsync(new LocatorWaitForOptions { State = WaitForSelectorState.Visible });
+        var downloadLink = page.GetByTestId("report-download-url-link");
+        await downloadLink.WaitForAsync(new LocatorWaitForOptions { State = WaitForSelectorState.Visible });
+
+        // Visible is not enough: the link used to point at a storage:// URI that no browser can
+        // open. It has to target the Web host's own download route, which carries the operator's
+        // cookie and fetches the file from the API with the service key.
+        var downloadHref = await downloadLink.GetAttributeAsync("href");
+        Assert.Equal(
+            $"/downloads/projects/{project.ProjectId}/reports/{reportId}",
+            downloadHref);
+
+        var download = await page.RunAndWaitForDownloadAsync(async () => await downloadLink.ClickAsync());
+        var downloadedPath = await download.PathAsync();
+        Assert.False(string.IsNullOrWhiteSpace(downloadedPath), "The report download produced no file.");
+        Assert.StartsWith("monthly-", download.SuggestedFilename, StringComparison.Ordinal);
+        Assert.EndsWith(".pdf", download.SuggestedFilename, StringComparison.Ordinal);
+        Assert.StartsWith("%PDF-", await ReadFirstBytesAsync(downloadedPath!, 5), StringComparison.Ordinal);
 
         await WaitForEnabledAsync("report-share-button");
         await page.GetByTestId("report-share-button").ClickAsync();
         await WaitForElementTextAsync("report-share-status-value", "active");
         await WaitForElementTextContainsAsync("report-share-url-value", "/api/report-shares/");
+    }
+
+    /// <summary>
+    /// Reads the first bytes of a downloaded file as text, so the smoke can tell a real artifact
+    /// from an error page that happened to be saved with the right name.
+    /// </summary>
+    private static async Task<string> ReadFirstBytesAsync(string path, int count)
+    {
+        await using var stream = File.OpenRead(path);
+        var buffer = new byte[count];
+        var read = await stream.ReadAtLeastAsync(buffer, count, throwOnEndOfStream: false);
+        return System.Text.Encoding.ASCII.GetString(buffer, 0, read);
     }
 
     private async Task NavigateAsync(string url)

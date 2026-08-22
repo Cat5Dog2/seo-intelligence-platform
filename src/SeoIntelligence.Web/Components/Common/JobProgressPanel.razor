@@ -19,6 +19,10 @@
                 {
                     <button type="button" class="table-action" @onclick="() => CancelAsync(job.JobId)">キャンセル</button>
                 }
+                @if (DownloadHref(job) is { } downloadHref)
+                {
+                    <a class="table-action" data-testid="job-download-link" href="@downloadHref" target="_top">ダウンロード</a>
+                }
                 <AuditLink ResourceType="job" ResourceId="@job.JobId.ToString("D")" />
             </div>
         </RowActions>
@@ -127,6 +131,9 @@
     private static bool CanCancel(JobDetails job)
         => string.Equals(job.Status, "queued", StringComparison.OrdinalIgnoreCase)
             || string.Equals(job.Status, "waiting_external", StringComparison.OrdinalIgnoreCase);
+
+    private static string? DownloadHref(JobDetails job)
+        => ArtifactDownloadLinks.ForJob(job);
 
     private static string FormatDateTime(DateTime value)
         => value.ToLocalTime().ToString("yyyy-MM-dd HH:mm");

@@ -119,8 +119,16 @@ public sealed class DataExportIntegrationTests
                 Assert.Equal(HttpStatusCode.OK, downloadResponse.StatusCode);
                 var data = downloadDocument.RootElement.GetProperty("data");
                 Assert.Equal(exportId, data.GetProperty("exportId").GetGuid());
-                Assert.StartsWith("storage://local/exports/", data.GetProperty("downloadUrl").GetString(), StringComparison.Ordinal);
-                Assert.True(data.GetProperty("expiresAt").GetDateTime() > DateTime.UtcNow);
+
+                // The issued URL has to be something a caller can actually fetch. A storage://
+                // URI is not: no HTTP client resolves it, which left every generated file
+                // unreachable from the browser.
+                Assert.Equal(
+                    $"/api/projects/{projectId}/exports/{exportId}/content",
+                    data.GetProperty("downloadUrl").GetString());
+                // No expiry is promised: the URL is an authenticated API path, not a pre-signed
+                // one, so a deadline on it would control nothing and used to go unenforced.
+                Assert.False(data.TryGetProperty("expiresAt", out _));
             }
 
             await using (var scope = factory.Services.CreateAsyncScope())
@@ -136,6 +144,37 @@ public sealed class DataExportIntegrationTests
 
                 Assert.Contains(AuditLogActionNames.CsvExportCreated, csvAuditActions);
                 Assert.Contains(AuditLogActionNames.CsvDownloadUrlIssued, csvAuditActions);
+
+                // Issuing a URL is not a download. The "downloaded" record belongs to the request
+                // that actually reads the bytes, below.
+                Assert.DoesNotContain(AuditLogActionNames.CsvDownloaded, csvAuditActions);
+            }
+
+            using (var contentResponse = await client.GetAsync($"/api/projects/{projectId}/exports/{exportId}/content"))
+            {
+                Assert.Equal(HttpStatusCode.OK, contentResponse.StatusCode);
+                Assert.Equal("text/csv", contentResponse.Content.Headers.ContentType?.MediaType);
+                Assert.Equal("attachment", contentResponse.Content.Headers.ContentDisposition?.DispositionType);
+                Assert.Equal(
+                    $"keyword_metrics-{exportId:N}.csv",
+                    contentResponse.Content.Headers.ContentDisposition?.FileNameStar
+                        ?? contentResponse.Content.Headers.ContentDisposition?.FileName?.Trim('"'));
+
+                var downloaded = await contentResponse.Content.ReadAsStringAsync();
+                Assert.Equal(csv, downloaded);
+            }
+
+            await using (var scope = factory.Services.CreateAsyncScope())
+            {
+                var dbContext = scope.ServiceProvider.GetRequiredService<SeoIntelligenceDbContext>();
+                var csvAuditActions = await dbContext.AuditLogs
+                    .AsNoTracking()
+                    .Where(entity =>
+                        entity.ResourceType == AuditLogResourceTypes.CsvExport &&
+                        entity.ResourceId == exportId.ToString("D"))
+                    .Select(entity => entity.Action)
+                    .ToArrayAsync();
+
                 Assert.Contains(AuditLogActionNames.CsvDownloaded, csvAuditActions);
             }
         }
@@ -177,6 +216,125 @@ public sealed class DataExportIntegrationTests
 
             Assert.Equal(HttpStatusCode.NotFound, wrongProjectResponse.StatusCode);
             Assert.Equal("Resource.NotFound", wrongProjectDocument.RootElement.GetProperty("errors")[0].GetProperty("code").GetString());
+        }
+        finally
+        {
+            DeleteTempStoragePath(factory.StoragePath);
+        }
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task ExportContentIsScopedToItsProjectAndRefusesUnfinishedExports()
+    {
+        await using var factory = new DataExportApiFactory();
+        using var client = CreateClient(factory);
+        var projectId = await SeedProjectWithKeywordMetricsAsync(factory);
+        var otherProjectId = await SeedProjectAsync(factory, "Other export content project");
+
+        try
+        {
+            using var registerResponse = await client.PostAsJsonAsync(
+                $"/api/projects/{projectId}/exports/csv",
+                new
+                {
+                    exportType = "keyword_metrics"
+                });
+            using var registerDocument = await ReadJsonAsync(registerResponse);
+            var jobId = registerDocument.RootElement.GetProperty("data").GetProperty("jobId").GetGuid();
+
+            Guid exportId;
+            await using (var scope = factory.Services.CreateAsyncScope())
+            {
+                var dbContext = scope.ServiceProvider.GetRequiredService<SeoIntelligenceDbContext>();
+                exportId = (await dbContext.Jobs.AsNoTracking().SingleAsync(entity => entity.Id == jobId)).ResultResourceId!.Value;
+            }
+
+            // The export is still queued: there is no file to hand out yet.
+            using (var pendingResponse = await client.GetAsync($"/api/projects/{projectId}/exports/{exportId}/content"))
+            using (var pendingDocument = await ReadJsonAsync(pendingResponse))
+            {
+                Assert.Equal(HttpStatusCode.Conflict, pendingResponse.StatusCode);
+                Assert.Equal(
+                    "Resource.Conflict",
+                    pendingDocument.RootElement.GetProperty("errors")[0].GetProperty("code").GetString());
+            }
+
+            await DispatchAsync(factory, jobId);
+
+            // A finished export must still not be readable through another project's URL.
+            using (var wrongProjectResponse = await client.GetAsync($"/api/projects/{otherProjectId}/exports/{exportId}/content"))
+            using (var wrongProjectDocument = await ReadJsonAsync(wrongProjectResponse))
+            {
+                Assert.Equal(HttpStatusCode.NotFound, wrongProjectResponse.StatusCode);
+                Assert.Equal(
+                    "Resource.NotFound",
+                    wrongProjectDocument.RootElement.GetProperty("errors")[0].GetProperty("code").GetString());
+            }
+
+            using (var ownProjectResponse = await client.GetAsync($"/api/projects/{projectId}/exports/{exportId}/content"))
+            {
+                Assert.Equal(HttpStatusCode.OK, ownProjectResponse.StatusCode);
+            }
+        }
+        finally
+        {
+            DeleteTempStoragePath(factory.StoragePath);
+        }
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task AFileThatCannotBeOpenedAfterTheReadinessCheckIsNotRecordedAsDownloaded()
+    {
+        await using var factory = new DataExportApiFactory();
+        using var client = CreateClient(factory);
+        var projectId = await SeedProjectWithKeywordMetricsAsync(factory);
+
+        try
+        {
+            using var registerResponse = await client.PostAsJsonAsync(
+                $"/api/projects/{projectId}/exports/csv",
+                new { exportType = "keyword_metrics" });
+            using var registerDocument = await ReadJsonAsync(registerResponse);
+            var jobId = registerDocument.RootElement.GetProperty("data").GetProperty("jobId").GetGuid();
+
+            Guid exportId;
+            await using (var scope = factory.Services.CreateAsyncScope())
+            {
+                var dbContext = scope.ServiceProvider.GetRequiredService<SeoIntelligenceDbContext>();
+                exportId = (await dbContext.Jobs.AsNoTracking().SingleAsync(entity => entity.Id == jobId)).ResultResourceId!.Value;
+            }
+
+            await DispatchAsync(factory, jobId);
+
+            // Storage now reports the object as present but fails to open it. Deleting the real
+            // file instead would stop the request at the existence check and never exercise the
+            // window this test is about - the one where a premature audit entry would be written.
+            factory.MakeStorageUnreadable = true;
+
+            using (var contentResponse = await client.GetAsync($"/api/projects/{projectId}/exports/{exportId}/content"))
+            using (var contentDocument = await ReadJsonAsync(contentResponse))
+            {
+                Assert.Equal(HttpStatusCode.Conflict, contentResponse.StatusCode);
+                Assert.Equal(
+                    "Resource.Conflict",
+                    contentDocument.RootElement.GetProperty("errors")[0].GetProperty("code").GetString());
+            }
+
+            await using (var scope = factory.Services.CreateAsyncScope())
+            {
+                var dbContext = scope.ServiceProvider.GetRequiredService<SeoIntelligenceDbContext>();
+                var actions = await dbContext.AuditLogs
+                    .AsNoTracking()
+                    .Where(entity =>
+                        entity.ResourceType == AuditLogResourceTypes.CsvExport &&
+                        entity.ResourceId == exportId.ToString("D"))
+                    .Select(entity => entity.Action)
+                    .ToArrayAsync();
+
+                Assert.DoesNotContain(AuditLogActionNames.CsvDownloaded, actions);
+            }
         }
         finally
         {
@@ -606,9 +764,41 @@ public sealed class DataExportIntegrationTests
 
     private sealed record ImportScenario(string ImportType, string Csv);
 
+    /// <summary>
+    /// Reports every object as present but refuses to open it, which is the state left by a file
+    /// deleted between the readiness check and the read. Deleting the file from real storage would
+    /// not reach that path: the request would stop at the existence check instead.
+    /// </summary>
+    private sealed class UnreadableObjectStorage(IObjectStorage inner, Func<bool> isUnreadable) : IObjectStorage
+    {
+        public Task<StoredObjectReference> PutAsync(StoragePutRequest request, CancellationToken cancellationToken = default)
+            => inner.PutAsync(request, cancellationToken);
+
+        // Reports the object as present even while reads fail, which is the state left by a file
+        // removed between the readiness check and the read.
+        public Task<bool> ExistsAsync(StorageObjectKey key, CancellationToken cancellationToken = default)
+            => isUnreadable() ? Task.FromResult(true) : inner.ExistsAsync(key, cancellationToken);
+
+        public Task<Stream> OpenReadAsync(StorageObjectKey key, CancellationToken cancellationToken = default)
+            => isUnreadable()
+                ? throw new IOException($"Simulated read failure for {key.Value}.")
+                : inner.OpenReadAsync(key, cancellationToken);
+
+        public Task DeleteAsync(StorageObjectKey key, CancellationToken cancellationToken = default)
+            => inner.DeleteAsync(key, cancellationToken);
+
+        public Task<StorageConnectivityResult> CheckConnectivityAsync(CancellationToken cancellationToken = default)
+            => inner.CheckConnectivityAsync(cancellationToken);
+    }
+
     private sealed class DataExportApiFactory : ServiceKeyApiFactory
     {
         private readonly string databaseName = Guid.NewGuid().ToString("N");
+
+        /// <summary>
+        /// Replaces storage with one whose reads always fail, after the export has been written.
+        /// </summary>
+        public bool MakeStorageUnreadable { get; set; }
 
         public string StoragePath { get; } = CreateTempStoragePath();
 
@@ -636,6 +826,21 @@ public sealed class DataExportIntegrationTests
             {
                 services.AddDbContext<SeoIntelligenceDbContext>(options =>
                     options.UseInMemoryDatabase(databaseName));
+
+                // Always wraps the real storage; the wrapper consults the flag on each call.
+                // Deciding here instead would freeze the answer, because IObjectStorage is a
+                // singleton that is first resolved while the export is being written.
+                var storageDescriptor = services.Single(descriptor => descriptor.ServiceType == typeof(IObjectStorage));
+                services.Remove(storageDescriptor);
+                services.Add(ServiceDescriptor.Describe(
+                    typeof(IObjectStorage),
+                    serviceProvider =>
+                    {
+                        var inner = (IObjectStorage)(storageDescriptor.ImplementationFactory?.Invoke(serviceProvider)
+                            ?? ActivatorUtilities.CreateInstance(serviceProvider, storageDescriptor.ImplementationType!));
+                        return new UnreadableObjectStorage(inner, () => MakeStorageUnreadable);
+                    },
+                    storageDescriptor.Lifetime));
 
                 using var provider = services.BuildServiceProvider();
                 using var scope = provider.CreateScope();

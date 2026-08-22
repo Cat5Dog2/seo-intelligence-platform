@@ -57,11 +57,13 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | ProjectSwitcher | プロジェクト選択、アーカイブ済み非表示 | loading / empty / active |
 | LocationLanguageSelector | 地域/言語の既定値表示と変更 | loaded / syncRequired |
 | CreditBadge | 日次/月次クレジット消費、402発生状況 | normal / warning / exhausted |
-| JobProgressPanel | 非同期ジョブ進捗、再実行、キャンセル | queued / running / waiting_external / succeeded / failed_retryable / failed_fatal / canceled |
+| JobProgressPanel | 非同期ジョブ進捗、再実行、キャンセル、成果物ダウンロード | queued / running / waiting_external / succeeded / failed_retryable / failed_fatal / canceled |
 | DataTable | ソート、フィルタ、ページング、CSV出力 | loading / empty / error |
 | StatusFilter | active/archived/disabled切替 | default active |
 | AuditLink | 監査ログ詳細への導線 | available / unavailable |
 | ErrorSummary | バリデーション/ジョブ/外部APIエラー表示 | validation / external / fatal |
+
+各画面の「CSV出力」は出力ジョブを登録する操作であり、生成されたファイルの取得は`JobProgressPanel`のダウンロード導線に集約する。ジョブが`succeeded`で成果物（`data_export`、`article_brief_export`、`report`）を持つ場合にリンクを表示する。リンク先はWebホストの`/downloads/projects/{projectId}/exports|reports/{id}`であり、ブラウザはAPIサービスキーを持たないためAPIへ直接リンクしない。
 
 ## 5. 画面一覧
 
@@ -242,7 +244,7 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | 入力 | report_type、period、format、共有期限。 |
 | 表示 | 生成状態、ファイル、共有URL状態、通知履歴、監査ログ。 |
 | 操作 | レポート生成、PDF/Excel出力、共有URL発行/失効、ダウンロード。 |
-| API | `POST /api/projects/{projectId}/reports`、`GET /api/projects/{projectId}/reports/{reportId}`、`GET /api/projects/{projectId}/reports/{reportId}/download`、`POST /api/projects/{projectId}/reports/{reportId}/share`、`DELETE /api/projects/{projectId}/reports/{reportId}/share` |
+| API | `POST /api/projects/{projectId}/reports`、`GET /api/projects/{projectId}/reports/{reportId}`、`GET /api/projects/{projectId}/reports/{reportId}/download`、`POST /api/projects/{projectId}/reports/{reportId}/share`、`DELETE /api/projects/{projectId}/reports/{reportId}/share`。ファイル本体はWebホストの `/downloads/projects/{projectId}/reports/{reportId}` 経由で取得する |
 | Phase | Phase 3必須。 |
 
 ### 6.14 S-130 AIアシスタント

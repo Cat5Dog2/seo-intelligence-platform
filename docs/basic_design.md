@@ -413,7 +413,10 @@ artifact_versionsは記事ブリーフ、レポート、AI生成結果など成�
 | POST | /api/projects/{projectId}/cannibalization/refresh | カニバリ候補の再計算ジョブ登録 |
 | POST | /api/projects/{projectId}/reports | Phase 3: レポート生成 |
 | GET | /api/projects/{projectId}/reports/{reportId} | Phase 3: レポート詳細取得 |
-| GET | /api/projects/{projectId}/reports/{reportId}/download | Phase 3: レポートファイルの短時間ダウンロードURL発行。発行操作をaudit_logsへ記録 |
+| GET | /api/projects/{projectId}/reports/{reportId}/download | Phase 3: レポートファイルのダウンロードURL解決。発行操作をaudit_logsへ記録 |
+| GET | /api/projects/{projectId}/reports/{reportId}/content | Phase 3: レポートファイル本体を配信。取得をaudit_logsへ記録 |
+| GET | /api/projects/{projectId}/exports/{exportId}/content | CSV/Excelファイル本体を配信。取得をaudit_logsへ記録 |
+| GET | /api/report-shares/{token}/content | Phase 3: 共有URLによるレポートファイル配信。匿名アクセス可。トークンを再検証し、レート制限する |
 | POST | /api/projects/{projectId}/reports/{reportId}/share | Phase 3: 共有URL発行。トークンはレスポンスへ一度だけ返し、share_token_hashとshare_expires_atを更新する |
 | DELETE | /api/projects/{projectId}/reports/{reportId}/share | Phase 3: 共有URL失効。share_revoked_atを更新し監査ログを記録 |
 | GET | /api/report-shares/{token} | Phase 3: 共有URLによるレポート公開取得。未知/改ざんトークンは404、期限切れ・失効済みは410 |
@@ -494,7 +497,11 @@ Response envelope:
 }
 ```
 
-ジョブ登録APIの202 Accepted、`GET /api/jobs/{jobId}`、個別ジョブ状態取得APIは共通レスポンスエンベロープで`data`にジョブレスポンスを格納する。`resultResource`は完了後に`resourceType`、`resourceId`、`downloadUrl`等を持つ。ダウンロードURLはプロジェクトスコープ確認後に短時間だけ有効なURLとして発行し、発行・失効・ダウンロードはaudit_logsへ記録する。
+ジョブ登録APIの202 Accepted、`GET /api/jobs/{jobId}`、個別ジョブ状態取得APIは共通レスポンスエンベロープで`data`にジョブレスポンスを格納する。`resultResource`は完了後に`resourceType`、`resourceId`、`downloadUrl`等を持つ。
+
+ダウンロードURLはプロジェクトスコープ確認後に返す、認証必須のAPIパス（`.../content`）である。署名付きの期限付きURLではないため期限は持たせない。アクセス制御は毎リクエストの認証（Webは管理者Cookie、APIはサービスキー）で行い、URL単体では何も取得できない。期限が意味を持つのは匿名の共有URLだけで、そちらは共有トークンの`share_expires_at`と`share_revoked_at`を毎回検証して強制する。
+
+監査は取得を正本とする。`*_downloaded`はファイル本体を返す`content`が記録し、経路を`via`（`api_content_endpoint`または`share_url`）で残す。`*_url_issued`は`download`を呼んだ事実の記録であり、画面から直接`content`へ遷移した場合は残らない。
 
 ### 7.3 ファイル入出力方式
 
@@ -502,7 +509,7 @@ CSV/ExcelインポートはPhase 3対象とし、Phase 1/MVPではAPIを公開�
 
 MVPの一括検索ボリューム画面で扱うCSVはインポート機能ではない。Blazor UIがブラウザ内でCSVをパースし、空行除外・重複除外・上限検証を行ったうえで、`POST /api/projects/{projectId}/search-volume/jobs`へ`keywords` JSON配列として送信する。APIサーバへCSVファイル本体はアップロードしない。
 
-Phase 1のエクスポートは`POST /api/projects/{projectId}/exports/csv`によるCSV出力に限定する。Phase 3のCSV/ExcelエクスポートはDataExportJobがStorageへファイルを生成し、data_exports.file_uriに保存する。ダウンロード時はスコープ確認後に短時間だけ有効なURLを発行し、発行・ダウンロード操作をaudit_logsへ記録する。
+Phase 1のエクスポートは`POST /api/projects/{projectId}/exports/csv`によるCSV出力に限定する。Phase 3のCSV/ExcelエクスポートはDataExportJobがStorageへファイルを生成し、data_exports.file_uriに保存する。ダウンロードはスコープ確認後に`.../content`がファイル本体を配信し、取得をaudit_logsへ記録する。
 
 ## 8. ラッコキーワードAPI連携設計
 
@@ -725,12 +732,12 @@ Phase 3追加: [AI再生成] [PDF出力] [共有URL発行]
 | 項目 | 設計 |
 | --- | --- |
 | 認証 | 単一管理者ログインをASP.NET Core Identity + Cookieで実装する。Cookieは本番`__Host-SeoIntelligence.Auth`、HttpOnly、Secure、SameSite=Lax、8時間スライディング。パスワードは12文字以上かつ数字/大文字/小文字/記号必須、5回失敗で15分ロックアウト。ログインとパスワード変更にはレート制限とCSRFトークン検証を適用する。詳細はADR 0008。 |
-| サービス間認証 | WebからAPIへの呼び出しは`X-Service-Key`ヘッダーの共有シークレットで認証する。値はSecret Storeから取得し定数時間比較する。APIは既定で全エンドポイント要認証とし、`/healthz`、`/readyz`、`GET /api/report-shares/{token}`のみ匿名許可とする。 |
+| サービス間認証 | WebからAPIへの呼び出しは`X-Service-Key`ヘッダーの共有シークレットで認証する。値はSecret Storeから取得し定数時間比較する。APIは既定で全エンドポイント要認証とし、`/healthz`、`/readyz`、`GET /api/report-shares/{token}`、`GET /api/report-shares/{token}/content`の4つのみ匿名許可とする。共有2経路は共有トークン自体をアクセス制御とし、毎回トークンを再検証したうえでレート制限する（未知トークンでもDB照会と監査書込が発生するため）。匿名エンドポイントが4つであることはSecurity testで固定する。 |
 | 認可 | ロールはAdmin/Userを定義するが、単一管理者運用ではAdminのみ使用する。プロジェクト配下の業務APIはURL上のprojectIdでスコープを確定し、対象リソースが同一project_idに属することを必ず検証する。Phase 4で複数ユーザー化する場合にPolicy-based authorizationを拡張する。 |
 | 秘密情報 | APIキーはKey Vault参照。設定値はOptions patternで注入し、ログ出力禁止。 |
 | 監査 | 外部API実行、キー操作、ジョブ操作、CSV/Excel出力、レポート出力/ダウンロード、AI実行をaudit_logsへ固定の操作主体developerで保存。 |
 | 入力検証 | FluentValidation。URL/ドメイン、キーワード数、limit、sortBy/orderBy、matchTypeをサーバー側で検証。 |
-| 出力制御 | Phase 3の共有URLは十分なランダムトークンを発行し、DBにはハッシュのみ保存する。共有URLの発行/失効はスコープ確認を必須にし、CSV/Excel出力とレポートダウンロードは短時間URLを発行して監査ログを必須にする。 |
+| 出力制御 | Phase 3の共有URLは十分なランダムトークンを発行し、DBにはハッシュのみ保存する。共有URLの発行/失効はスコープ確認を必須にし、CSV/Excel出力とレポートダウンロードは認証必須のAPIパスで配信し、取得の監査ログを必須にする。 |
 | AI | プロンプトに秘密情報を含めない。根拠データIDを保持し、画面上でAI生成であることを明示。 |
 
 ## 13. ログ/監視/運用設計

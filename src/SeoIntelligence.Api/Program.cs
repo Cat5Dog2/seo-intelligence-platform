@@ -29,6 +29,7 @@ builder.Services.AddSingleton(SeoIntelligenceDiagnostics.ActivitySource);
 builder.Services.AddSingleton(SeoIntelligenceDiagnostics.Meter);
 builder.Services.AddSeoIntelligenceInfrastructure(builder.Configuration);
 builder.Services.AddApiServiceKeyAuthentication(builder.Configuration);
+builder.Services.AddApiRateLimiting();
 builder.Services
     .AddHealthChecks()
     .AddCheck(
@@ -55,9 +56,16 @@ app.Use(async (context, next) =>
     finally
     {
         stopwatch.Stop();
+
+        // The route pattern, not the resolved path. The report share endpoints carry the share
+        // token in the path, and logging the raw value would write a live credential into every
+        // log sink - the same secret the database deliberately only keeps a hash of. Requests that
+        // matched no endpoint have no pattern, and their path is not logged either: an unmatched
+        // path is attacker-controlled and is exactly where a leaked token would show up.
+        var endpoint = context.GetEndpoint() as RouteEndpoint;
         app.Logger.LogInformation(
             "HTTP request completed for {endpoint} with {status_code} in {elapsed_ms} ms.",
-            context.Request.Path.Value,
+            endpoint?.RoutePattern.RawText ?? "(unmatched)",
             context.Response.StatusCode,
             stopwatch.ElapsedMilliseconds);
     }
@@ -65,6 +73,7 @@ app.Use(async (context, next) =>
 
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();
 
 app.MapGet(
     "/api",

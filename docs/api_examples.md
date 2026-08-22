@@ -501,15 +501,31 @@ CSVファイル本体は送らない。Blazor UIでパース済みの`keywords`�
   "result": true,
   "data": {
     "exportId": "018fd8a8-8100-7000-9000-000000000001",
-    "downloadUrl": "https://storage.local/signed/exports/018fd8a8-8100.csv",
-    "expiresAt": "2026-05-31T00:16:00Z"
+    "downloadUrl": "/api/projects/018fd8a8-1000-7000-9000-000000000001/exports/018fd8a8-8100-7000-9000-000000000001/content"
   },
   "errors": [],
   "meta": {}
 }
 ```
 
-URL発行とダウンロード操作は`audit_logs`へ記録する。
+## 14.1 CSVファイル本体の取得
+
+`GET /api/projects/{projectId}/exports/{exportId}/content`
+
+成功時はエンベロープではなくファイル本体を返す。
+
+```text
+HTTP/1.1 200 OK
+Content-Type: text/csv; charset=utf-8
+Content-Disposition: attachment; filename=keyword_metrics-018fd8a881007000900000000000001.csv
+
+keyword,searchVolume,opportunityScore
+content marketing,1200,72.5
+```
+
+URL発行は`csv_export.download_url_issued`、ファイル取得は`csv_export.downloaded`として`audit_logs`へ記録する。
+
+ブラウザからはサービスキーを提示できないため、画面ではWebホストの`/downloads/projects/{projectId}/exports/{exportId}`を開く。Webホストが管理者Cookieで認可し、サービスキー付きで上記APIを呼んで応答を中継する。
 
 ## 15. 監査ログ検索
 
