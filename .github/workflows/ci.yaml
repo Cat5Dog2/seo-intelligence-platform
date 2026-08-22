@@ -46,6 +46,8 @@ jobs:
           docker compose config --quiet
           docker compose --env-file .env.production.example -f compose.yaml -f compose.production.yaml config --quiet
           bash scripts/verify-production-compose.sh
+          bash scripts/verify-deployment-guards.sh
+          bash scripts/verify-backup-production.sh
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -64,6 +66,14 @@ jobs:
           set: |
             *.cache-from=type=gha
             *.cache-to=type=gha,mode=max
+
+      # Scanned here rather than in container-scan: the application images only exist in this
+      # job, where the bake step loaded them into the local daemon. The scanner is handed an
+      # exported tar, never the Docker socket - see the script header.
+      - name: Scan application images
+        env:
+          TRIVY_CACHE_DIR: ${{ runner.temp }}/trivy-cache
+        run: bash scripts/scan-container-images.sh app
 
       - name: Smoke test application containers
         env:
@@ -88,38 +98,23 @@ jobs:
 
   container-scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        image:
-          - postgres:16-alpine
-          - redis:7-alpine
-          - minio/minio:latest
-          - minio/mc:latest
+    timeout-minutes: 20
 
     steps:
-      - name: Pull ${{ matrix.image }} with retries
-        shell: bash
-        run: |
-          for attempt in 1 2 3; do
-            if docker pull "${{ matrix.image }}"; then
-              exit 0
-            fi
+      - uses: actions/checkout@v4
 
-            sleep $((attempt * 20))
-          done
+      # postgres and redis run in production, so any finding that is not individually accepted
+      # fails the build. Acceptances are per CVE, and the deployed digest is cross-checked against
+      # compose.yaml, so neither a new CVE nor a moved tag can slip through.
+      # See docs/operations_runbook.md section 7.3.
+      - name: Scan runtime images
+        env:
+          TRIVY_CACHE_DIR: ${{ runner.temp }}/trivy-cache
+        run: bash scripts/scan-container-images.sh runtime
 
-          docker pull "${{ matrix.image }}"
-
-      - name: Scan ${{ matrix.image }}
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          image-ref: ${{ matrix.image }}
-          format: table
-          exit-code: "0"
-          scanners: vuln
-          ignore-unfixed: true
-          vuln-type: os,library
-          severity: HIGH,CRITICAL
-          timeout: 10m
+      # MinIO is an opt-in development profile that no production Compose file starts, so its
+      # findings are reported without gating.
+      - name: Report development-only images
+        env:
+          TRIVY_CACHE_DIR: ${{ runner.temp }}/trivy-cache
+        run: bash scripts/scan-container-images.sh dev

@@ -227,7 +227,7 @@ Compose内のAPI/WorkerはPostgreSQLを`postgres:5432`、Redisを`redis:6379`、
 
 ローカル開発では `.env.example` を `.env` にコピーし、Discord Webhook URLなどの実値は `.env` にだけ置く。`.env` はGit管理対象外で、PowerShellのスモークスクリプトとE2Eテストは起動時に自動読み込みする。既にプロセス環境変数が設定されている場合は、そちらを優先する。
 
-Compose起動時は `.env` をAPI/Workerの任意`env_file`としても読み込む。VPSでは `.env.production.example` を `.env.production` へコピーし、ファイル権限を制限する。Dockerfileのbuild引数やimage layerへSecretを含めない。
+Compose起動時は `.env` をAPI/Workerの任意`env_file`としても読み込む。Webは`env_file`を読まないため、外部APIキーやDiscord WebhookはWebコンテナへ渡らない。Webが必要とする値は `compose.yaml` の `environment` に明示してある。VPSでは `.env.production.example` を `.env.production` へ、`.env.production.app.example` を `.env.production.app` へコピーし、いずれもファイル権限を制限する。Dockerfileのbuild引数やimage layerへSecretを含めない。
 
 `SecretStore__Provider=Configuration` のSecret Storeはプロセス内の設定を読み書きする。API経由で登録した秘密値（`secretValue`）はプロセス再起動で失われ、APIとWorkerの間でも共有されない。継続利用する秘密値は `Secrets__<参照名>` 形式の環境変数またはUser SecretsでAPIとWorkerの両方に設定し、APIへは参照名（`keyRef`等）だけを登録する。
 

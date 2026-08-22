@@ -92,6 +92,15 @@ test "$(curl --silent --output /dev/null --write-out '%{http_code}' "http://127.
 # The Web host sends anonymous visitors to the sign-in page.
 test "$(curl --silent --output /dev/null --write-out '%{http_code}' "http://127.0.0.1:${WEB_PORT}/dashboard")" = "302"
 
+# The download route is how generated files reach the browser, so the image has to carry it and
+# it has to be behind the sign-in. A 404 here would mean the route is missing from the build.
+test "$(curl --silent --output /dev/null --write-out '%{http_code}' \
+  "http://127.0.0.1:${WEB_PORT}/downloads/projects/00000000-0000-0000-0000-000000000001/exports/00000000-0000-0000-0000-000000000002")" = "302"
+
+# The API file endpoint exists and stays behind the service key.
+test "$(curl --silent --output /dev/null --write-out '%{http_code}' \
+  "http://127.0.0.1:${API_PORT}/api/projects/00000000-0000-0000-0000-000000000001/exports/00000000-0000-0000-0000-000000000002/content")" = "401"
+
 # Non-root execution.
 test "$(compose exec -T api id -u | tr -d '\r')" != "0"
 test "$(compose exec -T web id -u | tr -d '\r')" != "0"

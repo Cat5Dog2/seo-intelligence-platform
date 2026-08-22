@@ -1,0 +1,16 @@
+# Third-party images this stack runs, pinned by digest.
+#
+# Single source of truth. compose.yaml must deploy exactly these, scripts/scan-container-images.sh
+# scans exactly these, and docs/operations_runbook.md section 7.3 records why their findings were
+# accepted. scripts/verify-production-compose.sh compares the rendered Compose output against this
+# file as a whole, so the three cannot drift apart.
+#
+# The Compose service name is part of each entry. Without it the check would only ask whether every
+# locked image appears somewhere, and swapping two services' images would still pass.
+#
+# To update: change the digest here, run `bash scripts/scan-container-images.sh runtime` to see the
+# findings for the new image, re-judge the acceptances in the runbook, then update compose.yaml.
+#
+# Format: <compose service><TAB><image tag><TAB><digest>
+postgres	postgres:16-alpine	sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685
+redis	redis:7-alpine	sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
