@@ -152,11 +152,17 @@ cleanup() {
     remove_if_present image "$image" || problems=$((problems + 1))
   done
 
+  # Scoped to this run. Every name here carries this run's suffix, so a second rehearsal running
+  # alongside is not mistaken for wreckage - and reporting its perfectly good images as leftovers
+  # would fail a run that did nothing wrong.
   leftovers="$(
     docker ps -a --format '{{.Names}}' 2>/dev/null | grep -E "^(${src_project}|${dst_project})[-_]" || true
     docker volume ls --format '{{.Name}}' 2>/dev/null | grep -E "^(${src_project}|${dst_project})_" || true
     docker network ls --format '{{.Name}}' 2>/dev/null | grep -E "^(${src_network}|${dst_network})$" || true
-    docker image ls --format '{{.Repository}}:{{.Tag}}' 2>/dev/null | grep -F "seo-restore-rehearsal-" || true
+    for image in "${REHEARSAL_IMAGES[@]}"; do
+      docker image inspect "$image" > /dev/null 2>&1 && printf '%s\n' "$image"
+    done
+    true
   )"
   if [[ -n "$leftovers" ]]; then
     echo "WARNING: the rehearsal left these behind:" >&2
@@ -252,9 +258,12 @@ docker network create "$src_network" > /dev/null
 docker network create "$dst_network" > /dev/null
 
 # Stamped into the images by the Dockerfile, so a reused image can be matched against the checkout
-# being verified rather than eyeballed from a timestamp. Taken from the environment first: the
-# rehearsal is sometimes run from an exported tree with no .git.
-source_revision="${SOURCE_REVISION:-$(git rev-parse HEAD 2>/dev/null || echo unknown)}"
+# being verified rather than eyeballed from a timestamp. Git wins over an inherited value wherever
+# there is git to ask; an explicit SOURCE_REVISION is honoured only for an exported tree, which is
+# how this is run from a tarball.
+# shellcheck source=scripts/lib/source-revision.sh
+source scripts/lib/source-revision.sh
+source_revision="$(resolve_source_revision)"
 
 image_revision() {
   docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$1" 2>/dev/null || true
@@ -276,7 +285,9 @@ if [[ "${RESTORE_REHEARSAL_SKIP_BUILD:-false}" == "true" ]]; then
     printf '  %-26s %s revision %s\n' "$source_image" \
       "$(docker image inspect --format '{{.Id}}' "$source_image" | cut -c1-19)" \
       "${built_from:-<unlabelled>}"
-    if [[ "$source_revision" == "unknown" || -z "$source_revision" ]]; then
+    # An inexact revision - unknown, or a dirty tree - cannot identify what these images hold, so
+    # reuse is refused rather than compared: two different dirty trees produce the same string.
+    if ! source_revision_is_exact "$source_revision"; then
       stale=$((stale + 1))
     elif [[ "$built_from" != "$source_revision" ]]; then
       stale=$((stale + 1))
@@ -284,13 +295,23 @@ if [[ "${RESTORE_REHEARSAL_SKIP_BUILD:-false}" == "true" ]]; then
   done
 
   if [[ "$stale" -ne 0 && "${RESTORE_REHEARSAL_ALLOW_STALE_IMAGES:-false}" != "true" ]]; then
-    fail "these images were not built from ${source_revision}, so this run would verify a different
-      commit. Rebuild, pass SOURCE_REVISION, or set RESTORE_REHEARSAL_ALLOW_STALE_IMAGES=true to
-      accept it deliberately."
+    fail "these images cannot be shown to have been built from ${source_revision}, so this run
+      would verify some other source state. Rebuild, commit the working tree, or set
+      RESTORE_REHEARSAL_ALLOW_STALE_IMAGES=true to accept it deliberately."
   fi
 else
   echo "Building the application images under rehearsal tags (revision ${source_revision})..."
   SOURCE_REVISION="$source_revision" src_compose build api web worker migrate > /dev/null
+
+  # The build arg has to reach every service. If one service's wiring is dropped from the Dockerfile
+  # or from compose.yaml, that image goes out unlabelled and the SKIP_BUILD check above silently
+  # stops being able to identify it - while the build path itself would still pass.
+  for rehearsal_image in "${REHEARSAL_IMAGES[@]}"; do
+    built_from="$(image_revision "$rehearsal_image")"
+    [[ "$built_from" == "$source_revision" ]] \
+      || fail "${rehearsal_image} is labelled '${built_from:-<none>}' but was built from ${source_revision}; the SOURCE_REVISION build argument is not reaching it."
+  done
+  echo "  all four images carry revision ${source_revision}."
 fi
 
 echo "Starting the source stack (${src_project})..."

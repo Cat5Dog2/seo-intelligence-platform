@@ -171,16 +171,17 @@ docker compose --profile tools run --rm migrate
 
 VPS用定義は検証用`POSTGRES_PASSWORD`を環境変数へ設定し、`docker compose --env-file .env.production.example -f compose.yaml -f compose.production.yaml config --quiet`で構文とoverlay mergeを確認する。コンテナ実起動試験はCIと同一の`bash scripts/container-smoke.sh`を使う。同スクリプトは分離したCompose project/Volume上でMigration、API `/healthz`・`/readyz`（未適用Migration検知を含む）、DB利用API、Web表示、Worker起動、Storage共有、Data Protection keys永続化、非root UIDを確認し、終了時にテスト用コンテナとVolumeを削除する。
 
-デプロイ手順そのものの検証は、実行トレースを取る4本のスクリプトで行う。CIでも同じものを実行する。
+デプロイ手順そのものの検証は、実行トレースを取る5本のスクリプトで行う。CIでも同じものを実行する。
 
 ```text
 bash scripts/verify-production-compose.sh
 bash scripts/verify-deployment-guards.sh
 bash scripts/verify-backup-production.sh
 bash scripts/verify-production-lock.sh
+bash scripts/verify-source-revision.sh
 ```
 
-いずれも「守るべき挙動を壊すと落ちること」を退行注入で確認したうえで採用している。`verify-production-compose.sh`はレンダリング結果を照合し、`verify-deployment-guards.sh`はCompose/スキャン/バックアップをstub化してdeployスクリプトの実行順を検証し、`verify-backup-production.sh`はdockerをstub化してバックアップの拒否条件を検証し、`verify-production-lock.sh`は実`flock`と`/proc`でロックの偽装耐性を検証する（Linux以外ではskipする）。
+いずれも「守るべき挙動を壊すと落ちること」を退行注入で確認したうえで採用している。`verify-production-compose.sh`はレンダリング結果を照合し、`verify-deployment-guards.sh`はCompose/スキャン/バックアップをstub化してdeployスクリプトの実行順を検証し、`verify-backup-production.sh`はdockerをstub化してバックアップの拒否条件を検証し、`verify-production-lock.sh`は実`flock`と`/proc`でロックの偽装耐性を検証する（Linux以外ではskipする）。`verify-source-revision.sh`は、imageへ刻むrevisionがgit優先で決まること、継承された`SOURCE_REVISION`で上書きできないこと、未コミット変更（untrackedを含む）が`-dirty`として現れることを、使い捨てのgitリポジトリで検証する。
 
 復元そのものの検証だけはstubでは代替できないため、実スタックを使う別スクリプトにしてある。
 

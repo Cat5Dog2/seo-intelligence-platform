@@ -49,6 +49,7 @@ jobs:
           bash scripts/verify-deployment-guards.sh
           bash scripts/verify-backup-production.sh
           bash scripts/verify-production-lock.sh
+          bash scripts/verify-source-revision.sh
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3

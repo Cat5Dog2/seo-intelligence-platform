@@ -312,7 +312,9 @@ bash scripts/verify-production-restore.sh
 
 実`flock`が要るためLinux（VPSまたはLinux CI）で実行する。バックアップが取るロックにはリハーサル専用のディレクトリを渡すので、ホストの本番ロック領域は使わない。Dockerや`flock`が無い環境では**exit 2で失敗する**（四半期の復元検証を自動化したとき、「検証できなかった」が成功として記録されないため）。対話的に見送る場合だけ`RESTORE_REHEARSAL_ALLOW_SKIP=true`を付ける。
 
-イメージをbuild済みなら`RESTORE_REHEARSAL_SKIP_BUILD=true`を付ける。この場合、再利用するimageの`org.opencontainers.image.revision`を検証対象のcommitと突き合わせ、**不一致なら失敗する**（別のcommitのimageで通っても、そのcommitを検証しただけであり、成功と見分けがつかないため）。意図して古いimageで実行する場合だけ`RESTORE_REHEARSAL_ALLOW_STALE_IMAGES=true`を付ける。`.git`の無い展開済みツリーで実行する場合は`SOURCE_REVISION`を渡す。本番projectには一切触れない。
+イメージをbuild済みなら`RESTORE_REHEARSAL_SKIP_BUILD=true`を付ける。この場合、再利用するimageの`org.opencontainers.image.revision`を検証対象のcommitと突き合わせ、**不一致なら失敗する**（別のcommitのimageで通っても、そのcommitを検証しただけであり、成功と見分けがつかないため）。作業ツリーがdirtyなときも再利用を拒否する。`<sha>-dirty`は2つの異なるdirtyツリーで同じ文字列になるため、一致しても何も証明しないからである。意図して古いimageで実行する場合だけ`RESTORE_REHEARSAL_ALLOW_STALE_IMAGES=true`を付ける。`.git`の無い展開済みツリーで実行する場合は`SOURCE_REVISION`を渡す。
+
+build経路では、build直後に4つのリハーサルimageすべてが期待するrevisionラベルを持つことを検査する。DockerfileまたはComposeのどこか1サービス分の配線が落ちると、そのimageは無ラベルになり`SKIP_BUILD`側の同一性検査が黙って機能しなくなるためである。本番projectには一切触れない。
 
 このComposeだけでは日次スケジュール、WAL/PITR、VPS外冗長化は提供しない。NFR-011を満たすには、ホスティング側のsnapshot/backupまたは外部PostgreSQL/Storageサービスを別途構成する。
 
@@ -329,7 +331,15 @@ docker compose --project-name seo-intelligence-prod --env-file .env.production -
 docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' seo-intelligence-api
 ```
 
-`unknown`と出る場合は、gitのcheckoutではない場所からbuildされたか、`SOURCE_REVISION`が渡されていない。
+値の決め方は次のとおりで、**gitのcheckoutがある場所では常にgitが優先される**。環境変数に残った値でimageに別のcommitを名乗らせられるなら、このラベルは何の証拠にもならないためである。
+
+| 状況 | ラベル |
+| --- | --- |
+| clean なcheckout | `<HEAD>` |
+| 未コミットの変更がある（untrackedを含む） | `<HEAD>-dirty` |
+| gitが無い展開済みツリー | 明示指定した`SOURCE_REVISION`、無指定なら`unknown` |
+
+untrackedを変更扱いにするのは、`.dockerignore`で除外していない限りbuild contextに入り、imageの中身になるためである。`-dirty`で拒否せず記録に留めるのは、障害対応中のデプロイを止める方が損失が大きいからだが、そのimageはどのcommitとも一致しないことを意味する。
 
 確認観点:
 

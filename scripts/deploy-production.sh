@@ -62,9 +62,21 @@ source scripts/lib/production-lock.sh
 acquire_production_lock "$PROJECT_NAME" || exit 1
 
 # Stamped into the images as org.opencontainers.image.revision. Without it there is no way to tell
-# which commit a running container came from, and the VPS rebuilds from source rather than pulling
-# a tagged artifact, so nothing else records it. Unknown when this is not a git checkout.
-export SOURCE_REVISION="${SOURCE_REVISION:-$(git rev-parse HEAD 2>/dev/null || echo unknown)}"
+# which commit a running container came from: the VPS rebuilds from source rather than pulling a
+# tagged artifact, so nothing else records it. Git wins over any inherited SOURCE_REVISION - see
+# the library for why - and a working tree with changes is stamped <sha>-dirty rather than refused.
+# shellcheck source=scripts/lib/source-revision.sh
+source scripts/lib/source-revision.sh
+export SOURCE_REVISION
+SOURCE_REVISION="$(resolve_source_revision)"
+case "$SOURCE_REVISION" in
+  *-dirty)
+    echo "NOTE: the working tree has uncommitted changes; images will be labelled ${SOURCE_REVISION}." >&2
+    ;;
+  unknown)
+    echo "NOTE: this is not a git checkout; images will be labelled 'unknown'." >&2
+    ;;
+esac
 
 # Both paths run these first, in this order.
 build_and_scan() {

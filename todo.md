@@ -1683,6 +1683,18 @@ CRLF起因のバグ（検証中に発覚）:
 - [x] `BACKUP_PROJECT_NAME`固定テストを`update`と`backup`の両モードで実行する。`update`側の代入だけを削除すると`update`側だけが落ちることを確認済み。
 - [x] cleanupでの残骸検査（container、volume、network、リハーサルimage）と本番タグ不変検査を、成功・失敗いずれの終了経路でも実行する。
 
+20次レビューによる追加是正:
+
+- [x] **Medium**: `SOURCE_REVISION`が環境変数優先で、作業ツリーのdirtyも見ていなかった。シェルに残った値で、実際とは違うcommitを名乗るimageを作れてしまい、`SKIP_BUILD`はその誤ったラベルを同一性の証拠として受け入れていた。`scripts/lib/source-revision.sh`へ切り出し、**gitがある場所では常にgitを優先**する。未コミット変更（untrackedを含む）は`<sha>-dirty`とする。untrackedを含めるのは、`.dockerignore`で除外していない限りbuild contextに入りimageの中身になるため。`-dirty`で拒否しないのは障害対応中のデプロイを止めないためだが、リハーサルの再利用判定では「不正確」として拒否する（異なるdirtyツリーが同じ文字列になり、一致しても何も証明しないため）。
+- [x] cleanupの残骸検査のうち、image検索だけが現在の実行に限定されていなかった。リハーサルを2本並列実行すると、一方が他方の正常なimageを残骸と判定して失敗する。この実行の4タグだけを名指しで確認する方式に変更した。
+
+テストの追加:
+
+- [x] `scripts/verify-source-revision.sh`を追加した（12ケース）。clean checkoutはHEAD、継承`SOURCE_REVISION`は無視、tracked変更とuntrackedはいずれも`-dirty`、gitの無いツリーでは明示値または`unknown`、`source_revision_is_exact`の受理/拒否。使い捨てgitリポジトリで実行する。環境変数優先とdirty無視の2種類の退行注入で落ちることを確認済み。CIへ組み込み済み。
+- [x] build直後に、4つのリハーサルimageすべてが期待するrevisionラベルを持つことを検査する。DockerfileまたはComposeの1サービス分の配線が落ちても通ってしまう状態だった。
+- [x] 無関係な`seo-restore-rehearsal-*`タグが存在しても、現在の実行が残骸と誤判定しないことを実測で確認した。
+- [x] フル復元リハーサルを、非root・実buildで再実行して通過を確認済み。
+
 判断の記録（4次）:
 
 - 実VPSでのCaddy/Cloudflare経由のクライアントIP置換確認だけは、環境依存のためローカルで代替できない。partitionロジック自体はテストで固定済み。
