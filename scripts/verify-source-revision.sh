@@ -123,6 +123,44 @@ check "an explicit value is honoured where the tree itself is not a checkout" "a
 check "no checkout and no value resolves to unknown" "unknown" \
   "$(resolve_in "$exported" -u SOURCE_REVISION)"
 
+# --- a linked worktree, where .git is a file ---------------------------------------------------
+
+# The checkout test is `-e .git`, not `-d .git`, because a linked worktree - and a submodule - has
+# a .git *file* pointing at the real repository. Deploying from a worktree is an ordinary thing to
+# do when a fix has to be built from a branch without disturbing the main checkout, and a test that
+# only ever saw a .git directory would let `-d` slip in and quietly send every such build to
+# SOURCE_REVISION, or to unknown.
+default_branch="$(git -C "$scratch" rev-parse --abbrev-ref HEAD)"
+git -C "$scratch" checkout --quiet -b linked-branch
+printf 'second\n' > "$scratch/second.txt"
+git -C "$scratch" add second.txt
+git -C "$scratch" -c user.email=test@localhost -c user.name=test commit --quiet -m "second"
+branch_sha="$(git -C "$scratch" rev-parse HEAD)"
+git -C "$scratch" checkout --quiet "$default_branch"
+
+linked="$repo_root/$work/linked"
+git -C "$scratch" worktree add --quiet "$linked" linked-branch
+
+# Stated rather than assumed. If a future git stops using a file here, this case would otherwise go
+# on passing while testing the ordinary directory case a second time.
+if [[ -f "$linked/.git" ]]; then
+  echo "ok: a linked worktree has a .git file, which is what this case is about"
+else
+  echo "FAIL: expected $linked/.git to be a file; this case is no longer testing what it says." >&2
+  failures=$((failures + 1))
+fi
+
+# The worktree's own HEAD, which is deliberately a different commit from the main checkout's - so
+# an implementation that resolved against the repository rather than this working tree would give
+# the wrong answer rather than an accidentally right one.
+check "a linked worktree resolves to its own HEAD" "$branch_sha" \
+  "$(resolve_in "$linked" -u SOURCE_REVISION)"
+
+printf 'local change\n' >> "$linked/second.txt"
+check "a dirty linked worktree is reported as dirty" "${branch_sha}-dirty" \
+  "$(resolve_in "$linked" -u SOURCE_REVISION)"
+git -C "$linked" checkout --quiet -- second.txt
+
 # --- git that will not answer -------------------------------------------------------------------
 
 resolve_or_refuse_in() {

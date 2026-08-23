@@ -340,7 +340,7 @@ docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.
 | ソースルート直下に`.git`が無い展開済みツリー | 明示指定した`SOURCE_REVISION`、無指定なら`unknown` |
 | `.git`はあるがHEADを解決できない、または`git status`が失敗する | **解決失敗としてデプロイを中止する** |
 
-checkoutかどうかは**ソースルート直下の`.git`の有無**で判定する（`git rev-parse --git-dir`では親ディレクトリまで探索してしまい、別リポジトリ配下へ展開したツリーを親のcheckoutと誤認する）。`GIT_DIR`、`GIT_WORK_TREE`、`GIT_COMMON_DIR`はgit呼び出しのたびに無効化する。ビルドされるのはソースルートなので、それを記述してよいのはソースルート自身の`.git`だけである。
+checkoutかどうかは**ソースルート直下の`.git`の有無**で判定する（`git rev-parse --git-dir`では親ディレクトリまで探索してしまい、別リポジトリ配下へ展開したツリーを親のcheckoutと誤認する）。`.git`はディレクトリとは限らず、linked worktreeやsubmoduleでは実体を指すファイルになるため、存在判定はディレクトリに限定しない。本流のcheckoutを触らずにブランチからbuildしたい場合、worktreeからのデプロイは通常の運用である。`GIT_DIR`、`GIT_WORK_TREE`、`GIT_COMMON_DIR`はgit呼び出しのたびに無効化する。ビルドされるのはソースルートなので、それを記述してよいのはソースルート自身の`.git`だけである。
 
 最後の行がfail-closedなのは、`git status`が失敗したときの標準出力がcleanなツリーと同じ「空」だからである。終了コードを見ずに出力だけで判定すると、状態を確認できなかったツリーを裸のSHAでラベル付けしてしまう。`.git`があるのにHEADを解決できない場合も、展開済みツリー扱いにして`SOURCE_REVISION`へfallbackしない（壊れたcheckoutは、呼び出し側の申告が最も当てにならない状況である）。
 
