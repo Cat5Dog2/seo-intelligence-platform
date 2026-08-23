@@ -35,7 +35,7 @@ case "$1" in
     # `compose ps --status running --services` or the pg_dump.
     if [[ "$*" == *" ps "* ]]; then
       cat "$state/running" 2>/dev/null || true
-      exit 0
+      exit "$(cat "$state/ps-status" 2>/dev/null || echo 0)"
     fi
     cat "$state/pgdump"
     exit 0
@@ -50,24 +50,36 @@ case "$1" in
         pg_restore) mode=restore ;;
         -czf) mode=create ;;
         -tzvf) mode=list ;;
+        --list) restore_mode=list ;;
+        --file=/dev/null) restore_mode=scan ;;
       esac
     done
 
-    output_dir="$(grep -oE '\-\-volume [^ ]*:/backup(:ro)?' <<< "$*" | head -1 | sed -e 's|--volume ||' -e 's|:/backup||' -e 's|:ro$||')"
-
     case "${mode:-}" in
       restore)
+        # The dump arrives on stdin; drain it so the writer does not block.
+        cat > /dev/null
+        if [[ "${restore_mode:-}" == "scan" ]]; then
+          cat "$state/scan-output" 2>/dev/null
+          exit "$(cat "$state/scan-status" 2>/dev/null || echo 0)"
+        fi
         cat "$state/restore-list" 2>/dev/null
         exit "$(cat "$state/restore-status" 2>/dev/null || echo 0)"
         ;;
       create)
-        archive="$(sed -E 's|.*-czf /backup/([^ ]+).*|\1|' <<< "$*")"
-        # A real tar of an empty directory is a valid, non-empty file; mimic that.
-        printf 'archive-of-%s' "$archive" > "$output_dir/$archive"
+        # The real command writes the archive to stdout; the script redirects it to the file.
+        volume="$(grep -oE -- '--volume [^ ]+:/source' <<< "$*" | sed -e 's|--volume ||' -e 's|:/source||')"
+        printf 'archive-of-%s' "${volume##*_}"
         exit 0
         ;;
       list)
-        archive="$(sed -E 's|.*-tzvf /backup/([^ ]+).*|\1|' <<< "$*")"
+        # Listing reads the archive from stdin; its body says which archive it is.
+        body="$(cat)"
+        case "$body" in
+          *seo-storage*) archive=seo-storage.tar.gz ;;
+          *web-data-protection*) archive=web-data-protection.tar.gz ;;
+          *) archive=unknown ;;
+        esac
         cat "$state/listing-$archive" 2>/dev/null
         exit "$(cat "$state/list-status-$archive" 2>/dev/null || echo 0)"
         ;;
@@ -91,6 +103,7 @@ new_state() {
   printf ';\n; Archive created at 2026-08-22\n;\n215; 1259 16480 TABLE public projects seo\n216; 1259 16490 TABLE public jobs seo\n' > "$state/restore-list"
   printf 'drwxr-xr-x 0/0 0 2026-08-22 00:00 ./\n-rw-r--r-- 0/0 120 2026-08-22 00:00 ./exports/report.pdf\n' > "$state/listing-seo-storage.tar.gz"
   printf 'drwxr-xr-x 0/0 0 2026-08-22 00:00 ./\n-rw-r--r-- 0/0 900 2026-08-22 00:00 ./key-8f3c.xml\n' > "$state/listing-web-data-protection.tar.gz"
+  : > "$state/scan-output"
   echo "$state"
 }
 
@@ -193,8 +206,8 @@ expect_refusal "a missing volume" \
 state="$(new_state unreadable-dump)"
 echo 1 > "$state/restore-status"
 printf 'pg_restore: error: did not find magic string in file header' > "$state/restore-list"
-expect_refusal "a dump pg_restore cannot read" \
-  "cannot be read by pg_restore" "$state" "$repo_root/$work/out-unreadable-dump"
+expect_refusal "a dump with no readable table of contents" \
+  "no readable table of contents" "$state" "$repo_root/$work/out-unreadable-dump"
 
 state="$(new_state empty-dump)"
 printf ';\n; Archive created at 2026-08-22\n;\n' > "$state/restore-list"
@@ -234,6 +247,60 @@ printf 'drwxr-xr-x 0/0 0 2026-08-22 00:00 ./\n-rw-r--r-- 0/0 12 2026-08-22 00:00
   > "$state/listing-web-data-protection.tar.gz"
 expect_refusal "a Data Protection archive with no key file" \
   "no file matching" "$state" "$repo_root/$work/out-keys-wrong-file"
+
+# --list reads only the table of contents, so a dump truncated anywhere after it still lists its
+# objects and exits 0 - measured against a real dump cut to 3 kB. Only the full scan catches it.
+state="$(new_state truncated-data)"
+echo 1 > "$state/scan-status"
+printf 'pg_restore: error: could not read from input file: end of file' > "$state/scan-output"
+expect_refusal "a dump whose data section is truncated after a valid table of contents"   "is incomplete" "$state" "$repo_root/$work/out-truncated-data"
+
+# Fail closed: if the running-services query itself fails there is no evidence the application is
+# stopped, and treating that as "nothing running" is the wrong way to be wrong.
+state="$(new_state ps-fails)"
+echo 1 > "$state/ps-status"
+printf 'cannot connect to the Docker daemon' > "$state/running"
+expect_refusal "a failure to determine which services are running"   "could not determine which services are running" "$state" "$repo_root/$work/out-ps-fails"
+
+# Two deployments started in the same second resolve to the same directory name. A test-then-create
+# would let both through; an exclusive mkdir lets exactly one win.
+state="$(new_state concurrent)"
+shared_output="$repo_root/$work/out-concurrent"
+run_backup "$state" "$shared_output" > "$work/concurrent-a" 2>&1 & a=$!
+run_backup "$(new_state concurrent-b)" "$shared_output" > "$work/concurrent-b" 2>&1 & b=$!
+wait "$a" && status_a=0 || status_a=$?
+wait "$b" && status_b=0 || status_b=$?
+if [[ "$status_a" -eq 0 && "$status_b" -eq 0 ]]; then
+  echo "FAIL: two concurrent backups both claimed the same output directory." >&2
+  failures=$((failures + 1))
+elif [[ "$status_a" -ne 0 && "$status_b" -ne 0 ]]; then
+  echo "FAIL: neither concurrent backup succeeded." >&2
+  sed 's/^/      /' "$work/concurrent-a" "$work/concurrent-b" >&2
+  failures=$((failures + 1))
+else
+  echo "ok: only one of two concurrent backups claims the output directory."
+fi
+
+# The dump holds the whole database and the key archive holds unencrypted Data Protection keys.
+# Checked on Linux only: a Windows filesystem does not carry these modes.
+if [[ "$(uname -s)" == Linux ]]; then
+  state="$(new_state permissions)"
+  run_backup "$state" "$repo_root/$work/out-permissions" > /dev/null 2>&1
+  bad=""
+  [[ "$(stat -c '%a' "$work/out-permissions")" == "700" ]] || bad="directory=$(stat -c '%a' "$work/out-permissions")"
+  for artifact in postgres.dump seo-storage.tar.gz web-data-protection.tar.gz; do
+    mode="$(stat -c '%a' "$work/out-permissions/$artifact")"
+    [[ "$mode" == "600" ]] || bad="$bad $artifact=$mode"
+  done
+  if [[ -n "$bad" ]]; then
+    echo "FAIL: backup artifacts are not owner-only:$bad" >&2
+    failures=$((failures + 1))
+  else
+    echo "ok: the backup directory is 700 and every artifact is 600."
+  fi
+else
+  echo "skip: artifact permissions are only meaningful on Linux (this is $(uname -s))."
+fi
 
 # --- what must NOT be refused ---------------------------------------------------------------------
 

@@ -1574,6 +1574,27 @@ CRLF起因のバグ（検証中に発覚）:
 - [x] バックアップテストを7→14ケースへ拡張した。pg_restore不可、目次が空、archive読み戻し失敗（Storage/DP keyの両方）、ディレクトリのみ、key以外のファイルのみ、アプリ稼働中、を追加した。
 - [x] 相対パス正規化の削除と`tar`失敗の握りつぶし復活で、いずれも落ちることを確認済み。
 
+13次レビューによる追加是正:
+
+- [x] **High**: `pg_restore --list` は目次しか読まないため、データ領域を切り詰めたdumpを通していた。実測で確認（33KBのdumpを3KBへ切り詰め→`--list` はexit 0で3オブジェクトを報告）。`pg_restore --file=/dev/null` による全走査を追加し、これが検出することを確認した。実PostgreSQLへの復元でも、完全なdumpは5000行を復元でき、切り詰めdumpは失敗する。
+- [x] **High**: 成果物のパーミッションが制限されていなかった。`umask 077` を設定し、archiveはbind mountではなくコンテナのstdoutからホストへリダイレクトして作成する（bind mountへ書くとコンテナのrootが644で作る）。Linux上でディレクトリ700・全成果物600を確認した。
+- [x] 停止状態確認がfail-openだった。`docker compose ps` 自体の失敗を「稼働なし」として扱っていた。終了コードを確認して拒否する。
+- [x] 出力ディレクトリの作成がatomicでなかった。親のみ `mkdir -p` し、末端は通常の `mkdir` で排他的に作成する。
+- [x] Data Protection keyの判定が任意の `.xml` を許容していた。`(^|/)key-[^/]+[.]xml$` へ絞った。
+- [x] 作業ツリーの `Dockerfile` / `compose*.yaml` / `image-digests.lock` がCRLFのままだった。`.gitattributes` に従って再正規化した。
+
+退行テストの拡張（14→18ケース）:
+
+- [x] 目次は正常だがデータ領域が切り詰められたdump
+- [x] `docker compose ps` が非0終了するケース
+- [x] 同一出力先への2プロセス同時実行（片方だけが成功すること）
+- [x] Linux上でのディレクトリ700・成果物600（Windowsではskip）
+
+実環境での確認:
+
+- [x] 隔離したPostgreSQLへ実際に復元し、5000行・payload長2000が復元されることを確認した。
+- [x] 切り詰めdumpは実restoreでも失敗することを確認した。
+
 判断の記録（4次）:
 
 - 実VPSでのCaddy/Cloudflare経由のクライアントIP置換確認だけは、環境依存のためローカルで代替できない。partitionロジック自体はテストで固定済み。

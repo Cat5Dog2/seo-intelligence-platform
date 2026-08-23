@@ -8,11 +8,15 @@
 # time, so they are taken together: restoring a database without its storage, or without the Data
 # Protection keys, leaves an application that starts but cannot read its own artifacts or cookies.
 #
-# Every artifact is read back after it is written. A backup that cannot be restored is worse than
-# no backup, because it is only discovered to be worthless at the moment it is needed.
+# Every artifact is read back in full after it is written. A backup that cannot be restored is
+# worse than no backup, because it is only discovered to be worthless at the moment it is needed.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
+
+# The dump contains the entire database and the key archive contains the Data Protection keys,
+# which this deployment stores unencrypted on the filesystem. Neither may be world-readable.
+umask 077
 
 PROJECT_NAME="seo-intelligence-prod"
 ENV_FILE="${ENV_FILE:-.env.production}"
@@ -43,7 +47,18 @@ esac
 # The dump and the storage archive have to describe the same moment. Taken while the application is
 # running they will not: a job can write a file between the two, or commit a row after the dump.
 # deploy-production.sh stops the services first; a direct invocation has to have done the same.
-running="$("${COMPOSE[@]}" ps --status running --services 2>/dev/null | grep -E '^(web|api|worker)$' || true)"
+#
+# Fail closed: if the query itself fails there is no evidence the application is stopped, and
+# treating that as "nothing running" would be the wrong way to be wrong.
+ps_status=0
+running="$("${COMPOSE[@]}" ps --status running --services 2>&1)" || ps_status=$?
+if [[ "$ps_status" -ne 0 ]]; then
+  echo "ERROR: could not determine which services are running (compose ps exited ${ps_status})." >&2
+  sed 's/^/       /' <<< "$running" >&2
+  exit 1
+fi
+
+running="$(grep -E '^(web|api|worker)$' <<< "$running" || true)"
 if [[ -n "$running" ]]; then
   echo "ERROR: these services are still running: $(tr '\n' ' ' <<< "$running")" >&2
   echo "       Stop web, api and worker first, or the dump and the storage archive will describe" >&2
@@ -51,13 +66,19 @@ if [[ -n "$running" ]]; then
   exit 1
 fi
 
-if [[ -e "$output_dir" ]]; then
-  echo "ERROR: $output_dir already exists. Backups are never written over an existing directory." >&2
+# `mkdir -p` on the parent, plain `mkdir` on the leaf: the leaf has to fail if it already exists.
+# A test-then-create would let two deployments started in the same second both pass the test and
+# then write over each other's artifacts.
+mkdir -p "$(dirname "$output_dir")"
+if ! mkdir "$output_dir" 2>/dev/null; then
+  echo "ERROR: $output_dir already exists or could not be created." >&2
+  echo "       Backups are never written over an existing directory." >&2
   exit 1
 fi
 
-mkdir -p "$output_dir"
-
+# Written through the container's stdout rather than a bind mount. A container writing into a bind
+# mount creates the file as root with the container's umask; redirecting here keeps it owned by the
+# deploying user and covered by the umask set above.
 archive_volume() {
   local volume="$1" archive="$2"
 
@@ -67,11 +88,10 @@ archive_volume() {
     return 1
   fi
 
-  MSYS_NO_PATHCONV=1 docker run --rm --entrypoint tar \
+  MSYS_NO_PATHCONV=1 docker run --rm --network none --entrypoint tar \
     --volume "${volume}:/source:ro" \
-    --volume "${output_dir}:/backup" \
     "$(tar_image)" \
-    -C /source -czf "/backup/${archive}" .
+    -C /source -czf - . > "${output_dir}/${archive}"
 }
 
 # The listing is captured before it is counted. Piping straight into a counter would report zero
@@ -80,10 +100,9 @@ archive_volume() {
 list_archive() {
   local archive="$1" listing status=0
 
-  listing="$(MSYS_NO_PATHCONV=1 docker run --rm --network none --entrypoint tar \
-    --volume "${output_dir}:/backup:ro" \
+  listing="$(MSYS_NO_PATHCONV=1 docker run --rm -i --network none --entrypoint tar \
     "$(tar_image)" \
-    -tzvf "/backup/${archive}" 2>&1)" || status=$?
+    -tzvf - < "${output_dir}/${archive}" 2>&1)" || status=$?
 
   if [[ "$status" -ne 0 ]]; then
     echo "ERROR: ${archive} could not be read back (tar exited ${status}). It is not a backup." >&2
@@ -120,38 +139,51 @@ echo "Backing up ${PROJECT_NAME} to ${output_dir}"
 
 "${COMPOSE[@]}" exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > "$output_dir/postgres.dump"
 
-# Read back with pg_restore rather than checked for a magic string. `PGDMP` is also the first five
-# bytes of a truncated dump, and a dump that cannot be listed cannot be restored - which is the
-# only thing this file is for. --network none because nothing here should reach a database.
+# Two passes, because they answer different questions.
+#
+# --list reads only the table of contents. A dump truncated anywhere after the TOC still lists its
+# objects and exits 0 - measured against a real dump cut to 3 kB, which reported three objects and
+# exited 0. --file=/dev/null decompresses and walks every data member, so that is what proves the
+# archive is complete. --network none because nothing here should reach a database.
 dump_status=0
-dump_toc="$(MSYS_NO_PATHCONV=1 docker run --rm --network none --entrypoint pg_restore \
-  --volume "${output_dir}:/backup:ro" \
+dump_toc="$(MSYS_NO_PATHCONV=1 docker run --rm -i --network none --entrypoint pg_restore \
   "$(tar_image)" \
-  --list /backup/postgres.dump 2>&1)" || dump_status=$?
+  --list < "$output_dir/postgres.dump" 2>&1)" || dump_status=$?
 
 if [[ "$dump_status" -ne 0 ]]; then
-  echo "ERROR: $output_dir/postgres.dump cannot be read by pg_restore (exit ${dump_status})." >&2
+  echo "ERROR: $output_dir/postgres.dump has no readable table of contents (exit ${dump_status})." >&2
   sed 's/^/       /' <<< "$dump_toc" >&2
   exit 1
 fi
 
-# A dump of nothing lists no objects. Every deployment has schema, so an empty table of contents
-# means the dump did not capture the database.
 dump_objects="$(grep -cvE '^;|^[[:space:]]*$' <<< "$dump_toc" || true)"
 if [[ "$dump_objects" -lt 1 ]]; then
   echo "ERROR: $output_dir/postgres.dump lists no objects; it captured nothing." >&2
   exit 1
 fi
-echo "  postgres.dump: $(wc -c < "$output_dir/postgres.dump") bytes, ${dump_objects} object(s)"
+
+scan_status=0
+scan_output="$(MSYS_NO_PATHCONV=1 docker run --rm -i --network none --entrypoint pg_restore \
+  "$(tar_image)" \
+  --file=/dev/null < "$output_dir/postgres.dump" 2>&1)" || scan_status=$?
+
+if [[ "$scan_status" -ne 0 ]]; then
+  echo "ERROR: $output_dir/postgres.dump is incomplete; pg_restore could not read it through to" >&2
+  echo "       the end (exit ${scan_status}). It would fail partway through a restore." >&2
+  sed 's/^/       /' <<< "$scan_output" >&2
+  exit 1
+fi
+echo "  postgres.dump: $(wc -c < "$output_dir/postgres.dump") bytes, ${dump_objects} object(s), fully readable"
 
 archive_volume "${PROJECT_NAME}_seo-storage" seo-storage.tar.gz
 archive_volume "${PROJECT_NAME}_web-data-protection" web-data-protection.tar.gz
 
 # Storage can legitimately be empty on a fresh deployment; the Data Protection keys cannot, because
 # the Web host writes one on first start and every signed-in session depends on them. The key
-# repository stores each key as its own XML file, so that is what has to be in there.
+# repository names each file key-{guid}.xml, so that is what has to be in there - any .xml would
+# also match a stray file that is not a key.
 assert_archive_has_files seo-storage.tar.gz 0
-assert_archive_has_files web-data-protection.tar.gz 1 '[.]xml$'
+assert_archive_has_files web-data-protection.tar.gz 1 '(^|/)key-[^/]+[.]xml$'
 
 echo "Backup complete: ${output_dir}"
 echo "Transfer it off the VPS to encrypted storage; it is not a backup while it lives on the same host."

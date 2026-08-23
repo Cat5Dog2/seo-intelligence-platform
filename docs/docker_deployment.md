@@ -260,14 +260,17 @@ docker compose --project-name seo-intelligence-prod --env-file .env.production -
 
 | 検証 | 理由 |
 | --- | --- |
-| web/api/workerが停止している | 稼働中に取得するとdumpとStorage archiveが別時点になる。ジョブが2つの取得の間にファイルを書けば、復元しても整合しない。 |
+| web/api/workerが停止している | 稼働中に取得するとdumpとStorage archiveが別時点になる。ジョブが2つの取得の間にファイルを書けば、復元しても整合しない。状態を取得できなかった場合も拒否する（停止している証拠がないため）。 |
 | 出力先が絶対パスである | `docker run -v` は `/` または `./` で始まらないsourceを名前付きVolumeとして扱い、`/`を含む名前は拒否される。相対パスではバックアップ自体が失敗する。 |
 | 出力先が既存でない | 既存のバックアップを上書きしない。 |
 | 対象Volumeが存在する | 存在しないVolumeを指定するとDockerが空のVolumeを作り、「空だが妥当な」archiveができてしまう。 |
-| `postgres.dump` を `pg_restore --list` で読み戻せる | マジックストリングの確認では不十分。切り詰められたdumpも先頭は `PGDMP` である。読み戻せないdumpは復元できない。 |
+| `postgres.dump` の目次を `pg_restore --list` で読める | 先頭バイトの確認では不十分。切り詰められたdumpも先頭は `PGDMP` である。 |
 | dumpが1件以上のオブジェクトを含む | 目次が空のdumpはDBを取得できていない。 |
+| `pg_restore --file=/dev/null` が最後まで通る | `--list` は目次しか読まない。実測では3KBへ切り詰めたdumpが `--list` を**通過**し（3オブジェクト、exit 0）、この全走査だけが検出した。データ領域の欠損はここでしか分からない。 |
+| 出力ディレクトリが700、各成果物が600 | dumpはDB全体、key archiveは暗号化されていないData Protection keyを含む。`umask 077` を設定し、archiveはコンテナのstdoutからホストへリダイレクトして作成する（bind mountへ書くとroot所有644になる）。 |
+| 出力ディレクトリの作成が排他的 | 同一秒に2つのupdateが開始すると同じディレクトリ名になる。存在確認と作成が別だと両方が通過して同じファイルを上書きする。 |
 | 各archiveを `tar -tzv` で読み戻せる | 読み戻しの失敗を「エントリ0件」と区別する。Storageは0件を許容するため、区別しないと壊れたarchiveが通る。 |
-| `web-data-protection.tar.gz` に1件以上の `.xml` **ファイル**がある | 空ディレクトリのtar.gz自体は非空なのでサイズ検査では検出できず、ディレクトリだけでもエントリ数では1件になる。Data Protection keyが無ければサインイン中のセッションは復元できない。 |
+| `web-data-protection.tar.gz` に1件以上の `key-{guid}.xml` **ファイル**がある | 空ディレクトリのtar.gz自体は非空なのでサイズ検査では検出できず、ディレクトリだけでもエントリ数では1件になる。Data Protection keyが無ければサインイン中のセッションは復元できない。 |
 
 `seo-storage` は新規デプロイで空があり得るため0件を許容する。
 
