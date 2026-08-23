@@ -71,6 +71,8 @@ services:
       context: .
       dockerfile: Dockerfile
       target: migrate
+      args:
+        SOURCE_REVISION: ${SOURCE_REVISION:-unknown}
     image: seo-intelligence-migrate
     environment:
       <<: *backend-environment
@@ -84,6 +86,8 @@ services:
       context: .
       dockerfile: Dockerfile
       target: api
+      args:
+        SOURCE_REVISION: ${SOURCE_REVISION:-unknown}
     image: seo-intelligence-api
     env_file:
       - path: ${APP_ENV_FILE:-.env}
@@ -112,6 +116,8 @@ services:
       context: .
       dockerfile: Dockerfile
       target: worker
+      args:
+        SOURCE_REVISION: ${SOURCE_REVISION:-unknown}
     image: seo-intelligence-worker
     env_file:
       - path: ${APP_ENV_FILE:-.env}
@@ -135,6 +141,8 @@ services:
       context: .
       dockerfile: Dockerfile
       target: web
+      args:
+        SOURCE_REVISION: ${SOURCE_REVISION:-unknown}
     image: seo-intelligence-web
     # Deliberately no env_file. That file carries the external API key and the Discord webhook,
     # which only api/worker call out with; the Web host is the internet-facing service and has no

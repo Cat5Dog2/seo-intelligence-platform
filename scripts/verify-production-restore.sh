@@ -60,6 +60,14 @@ umask 077
 work="artifacts/restore-test-$$-${RANDOM}"
 mkdir -p "$work"
 
+# The backup takes the production lock, and the rehearsal gives it one of its own. Without this it
+# would fall back to the host's lock locations, which is both wrong - the rehearsal locks isolated
+# projects, not production - and unavailable on hosts where those locations are rejected: Debian's
+# /var/lock is a 1777 symlink, so a non-root run there has nowhere safe and refuses outright.
+lock_dir="$PWD/$work/lock"
+mkdir -p "$lock_dir"
+chmod 700 "$lock_dir"
+
 suffix="$$-${RANDOM}"
 src_project="seo-restore-src-${suffix}"
 dst_project="seo-restore-dst-${suffix}"
@@ -107,23 +115,71 @@ production_image_state() {
 }
 production_images_before="$(production_image_state)"
 
-cleanup() {
-  local status=$?
-  src_compose down --volumes --remove-orphans > /dev/null 2>&1 || true
-  dst_compose down --volumes --remove-orphans > /dev/null 2>&1 || true
-  docker network rm "$src_network" "$dst_network" > /dev/null 2>&1 || true
-  # Only the rehearsal's own tags. When they were tagged from the production images this removes
-  # the tag and leaves the image, which is still referenced by the production tag.
-  docker image rm "${REHEARSAL_IMAGES[@]}" > /dev/null 2>&1 || true
-  rm -rf "$work"
-  return "$status"
-}
-trap cleanup EXIT
-
 fail() {
   echo "FAIL: $*" >&2
   exit 1
 }
+
+# Removes a resource only if it is there. A blanket `|| true` cannot tell "there was nothing to
+# remove", which is normal when the run failed early, from "it is still there", which is not.
+remove_if_present() {
+  local kind="$1" name="$2"
+  docker "$kind" inspect "$name" > /dev/null 2>&1 || return 0
+  docker "$kind" rm "$name" > /dev/null 2>&1 && return 0
+  echo "WARNING: ${kind} ${name} could not be removed." >&2
+  return 1
+}
+
+# Runs on every exit path, not just the successful one. Two things have to hold however the run
+# ended: nothing of the rehearsal is left on the host, and the production image tags are exactly as
+# they were. A failure partway through is precisely when a half-built rehearsal image could have
+# landed on a production tag, so checking that only on success would check it only when it cannot
+# have happened. Both are reported through the exit code; a cleanup that quietly failed would let
+# the next run inherit the mess and blame it on something else.
+cleanup() {
+  local status=$?
+  local problems=0 leftovers image
+
+  src_compose down --volumes --remove-orphans > /dev/null 2>&1 || problems=$((problems + 1))
+  dst_compose down --volumes --remove-orphans > /dev/null 2>&1 || problems=$((problems + 1))
+
+  remove_if_present network "$src_network" || problems=$((problems + 1))
+  remove_if_present network "$dst_network" || problems=$((problems + 1))
+
+  # Only the rehearsal's own tags. When they were tagged from the production images this removes
+  # the tag and leaves the image, which is still referenced by the production tag.
+  for image in "${REHEARSAL_IMAGES[@]}"; do
+    remove_if_present image "$image" || problems=$((problems + 1))
+  done
+
+  leftovers="$(
+    docker ps -a --format '{{.Names}}' 2>/dev/null | grep -E "^(${src_project}|${dst_project})[-_]" || true
+    docker volume ls --format '{{.Name}}' 2>/dev/null | grep -E "^(${src_project}|${dst_project})_" || true
+    docker network ls --format '{{.Name}}' 2>/dev/null | grep -E "^(${src_network}|${dst_network})$" || true
+    docker image ls --format '{{.Repository}}:{{.Tag}}' 2>/dev/null | grep -F "seo-restore-rehearsal-" || true
+  )"
+  if [[ -n "$leftovers" ]]; then
+    echo "WARNING: the rehearsal left these behind:" >&2
+    sed 's/^/         /' <<< "$leftovers" >&2
+    problems=$((problems + 1))
+  fi
+
+  if [[ "$(production_image_state)" != "$production_images_before" ]]; then
+    echo "FAIL: the rehearsal changed the production image tags." >&2
+    diff <(printf '%s\n' "$production_images_before") <(production_image_state) >&2 || true
+    problems=$((problems + 1))
+  fi
+
+  rm -rf "$work"
+
+  if [[ "$problems" -ne 0 && "$status" -eq 0 ]]; then
+    status=1
+  fi
+  # `exit` rather than `return`: a value returned from an EXIT trap does not become the script's
+  # exit status, so a cleanup failure would be reported as success.
+  exit "$status"
+}
+trap cleanup EXIT
 
 # The same pinned image the backup script uses, so the rehearsal restores with the tooling the
 # backup was written by.
@@ -174,28 +230,67 @@ services:
     image: ${REHEARSAL_IMAGES[3]}
 OVERRIDE
 
+# Checked against the rendered configuration before anything is built, because after the build the
+# damage is done: a `build` that still pointed at seo-intelligence-api would have replaced the tag
+# production runs from, and no later assertion can put it back.
+rendered_config="$(src_compose --profile tools config 2>&1)" \
+  || fail "the rehearsal Compose configuration does not render: $rendered_config"
+
+for production_image in "${PRODUCTION_IMAGES[@]}"; do
+  if grep -qE "^[[:space:]]+image: ${production_image}[[:space:]]*$" <<< "$rendered_config"; then
+    fail "the rehearsal override did not take effect: ${production_image} is still the build target."
+  fi
+done
+
+for rehearsal_image in "${REHEARSAL_IMAGES[@]}"; do
+  grep -qE "^[[:space:]]+image: ${rehearsal_image}[[:space:]]*$" <<< "$rendered_config" \
+    || fail "the rehearsal override does not assign ${rehearsal_image} to any service."
+done
+
 # `caddy` is an external network in the production overlay: on the VPS the reverse proxy owns it.
 docker network create "$src_network" > /dev/null
 docker network create "$dst_network" > /dev/null
 
+# Stamped into the images by the Dockerfile, so a reused image can be matched against the checkout
+# being verified rather than eyeballed from a timestamp. Taken from the environment first: the
+# rehearsal is sometimes run from an exported tree with no .git.
+source_revision="${SOURCE_REVISION:-$(git rev-parse HEAD 2>/dev/null || echo unknown)}"
+
+image_revision() {
+  docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$1" 2>/dev/null || true
+}
+
 if [[ "${RESTORE_REHEARSAL_SKIP_BUILD:-false}" == "true" ]]; then
   # Tagging does not modify the source image, so reusing them this way still leaves the production
-  # tags alone. Which image is being exercised is printed: a rehearsal that passed on an image
-  # built from some other commit has not verified this checkout, and would otherwise look the same.
+  # tags alone. The revision each image was built from is checked, not just printed: a rehearsal
+  # that passed on an image built from some other commit has verified that commit, not this one,
+  # and looks exactly like a real pass.
   echo "Reusing already-built images under rehearsal tags:"
+  stale=0
   for index in "${!PRODUCTION_IMAGES[@]}"; do
     source_image="${PRODUCTION_IMAGES[$index]}"
     docker image inspect "$source_image" > /dev/null 2>&1 \
       || fail "RESTORE_REHEARSAL_SKIP_BUILD is set but ${source_image} does not exist. Build first."
     docker image tag "$source_image" "${REHEARSAL_IMAGES[$index]}"
-    printf '  %s %s created %s\n' "$source_image" \
+    built_from="$(image_revision "$source_image")"
+    printf '  %-26s %s revision %s\n' "$source_image" \
       "$(docker image inspect --format '{{.Id}}' "$source_image" | cut -c1-19)" \
-      "$(docker image inspect --format '{{.Created}}' "$source_image")"
+      "${built_from:-<unlabelled>}"
+    if [[ "$source_revision" == "unknown" || -z "$source_revision" ]]; then
+      stale=$((stale + 1))
+    elif [[ "$built_from" != "$source_revision" ]]; then
+      stale=$((stale + 1))
+    fi
   done
-  echo "  These were not built by this run; confirm they match the current checkout."
+
+  if [[ "$stale" -ne 0 && "${RESTORE_REHEARSAL_ALLOW_STALE_IMAGES:-false}" != "true" ]]; then
+    fail "these images were not built from ${source_revision}, so this run would verify a different
+      commit. Rebuild, pass SOURCE_REVISION, or set RESTORE_REHEARSAL_ALLOW_STALE_IMAGES=true to
+      accept it deliberately."
+  fi
 else
-  echo "Building the application images under rehearsal tags..."
-  src_compose build api web worker migrate > /dev/null
+  echo "Building the application images under rehearsal tags (revision ${source_revision})..."
+  SOURCE_REVISION="$source_revision" src_compose build api web worker migrate > /dev/null
 fi
 
 echo "Starting the source stack (${src_project})..."
@@ -328,7 +423,7 @@ echo "Source stack seeded: project ${project_id}, export ${export_id}."
 # --- the backup, taken by the production script ----------------------------------------------------
 
 src_compose stop web api worker > /dev/null
-BACKUP_PROJECT_NAME="$src_project" ENV_FILE="$src_env" \
+BACKUP_PROJECT_NAME="$src_project" ENV_FILE="$src_env" PRODUCTION_LOCK_DIR="$lock_dir" \
   bash scripts/backup-production.sh "$repo_root/$work/backup"
 backup_dir="$work/backup"
 
@@ -372,7 +467,7 @@ dst_compose --profile tools run --rm migrate > /dev/null
 
 migrations_after="$(migration_count)"
 [[ "$migrations_after" == "$migrations_before" ]] \
-  || fail "the restore needed ${migrations_after} migrations where the dump had ${migrations_before}; the dump and the code have drifted."
+  || fail "migrating the restored database changed the history count from ${migrations_before} to ${migrations_after}; the dump and the code have drifted."
 
 dst_compose up -d --wait --wait-timeout 180 api worker web > /dev/null
 
@@ -408,15 +503,6 @@ fetch_artifact "$dst_project" "$dst_env" \
   "$work/artifact-new.bin"
 [[ -s "$work/artifact-new.bin" ]] \
   || fail "the restored Worker produced an empty artifact."
-
-# The rehearsal builds under its own tags; this is what proves it. A rehearsal that quietly rebuilt
-# seo-intelligence-api would leave production running an image nobody scanned.
-production_images_after="$(production_image_state)"
-if [[ "$production_images_after" != "$production_images_before" ]]; then
-  echo "FAIL: the rehearsal changed the production image tags." >&2
-  diff <(printf '%s\n' "$production_images_before") <(printf '%s\n' "$production_images_after") >&2 || true
-  exit 1
-fi
 
 echo "Restore rehearsal succeeded: the database, the stored artifact and the Data Protection keys"
 echo "came back together, the artifact reads byte-for-byte through the API, the restored Worker"

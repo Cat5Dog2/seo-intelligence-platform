@@ -61,6 +61,11 @@ fi
 source scripts/lib/production-lock.sh
 acquire_production_lock "$PROJECT_NAME" || exit 1
 
+# Stamped into the images as org.opencontainers.image.revision. Without it there is no way to tell
+# which commit a running container came from, and the VPS rebuilds from source rather than pulling
+# a tagged artifact, so nothing else records it. Unknown when this is not a git checkout.
+export SOURCE_REVISION="${SOURCE_REVISION:-$(git rev-parse HEAD 2>/dev/null || echo unknown)}"
+
 # Both paths run these first, in this order.
 build_and_scan() {
   "${COMPOSE[@]}" config --quiet

@@ -304,7 +304,15 @@ bash scripts/verify-production-restore.sh
 | 復元先で新しいエクスポートが完走する | 復元後のWorkerが「起動する」ではなく「仕事ができる」ことの確認。Hangfireの復元済みテーブル、DB、Storageを一度に通る。 |
 | 本番imageタグが変化していない | `compose.yaml`は`seo-intelligence-api`等の固定タグを明示しており、**Compose projectを変えてもこのタグは分離されない**。リハーサルは専用タグへbuildし、終了時に削除する。ここを外すと、リハーサルがbuildした未スキャンimageで本番コンテナが再作成され得る。 |
 
-実`flock`が要るためLinux（VPSまたはLinux CI）で実行する。Dockerや`flock`が無い環境では**exit 2で失敗する**（四半期の復元検証を自動化したとき、「検証できなかった」が成功として記録されないため）。対話的に見送る場合だけ`RESTORE_REHEARSAL_ALLOW_SKIP=true`を付ける。イメージをbuild済みなら`RESTORE_REHEARSAL_SKIP_BUILD=true`を付ける（この場合、使用したimage IDと作成日時を出力するので、現在のcheckoutと一致するか確認すること）。本番projectには一切触れない。
+終了経路にかかわらず、cleanupで次も検査する。途中で失敗したときこそ、buildしかけたimageが本番タグに載っている可能性があるためである。
+
+- リハーサルのcontainer、volume、network、専用imageが残っていないこと
+- 本番4タグのimage IDが開始前と一致すること
+- 上記や削除自体が失敗した場合、終了コードへ反映すること（cleanupが黙って失敗すると、次回の実行が前回の残骸を引き継ぐ）
+
+実`flock`が要るためLinux（VPSまたはLinux CI）で実行する。バックアップが取るロックにはリハーサル専用のディレクトリを渡すので、ホストの本番ロック領域は使わない。Dockerや`flock`が無い環境では**exit 2で失敗する**（四半期の復元検証を自動化したとき、「検証できなかった」が成功として記録されないため）。対話的に見送る場合だけ`RESTORE_REHEARSAL_ALLOW_SKIP=true`を付ける。
+
+イメージをbuild済みなら`RESTORE_REHEARSAL_SKIP_BUILD=true`を付ける。この場合、再利用するimageの`org.opencontainers.image.revision`を検証対象のcommitと突き合わせ、**不一致なら失敗する**（別のcommitのimageで通っても、そのcommitを検証しただけであり、成功と見分けがつかないため）。意図して古いimageで実行する場合だけ`RESTORE_REHEARSAL_ALLOW_STALE_IMAGES=true`を付ける。`.git`の無い展開済みツリーで実行する場合は`SOURCE_REVISION`を渡す。本番projectには一切触れない。
 
 このComposeだけでは日次スケジュール、WAL/PITR、VPS外冗長化は提供しない。NFR-011を満たすには、ホスティング側のsnapshot/backupまたは外部PostgreSQL/Storageサービスを別途構成する。
 
@@ -314,6 +322,14 @@ bash scripts/verify-production-restore.sh
 docker compose --project-name seo-intelligence-prod --env-file .env.production -f compose.yaml -f compose.production.yaml ps
 docker compose --project-name seo-intelligence-prod --env-file .env.production -f compose.yaml -f compose.production.yaml logs --tail 200 web api worker postgres redis
 ```
+
+動いているimageがどのcommitのものかは、imageのlabelで確認する。VPSはregistryからtagを引くのではなくソースから再buildするため、これ以外に記録は残らない。
+
+```bash
+docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' seo-intelligence-api
+```
+
+`unknown`と出る場合は、gitのcheckoutではない場所からbuildされたか、`SOURCE_REVISION`が渡されていない。
 
 確認観点:
 

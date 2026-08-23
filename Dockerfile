@@ -90,18 +90,29 @@ USER app
 
 FROM runtime-base AS api
 COPY --from=publish-api --chown=app:app /app/publish .
+# Stamped so a running container can be traced back to a commit, and so the restore rehearsal can
+# check mechanically that a reused image was built from the checkout it is verifying. Declared in
+# the final stages rather than runtime-base: a new revision then invalidates only the last layer.
+ARG SOURCE_REVISION=unknown
+LABEL org.opencontainers.image.revision=$SOURCE_REVISION
 EXPOSE 8080
 ENTRYPOINT ["dotnet", "SeoIntelligence.Api.dll"]
 
 FROM runtime-base AS web
 COPY --from=publish-web --chown=app:app /app/publish .
+ARG SOURCE_REVISION=unknown
+LABEL org.opencontainers.image.revision=$SOURCE_REVISION
 EXPOSE 8080
 ENTRYPOINT ["dotnet", "SeoIntelligence.Web.dll"]
 
 FROM runtime-base AS worker
 COPY --from=publish-worker --chown=app:app /app/publish .
+ARG SOURCE_REVISION=unknown
+LABEL org.opencontainers.image.revision=$SOURCE_REVISION
 ENTRYPOINT ["dotnet", "SeoIntelligence.Worker.dll"]
 
 FROM runtime-base AS migrate
 COPY --from=migrate-bundle --chown=app:app /app/efbundle .
+ARG SOURCE_REVISION=unknown
+LABEL org.opencontainers.image.revision=$SOURCE_REVISION
 ENTRYPOINT ["./efbundle"]

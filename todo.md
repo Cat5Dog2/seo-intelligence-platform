@@ -1669,6 +1669,20 @@ CRLF起因のバグ（検証中に発覚）:
 - [x] `RESTORE_REHEARSAL_SKIP_BUILD=true`のとき、使用するimage IDと作成日時を出力する。古いimageで通っても気づけるようにするため。
 - [x] リハーサル開始前後で本番imageタグが不変であること。build経路（実build）とSKIP_BUILD経路の両方で確認済み。
 
+19次レビューによる追加是正:
+
+- [x] 復元リハーサルが`PRODUCTION_LOCK_DIR`を指定せずバックアップを呼んでいた。ホストの本番ロック領域を使おうとするうえ、Debian非rootのようにどの既定位置も拒否される環境ではバックアップ段で失敗する。`$work/lock`を700で作成して明示する。非rootでの実行で失敗を再現し、修正後の通過を確認済み。
+- [x] cleanupがfail-openだった。`down`、network削除、image削除がすべて`|| true`で、残骸があっても正常終了していた。存在するものだけを削除し、削除できなければ問題として数え、container/volume/network/imageの残骸検査と本番タグ不変検査をcleanupへ移して**全終了経路**で実行する。EXIT trapでは`return`では終了コードが変わらないため`exit`で反映する。
+- [x] 本番タグ不変検査が正常系の最後にしかなかった。build後に途中失敗した場合こそ危険なため、cleanupで必ず比較する。あわせて、buildの**前**にレンダリング結果を検査し、4サービスが専用タグ以外を指していたらbuild自体を拒否する（buildしてからでは戻せないため）。
+- [x] Migrationエラー文が「適用件数」に読めた。履歴総数の変化として表現し直した。
+- [x] `SKIP_BUILD`時のimage同一性が人手確認頼みだった。Dockerfileの4つのruntime stageで`org.opencontainers.image.revision`を付与し（最終レイヤのみに影響）、composeの`args`とdeployスクリプトから`SOURCE_REVISION`を渡す。リハーサルは再利用するimageのrevisionを検証対象のcheckoutと突き合わせ、不一致なら失敗する（`RESTORE_REHEARSAL_ALLOW_STALE_IMAGES=true`で明示的に許容）。本番でも「動いているコンテナがどのコミットか」を追えるようになる。
+- [x] ロックテストのholderを`kill`後に`wait`するようにした。次ケースが同じファイルをロックするため、reapされていないholderがロックを保持し続ける瞬間を避ける。
+
+テストの追加:
+
+- [x] `BACKUP_PROJECT_NAME`固定テストを`update`と`backup`の両モードで実行する。`update`側の代入だけを削除すると`update`側だけが落ちることを確認済み。
+- [x] cleanupでの残骸検査（container、volume、network、リハーサルimage）と本番タグ不変検査を、成功・失敗いずれの終了経路でも実行する。
+
 判断の記録（4次）:
 
 - 実VPSでのCaddy/Cloudflare経由のクライアントIP置換確認だけは、環境依存のためローカルで代替できない。partitionロジック自体はテストで固定済み。

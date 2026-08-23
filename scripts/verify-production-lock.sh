@@ -91,7 +91,10 @@ fi
 exec {forged}> "$lock_path"
 PRODUCTION_LOCK_HELD="$1" PRODUCTION_LOCK_FD="$forged" PRODUCTION_LOCK_PATH="$lock_path" \
   bash "$3" "$1" > "$4" 2>/dev/null
+# Waited for, not just signalled: the next case locks the same file, and a holder that has been
+# killed but not yet reaped can still hold the lock for a moment afterwards.
 kill "$holder" 2>/dev/null || true
+wait "$holder" 2>/dev/null || true
 FORGE
 
 cat > "$work/second-holder.sh" <<'SECOND'
@@ -111,7 +114,10 @@ if [[ ! -e "$ready" ]]; then
   exit 0
 fi
 bash "$3" "$1" > "$4" 2>/dev/null
+# Waited for, not just signalled: the next case locks the same file, and a holder that has been
+# killed but not yet reaped can still hold the lock for a moment afterwards.
 kill "$holder" 2>/dev/null || true
+wait "$holder" 2>/dev/null || true
 SECOND
 
 cat > "$work/where.sh" <<'WHERE'

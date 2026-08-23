@@ -194,15 +194,20 @@ STUB
 backup_target="$work/deploy-backup-target"
 make_traceable scripts/deploy-production.sh "$backup_target" 'bash "$BACKUP_TARGET_STUB"'
 
-target_output="$(PATH="$PWD/$work/bin:$PATH" PRODUCTION_LOCK_DIR="$PWD/$work/lock" ENV_FILE=.env.production.example   BACKUP_TARGET_STUB="$PWD/$work/backup-target-stub.sh" BACKUP_PROJECT_NAME=not-the-production-stack   bash "$backup_target" backup 2>&1)" || true
+# Both procedures that take a backup, not just the ad-hoc one. `update` is the worse of the two:
+# it backs up with the application stopped and a migration next, so a backup sent at another stack
+# there leaves production down with its schema about to change.
+for backup_mode in update backup; do
+  target_output="$(PATH="$PWD/$work/bin:$PATH" PRODUCTION_LOCK_DIR="$PWD/$work/lock" ENV_FILE=.env.production.example     BACKUP_TARGET_STUB="$PWD/$work/backup-target-stub.sh" BACKUP_PROJECT_NAME=not-the-production-stack     bash "$backup_target" "$backup_mode" 2>&1)" || true
 
-if ! grep -qF "TRACE backup-target=seo-intelligence-prod" <<< "$target_output"; then
-  echo "FAIL: an inherited BACKUP_PROJECT_NAME redirected the deployment's backup." >&2
-  grep '^TRACE ' <<< "$target_output" | sed 's/^/      /' >&2
-  failures=$((failures + 1))
-else
-  echo "ok: the deployment pins its own backup to the production stack."
-fi
+  if ! grep -qF "TRACE backup-target=seo-intelligence-prod" <<< "$target_output"; then
+    echo "FAIL: in ${backup_mode} mode an inherited BACKUP_PROJECT_NAME redirected the backup." >&2
+    grep '^TRACE ' <<< "$target_output" | sed 's/^/      /' >&2
+    failures=$((failures + 1))
+  else
+    echo "ok: ${backup_mode} pins its own backup to the production stack."
+  fi
+done
 
 # A deployment script whose procedures never call build_and_scan. The commands are still present in
 # the function body, so a source-level check passes; the trace shows they never run.
