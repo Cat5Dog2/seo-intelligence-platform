@@ -166,8 +166,7 @@ compose ps"
 # A failed backup must not leave the application down. Nothing has changed at that point - no
 # migration has run - so the previous version has to come back up.
 backup_fails="$work/deploy-backup-fails"
-make_traceable scripts/deploy-production.sh "$backup_fails"
-sed -i 's|echo TRACE backup$|echo TRACE backup; return 4|' "$backup_fails"
+make_traceable scripts/deploy-production.sh "$backup_fails" 'echo TRACE backup; return 4'
 
 backup_output="$(PATH="$PWD/$work/bin:$PATH" PRODUCTION_LOCK_DIR="$PWD/$work/lock" ENV_FILE=.env.production.example   bash "$backup_fails" backup 2>&1)" && backup_status=0 || backup_status=$?
 
@@ -214,6 +213,9 @@ done
 # cannot be established the deployment has to stop, not build something unattributable. A corrupt
 # index is the awkward case: HEAD still resolves, so only `git status` fails, and it fails with
 # empty output that reads exactly like a clean tree.
+if [[ ! -e .git ]]; then
+  echo "skip: the source-revision guard needs a git checkout."
+else
 printf 'not-an-index' > "$work/corrupt-index"
 if GIT_INDEX_FILE="$PWD/$work/corrupt-index" PATH="$PWD/$work/bin:$PATH"   PRODUCTION_LOCK_DIR="$PWD/$work/lock" ENV_FILE=.env.production.example   bash "$traceable" backup > "$work/revision-out" 2>&1; then
   echo "FAIL: the deployment ran even though the source revision could not be determined." >&2
@@ -224,6 +226,7 @@ elif ! grep -q "git status failed" "$work/revision-out"; then
   failures=$((failures + 1))
 else
   echo "ok: a source revision that cannot be established stops the deployment."
+fi
 fi
 
 # A deployment script whose procedures never call build_and_scan. The commands are still present in
@@ -292,16 +295,73 @@ fi
 if ! command -v flock > /dev/null 2>&1; then
   echo "skip: the single-flight check needs flock, which is not available here."
 else
-  slow="$work/deploy-slow"
-  make_traceable scripts/deploy-production.sh "$slow"
-  # Hold the first deployment inside the locked region long enough for the second to try.
-  sed -i 's|^    echo TRACE backup$|    echo TRACE backup; sleep 5|' "$slow"
+  # The two runs are synchronised through files rather than through sleeps. A fixed delay decides
+  # the outcome by timing: too short and the second starts before the first holds the lock, too
+  # long and the first has finished by the time the second tries - and on a loaded runner both
+  # happen. Either way the case passes or fails for reasons that have nothing to do with locking.
+  #
+  # This stands in for the backup, which runs inside the locked region. It announces that the lock
+  # is held and then keeps holding it until the test says otherwise.
+  cat > "$work/lock-handshake.sh" <<'HANDSHAKE'
+#!/usr/bin/env bash
+echo TRACE backup
+touch "$LOCK_READY"
+for _ in $(seq 1 600); do
+  if [[ -e "$LOCK_RELEASE" ]]; then
+    exit 0
+  fi
+  sleep 0.1
+done
+echo "the release signal never arrived within 60s" >&2
+exit 1
+HANDSHAKE
 
-  PRODUCTION_LOCK_DIR="$PWD/$work/lock" ENV_FILE=.env.production.example bash "$slow" update > "$work/lock-first" 2>&1 &
+  slow="$work/deploy-slow"
+  # Passed to make_traceable rather than sed'd in afterwards. An expression that stops matching
+  # leaves the case testing nothing, which is exactly how this check came to pass a deployment that
+  # was never held up; make_traceable verifies its own substitution.
+  make_traceable scripts/deploy-production.sh "$slow" 'bash "$LOCK_HANDSHAKE"'
+
+  first_ready="$PWD/$work/first-ready"
+  first_release="$PWD/$work/first-release"
+  rm -f "$first_ready" "$first_release"
+
+  LOCK_HANDSHAKE="$PWD/$work/lock-handshake.sh" LOCK_READY="$first_ready" LOCK_RELEASE="$first_release"   PRODUCTION_LOCK_DIR="$PWD/$work/lock" ENV_FILE=.env.production.example   bash "$slow" update > "$work/lock-first" 2>&1 &
   first=$!
-  sleep 2
-  PRODUCTION_LOCK_DIR="$PWD/$work/lock" ENV_FILE=.env.production.example bash "$slow" update > "$work/lock-second" 2>&1 && second_status=0 || second_status=$?
-  wait "$first" && first_status=0 || first_status=$?
+
+  for _ in $(seq 1 600); do
+    if [[ -e "$first_ready" ]] || ! kill -0 "$first" 2>/dev/null; then
+      break
+    fi
+    sleep 0.1
+  done
+
+  if [[ ! -e "$first_ready" ]]; then
+    echo "FAIL: the first deployment never reached the locked region." >&2
+    sed 's/^/      /' "$work/lock-first" >&2
+    failures=$((failures + 1))
+    wait "$first" > /dev/null 2>&1 || true
+    first_status=0
+    second_status=1
+  else
+    # The second run gets its own signals, with the release already in place. If the lock wrongly
+    # lets it through it finishes immediately and reports success - rather than blocking on a
+    # release meant for the first run and timing out, which would look like a refusal.
+    second_ready="$PWD/$work/second-ready"
+    second_release="$PWD/$work/second-release"
+    rm -f "$second_ready"
+    touch "$second_release"
+
+    LOCK_HANDSHAKE="$PWD/$work/lock-handshake.sh" LOCK_READY="$second_ready" LOCK_RELEASE="$second_release"     PRODUCTION_LOCK_DIR="$PWD/$work/lock" ENV_FILE=.env.production.example     bash "$slow" update > "$work/lock-second" 2>&1 && second_status=0 || second_status=$?
+
+    touch "$first_release"
+    wait "$first" && first_status=0 || first_status=$?
+
+    if [[ -e "$second_ready" ]]; then
+      echo "FAIL: the second deployment reached the locked region while the first held the lock." >&2
+      failures=$((failures + 1))
+    fi
+  fi
 
   if [[ "$first_status" -ne 0 ]]; then
     echo "FAIL: the first deployment did not complete." >&2

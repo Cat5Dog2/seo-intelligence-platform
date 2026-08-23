@@ -1724,6 +1724,15 @@ CRLF起因のバグ（検証中に発覚）:
 
 - [x] linked worktree（`.git`がディレクトリではなくファイルになるケース）の実ケースを追加した。実装は`-e .git`とgit標準処理で対応済みだったが、テストが常に`.git`ディレクトリしか見ていなかったため、`-d`へ変わっても気づけない状態だった。3ケース追加（`.git`がファイルであることの前提確認、worktree自身のHEADを返すこと、worktreeがdirtyなら`-dirty`になること）。worktreeは本流checkoutと**別のcommit**を指すようにしてあり、リポジトリ側で解決した場合は偶然一致せず落ちる。`-e`を`-d`へ変える退行注入で、いずれも`unknown`になって落ちることを確認済み。合計21ケース。
 
+CI失敗の是正:
+
+- [x] GitHub Actionsで`verify-deployment-guards.sh`のsingle-flightケースが失敗した。`make_traceable`をコマンド部分のみの置換へ変えた際に生成行が`BACKUP_PROJECT_NAME="$PROJECT_NAME" echo TRACE backup`となり、行頭アンカー付きの`sleep 5`注入が一致しなくなっていた。1本目が遅延せず即終了するため、2本目が普通にロックを取得していた。Windowsはflock不在でこのケースをskipするため、ローカルでは見えていなかった。
+- [x] sed条件を直すだけでは同じ表記変更で再び壊れるため、固定`sleep`による競合再現をやめ、ready/releaseファイルによる同期へ変更した。1本目はロック内でreadyを作成しreleaseを待つ。テストはreadyを確認してから2本目を起動し、ロックエラーを検証してからreleaseする。`sleep 5`と`sleep 2`は削除した。
+- [x] 2本目には別のready/releaseを与え、releaseを事前に作成しておく。ロックをすり抜けた場合に、1本目向けのreleaseを待ってタイムアウトし「拒否された」ように見えるのを防ぐ。2本目がロック内へ到達したこと自体もreadyファイルの有無で検証する。
+- [x] `backup_fails`ケースも`make_traceable`の引数経由へ統一し、後付けの`sed -i`注入を廃止した。`make_traceable`は置換が実際に行われたことを検証するため、空振りが黙って通ることがない。
+- [x] source-revisionガードは、ソースルートが git checkout でない場合に明示skipする。CIは`actions/checkout`があるため実行されるが、展開済みツリーで実行したときに無関係な理由で落ちないようにする。
+- [x] Linux（実flock・実checkout、GitHub Actionsと同じ形）で17ケース通過を確認。ロック取得を外す退行注入で、readyファイル検査と終了コード検査の両方が発火することも確認済み。
+
 判断の記録（4次）:
 
 - 実VPSでのCaddy/Cloudflare経由のクライアントIP置換確認だけは、環境依存のためローカルで代替できない。partitionロジック自体はテストで固定済み。
