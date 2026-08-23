@@ -1695,6 +1695,18 @@ CRLF起因のバグ（検証中に発覚）:
 - [x] 無関係な`seo-restore-rehearsal-*`タグが存在しても、現在の実行が残骸と誤判定しないことを実測で確認した。
 - [x] フル復元リハーサルを、非root・実buildで再実行して通過を確認済み。
 
+21次レビューによる追加是正:
+
+- [x] **Medium**: `git status --porcelain`の終了コードを見ておらず、失敗をcleanとして扱っていた。index破損や権限問題でstatusが失敗すると標準出力は空になり、これはcleanなツリーの出力と区別がつかない。実測でも、`GIT_INDEX_FILE`を壊した状態で`git status`はexit 128、`git rev-parse HEAD`は成功し、resolverはexit 0で裸のSHAを返していた。終了コードを検査してfail-closedにした。
+- [x] `.git`があるのにHEADを解決できない場合、展開済みツリー扱いで`SOURCE_REVISION`へfallbackしていた。壊れたcheckoutは呼び出し側の申告が最も当てにならない状況なので、拒否する。`git rev-parse --git-dir`で「gitがあるか」と「gitが答えられるか」を分けて判定する。
+- [x] 呼び出し側も追随させた。`deploy-production.sh`は解決失敗でbuild前に中止し、`verify-production-restore.sh`は`fail`で停止する。
+
+テストの追加:
+
+- [x] `rev-parse HEAD`は成功するが`git status`が失敗する場合に、解決自体が失敗すること（index破損で再現）。
+- [x] `.git`はあるがHEADを解決できない場合に、`SOURCE_REVISION`へfallbackしないこと（commit前のリポジトリで再現）。
+- [x] 解決失敗時にデプロイがbuild前に中止すること（`verify-deployment-guards.sh`）。3件とも退行注入で落ちることを確認済み。
+
 判断の記録（4次）:
 
 - 実VPSでのCaddy/Cloudflare経由のクライアントIP置換確認だけは、環境依存のためローカルで代替できない。partitionロジック自体はテストで固定済み。

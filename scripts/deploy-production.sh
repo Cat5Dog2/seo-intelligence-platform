@@ -68,7 +68,11 @@ acquire_production_lock "$PROJECT_NAME" || exit 1
 # shellcheck source=scripts/lib/source-revision.sh
 source scripts/lib/source-revision.sh
 export SOURCE_REVISION
-SOURCE_REVISION="$(resolve_source_revision)"
+SOURCE_REVISION="$(resolve_source_revision)" || {
+  echo "       Refusing to build: an image whose source cannot be identified is one nobody can" >&2
+  echo "       trace back to a commit when it misbehaves." >&2
+  exit 1
+}
 case "$SOURCE_REVISION" in
   *-dirty)
     echo "NOTE: the working tree has uncommitted changes; images will be labelled ${SOURCE_REVISION}." >&2

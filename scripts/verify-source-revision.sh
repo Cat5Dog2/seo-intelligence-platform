@@ -44,6 +44,18 @@ source "$1/scripts/lib/source-revision.sh"
 resolve_source_revision
 RESOLVE
 
+# Reports REFUSED rather than the value when resolution fails, so a case can assert that the
+# library declined to answer instead of answering wrongly.
+cat > "$work/resolve-or-refuse.sh" <<'REFUSE'
+#!/usr/bin/env bash
+source "$1/scripts/lib/source-revision.sh"
+if resolved="$(resolve_source_revision 2>/dev/null)"; then
+  printf '%s' "$resolved"
+else
+  printf 'REFUSED'
+fi
+REFUSE
+
 cat > "$work/is-exact.sh" <<'EXACT'
 #!/usr/bin/env bash
 source "$1/scripts/lib/source-revision.sh"
@@ -108,6 +120,32 @@ check "an explicit value is honoured where there is no git" "abc123" \
 
 check "no git and no value resolves to unknown" "unknown" \
   "$(resolve_in "$exported" -u SOURCE_REVISION GIT_CEILING_DIRECTORIES="$repo_root/$work")"
+
+# --- git that will not answer -------------------------------------------------------------------
+
+resolve_or_refuse_in() {
+  local directory="$1"
+  shift
+  ( cd "$directory" && env "$@" bash "$repo_root/$work/resolve-or-refuse.sh" "$repo_root" )
+}
+
+# `git status` reads the index; HEAD does not. A corrupt index therefore leaves HEAD answerable
+# while the state of the working tree is unknowable - and a failing status prints nothing on
+# stdout, which is exactly what a clean tree prints. Treating that as clean would stamp a bare sha
+# onto an image whose contents nobody could account for.
+printf 'not-an-index' > "$work/corrupt-index"
+check "a failing git status is refused, not read as clean" REFUSED \
+  "$(resolve_or_refuse_in "$scratch" -u SOURCE_REVISION GIT_INDEX_FILE="$repo_root/$work/corrupt-index")"
+
+# A repository with no commit: .git is there, HEAD resolves to nothing. This must not be mistaken
+# for an exported tree, or an inherited value would be accepted for a checkout that is simply
+# broken - the one case where a caller-supplied revision is least likely to be true.
+unborn="$repo_root/$work/unborn"
+mkdir -p "$unborn"
+git -C "$unborn" init --quiet
+git -C "$unborn" config core.autocrlf false
+check "a checkout with no resolvable HEAD does not fall back to SOURCE_REVISION" REFUSED \
+  "$(resolve_or_refuse_in "$unborn" SOURCE_REVISION=1111111111111111111111111111111111111111)"
 
 # --- what counts as an exact revision --------------------------------------------------------------
 

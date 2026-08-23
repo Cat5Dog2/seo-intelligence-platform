@@ -209,6 +209,23 @@ for backup_mode in update backup; do
   fi
 done
 
+# The images are labelled with the commit they were built from, and that is the only record of what
+# a running container holds - the VPS builds from source rather than pulling a tag. If the revision
+# cannot be established the deployment has to stop, not build something unattributable. A corrupt
+# index is the awkward case: HEAD still resolves, so only `git status` fails, and it fails with
+# empty output that reads exactly like a clean tree.
+printf 'not-an-index' > "$work/corrupt-index"
+if GIT_INDEX_FILE="$PWD/$work/corrupt-index" PATH="$PWD/$work/bin:$PATH"   PRODUCTION_LOCK_DIR="$PWD/$work/lock" ENV_FILE=.env.production.example   bash "$traceable" backup > "$work/revision-out" 2>&1; then
+  echo "FAIL: the deployment ran even though the source revision could not be determined." >&2
+  failures=$((failures + 1))
+elif ! grep -q "git status failed" "$work/revision-out"; then
+  echo "FAIL: the deployment stopped, but not because the revision was unresolvable." >&2
+  sed 's/^/      /' "$work/revision-out" >&2
+  failures=$((failures + 1))
+else
+  echo "ok: a source revision that cannot be established stops the deployment."
+fi
+
 # A deployment script whose procedures never call build_and_scan. The commands are still present in
 # the function body, so a source-level check passes; the trace shows they never run.
 awk '!/^    build_and_scan$/' scripts/deploy-production.sh > "$work/deploy-uncalled-source"

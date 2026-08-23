@@ -263,7 +263,8 @@ docker network create "$dst_network" > /dev/null
 # how this is run from a tarball.
 # shellcheck source=scripts/lib/source-revision.sh
 source scripts/lib/source-revision.sh
-source_revision="$(resolve_source_revision)"
+source_revision="$(resolve_source_revision)" \
+  || fail "the source revision could not be determined (see above); the rehearsal cannot say which source state it would be verifying."
 
 image_revision() {
   docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$1" 2>/dev/null || true

@@ -18,18 +18,41 @@
 # unless .dockerignore excludes them they are in the build context, so they are in the image.
 
 resolve_source_revision() {
-  local head
+  local head worktree status_code=0
 
-  if head="$(git rev-parse HEAD 2>/dev/null)"; then
-    if [[ -n "$(git status --porcelain 2>/dev/null)" ]]; then
-      printf '%s-dirty' "$head"
-    else
-      printf '%s' "$head"
-    fi
+  # Asked separately from reading HEAD. "There is no git here" and "there is git here and it will
+  # not answer" are different situations, and only the first one may fall back to an explicit
+  # value: a repository that cannot say what it is checked out at is not an exported tree.
+  if ! git rev-parse --git-dir > /dev/null 2>&1; then
+    printf '%s' "${SOURCE_REVISION:-unknown}"
     return 0
   fi
 
-  printf '%s' "${SOURCE_REVISION:-unknown}"
+  if ! head="$(git rev-parse HEAD 2>/dev/null)"; then
+    echo "ERROR: this is a git checkout, but HEAD cannot be resolved." >&2
+    echo "       Refusing to fall back to SOURCE_REVISION here - a repository with no resolvable" >&2
+    echo "       HEAD is broken or has no commits, not an exported tree." >&2
+    return 1
+  fi
+
+  # The exit code is checked, not just the output. A failing `git status` - a corrupt index, a
+  # permission problem, a GIT_INDEX_FILE pointing somewhere unusable - prints nothing on stdout and
+  # exits non-zero, which read as output alone is indistinguishable from a clean tree. That is the
+  # worst possible way to be wrong here: it would stamp a bare sha onto an image whose contents
+  # nobody could verify.
+  worktree="$(git status --porcelain 2>&1)" || status_code=$?
+  if [[ "$status_code" -ne 0 ]]; then
+    echo "ERROR: git status failed (exit ${status_code}), so the working tree cannot be shown to" >&2
+    echo "       match ${head}." >&2
+    sed 's/^/       /' <<< "$worktree" >&2
+    return 1
+  fi
+
+  if [[ -n "$worktree" ]]; then
+    printf '%s-dirty' "$head"
+  else
+    printf '%s' "$head"
+  fi
 }
 
 # True only for a revision that identifies exactly one source state. "unknown" identifies nothing,

@@ -338,6 +338,9 @@ docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.
 | clean なcheckout | `<HEAD>` |
 | 未コミットの変更がある（untrackedを含む） | `<HEAD>-dirty` |
 | gitが無い展開済みツリー | 明示指定した`SOURCE_REVISION`、無指定なら`unknown` |
+| gitはあるがHEADを解決できない、または`git status`が失敗する | **解決失敗としてデプロイを中止する** |
+
+最後の行がfail-closedなのは、`git status`が失敗したときの標準出力がcleanなツリーと同じ「空」だからである。終了コードを見ずに出力だけで判定すると、状態を確認できなかったツリーを裸のSHAでラベル付けしてしまう。`.git`があるのにHEADを解決できない場合も、展開済みツリー扱いにして`SOURCE_REVISION`へfallbackしない（壊れたcheckoutは、呼び出し側の申告が最も当てにならない状況である）。
 
 untrackedを変更扱いにするのは、`.dockerignore`で除外していない限りbuild contextに入り、imageの中身になるためである。`-dirty`で拒否せず記録に留めるのは、障害対応中のデプロイを止める方が損失が大きいからだが、そのimageはどのcommitとも一致しないことを意味する。
 
