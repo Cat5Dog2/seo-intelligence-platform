@@ -167,23 +167,33 @@ fi
 
 # --- path handling -------------------------------------------------------------------------------
 
-# `docker run -v` treats a source that does not start with / or ./ as a named volume, and rejects
-# one containing a slash. Asserted on the arguments the stub recorded, because the script's own
-# output would look identical either way.
+# The output directory is no longer bind mounted - archives are streamed through the container's
+# stdout - so nothing in the docker arguments reveals where the backup went. The check has to read
+# the path the script reports instead. It was previously grepping for a `--volume ...:/backup`
+# argument that this design no longer produces, which made it pass no matter what.
+#
+# Absolute matters because the script cd's to the repository root: a relative path left alone would
+# land somewhere the caller did not choose.
 state="$(new_state relative)"
-if run_backup "$state" "$work/out-relative" > "$work/out" 2>&1; then
-  if grep -oE -- '--volume [^ ]*:/backup' "$state/argv" | grep -qvE -- '--volume /'; then
-    echo "FAIL: a relative output directory reached docker run as a relative path:" >&2
-    grep -oE -- '--volume [^ ]*:/backup' "$state/argv" | grep -vE -- '--volume /' | sed 's/^/        /' >&2
+# Relative, but inside the work directory the trap removes: an earlier version wrote to the
+# repository root and left the artifacts behind.
+if run_backup "$state" "$work/out-relative-$$" > "$work/out" 2>&1; then
+  reported="$(sed -nE 's|^Backing up [^ ]+ to (.*)$|\1|p' "$work/out" | head -1)"
+  if [[ "$reported" != /* ]]; then
+    echo "FAIL: a relative output directory was not made absolute (reported '$reported')." >&2
+    failures=$((failures + 1))
+  elif [[ ! -d "$reported" ]]; then
+    echo "FAIL: the reported backup directory does not exist: $reported" >&2
     failures=$((failures + 1))
   else
-    echo "ok: a relative output directory is made absolute before it reaches docker."
+    echo "ok: a relative output directory is resolved to an absolute path that exists."
   fi
 else
   echo "FAIL: the backup failed with a relative output directory." >&2
   sed 's/^/      /' "$work/out" >&2
   failures=$((failures + 1))
 fi
+
 
 # --- refusals ------------------------------------------------------------------------------------
 
@@ -278,7 +288,15 @@ elif [[ "$status_a" -ne 0 && "$status_b" -ne 0 ]]; then
   sed 's/^/      /' "$work/concurrent-a" "$work/concurrent-b" >&2
   failures=$((failures + 1))
 else
-  echo "ok: only one of two concurrent backups claims the output directory."
+  loser="$work/concurrent-a"
+  [[ "$status_a" -eq 0 ]] && loser="$work/concurrent-b"
+  if ! grep -qF "already exists or could not be created" "$loser"; then
+    echo "FAIL: the losing concurrent backup did not fail on the exclusive mkdir." >&2
+    sed 's/^/      /' "$loser" >&2
+    failures=$((failures + 1))
+  else
+    echo "ok: only one of two concurrent backups claims the output directory; the other is refused."
+  fi
 fi
 
 # The dump holds the whole database and the key archive holds unencrypted Data Protection keys.

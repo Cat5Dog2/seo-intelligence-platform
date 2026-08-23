@@ -43,6 +43,9 @@ ScaffoldingReadMe.txt
 !.env.production.example
 !.env.production.app.example
 
+# Production backups. These hold the whole database and the Data Protection keys.
+backups/
+
 # Others
 ~$*
 *~

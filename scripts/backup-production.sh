@@ -12,6 +12,10 @@
 # worse than no backup, because it is only discovered to be worthless at the moment it is needed.
 set -euo pipefail
 
+# Captured before the cd so a relative output directory resolves against the caller's working
+# directory, which is where they meant it, rather than against the repository root.
+invocation_dir="$PWD"
+
 cd "$(dirname "$0")/.."
 
 # The dump contains the entire database and the key archive contains the Data Protection keys,
@@ -35,13 +39,13 @@ tar_image() {
   printf '%s@%s' "$(cut -f2 <<< "$entry")" "$(cut -f3 <<< "$entry")"
 }
 
-# Absolute, because `docker run -v` treats a source that does not start with / or ./ as a named
-# volume, and a name containing a slash is rejected outright. A relative path here would fail the
-# backup - and on an update that happens after the application has already been stopped.
+# Resolved to an absolute path against the caller's directory. This script cd's to the repository
+# root, so a relative path left as-is would silently land somewhere the caller did not choose, and
+# the "Backing up to ..." line would not say where the backup actually went.
 output_dir="${1:-$PWD/backups/$(date -u +%Y%m%dT%H%M%SZ)}"
 case "$output_dir" in
   /*) ;;
-  *) output_dir="$PWD/$output_dir" ;;
+  *) output_dir="$invocation_dir/$output_dir" ;;
 esac
 
 # The dump and the storage archive have to describe the same moment. Taken while the application is
@@ -58,7 +62,8 @@ if [[ "$ps_status" -ne 0 ]]; then
   exit 1
 fi
 
-running="$(grep -E '^(web|api|worker)$' <<< "$running" || true)"
+# migrate is included: a migration in flight means the schema is changing under the dump.
+running="$(grep -E '^(web|api|worker|migrate)$' <<< "$running" || true)"
 if [[ -n "$running" ]]; then
   echo "ERROR: these services are still running: $(tr '\n' ' ' <<< "$running")" >&2
   echo "       Stop web, api and worker first, or the dump and the storage archive will describe" >&2

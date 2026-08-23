@@ -17,7 +17,17 @@ cd "$(dirname "$0")/.."
 # other's fixtures. Kept under artifacts/ rather than /tmp because the verifier hands the lock path
 # to Python, and on Git Bash for Windows that is the Windows build, which cannot open an MSYS path.
 work="artifacts/guard-test-$$-${RANDOM}"
-mkdir -p "$work"
+mkdir -p "$work/bin"
+
+# The deployment requires flock so two runs cannot overlap. Git Bash on Windows does not ship it,
+# and the ordering tests below are about what runs in what order, not about locking - so they get a
+# stub that always acquires. The real mutual-exclusion check further down uses the real flock and
+# skips where there is none.
+cat > "$work/bin/flock" <<'FLOCK'
+#!/usr/bin/env bash
+exit 0
+FLOCK
+chmod +x "$work/bin/flock"
 trap 'rm -rf "$work"' EXIT
 
 failures=0
@@ -93,7 +103,7 @@ expect_trace() {
   # the expectation and running the script. The name is not what this asserts on; its position is.
   # The exit status has to be the script's, not grep's, so the output is captured first.
   local raw
-  raw="$(ENV_FILE=.env.production.example bash "$script" "$mode" 2>&1)" || status=$?
+  raw="$(PATH="$PWD/$work/bin:$PATH" ENV_FILE=.env.production.example bash "$script" "$mode" 2>&1)" || status=$?
   actual="$(grep '^TRACE ' <<< "$raw" | sed -e 's/^TRACE //' || true)"
 
   if [[ "$status" -ne 0 ]]; then
@@ -179,7 +189,7 @@ expect_failure "the first-deploy procedure no longer invoking the deployment scr
 stub="$work/deploy-abort"
 sed   -e 's|^COMPOSE=(docker compose .*|COMPOSE=(echo COMPOSE-RAN)|'   -e 's|^  bash scripts/scan-container-images.sh app$|  echo SCAN-RAN; return 3|'   -e 's|^cd "$(dirname "$0")/\.\."$|cd "$(dirname "$0")/../.."|'   scripts/deploy-production.sh > "$stub"
 
-abort_output="$(ENV_FILE=.env.production.example bash "$stub" initial 2>&1)" && abort_status=0 || abort_status=$?
+abort_output="$(PATH="$PWD/$work/bin:$PATH" ENV_FILE=.env.production.example bash "$stub" initial 2>&1)" && abort_status=0 || abort_status=$?
 
 if [[ "$abort_status" -eq 0 ]]; then
   echo "FAIL: the deployment script completed even though the image scan failed." >&2
@@ -193,6 +203,41 @@ elif grep -qF "up -d postgres redis" <<< "$abort_output"; then
   failures=$((failures + 1))
 else
   echo "ok: a failing image scan stops the deployment before anything starts."
+fi
+
+# --- one deployment at a time -------------------------------------------------------------------
+
+# Two updates started more than a second apart get different backup directories, so the exclusive
+# mkdir inside the backup does not stop them. Without a lock the second would dump the database
+# while the first is running its migration.
+if ! command -v flock > /dev/null 2>&1; then
+  echo "skip: the single-flight check needs flock, which is not available here."
+else
+  slow="$work/deploy-slow"
+  make_traceable scripts/deploy-production.sh "$slow"
+  # Hold the first deployment inside the locked region long enough for the second to try.
+  sed -i 's|^    echo TRACE backup$|    echo TRACE backup; sleep 5|' "$slow"
+
+  ENV_FILE=.env.production.example bash "$slow" update > "$work/lock-first" 2>&1 &
+  first=$!
+  sleep 2
+  ENV_FILE=.env.production.example bash "$slow" update > "$work/lock-second" 2>&1 && second_status=0 || second_status=$?
+  wait "$first" && first_status=0 || first_status=$?
+
+  if [[ "$first_status" -ne 0 ]]; then
+    echo "FAIL: the first deployment did not complete." >&2
+    sed 's/^/      /' "$work/lock-first" >&2
+    failures=$((failures + 1))
+  elif [[ "$second_status" -eq 0 ]]; then
+    echo "FAIL: a second deployment ran while the first was still going." >&2
+    failures=$((failures + 1))
+  elif ! grep -qF "another deployment is already running" "$work/lock-second"; then
+    echo "FAIL: the second deployment failed, but not on the lock." >&2
+    sed 's/^/      /' "$work/lock-second" >&2
+    failures=$((failures + 1))
+  else
+    echo "ok: a second deployment is refused while the first holds the lock."
+  fi
 fi
 
 if [[ "$failures" -ne 0 ]]; then
