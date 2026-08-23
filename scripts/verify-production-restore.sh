@@ -1,0 +1,308 @@
+#!/usr/bin/env bash
+# Restore rehearsal for the production backup.
+#
+#   bash scripts/verify-production-restore.sh
+#
+# docs/docker_deployment.md 5.2 describes how to restore. A described restore is not a tested one,
+# and a backup nobody has restored is the kind of thing that is only discovered to be worthless at
+# the moment it is needed. This runs the description end to end:
+#
+#   1. builds the production images and starts a real, isolated stack,
+#   2. creates a project and a real exported artifact through the API,
+#   3. takes a backup with scripts/backup-production.sh - the script production itself uses,
+#   4. restores the three artifacts into a second, empty project,
+#   5. reads the same artifact back through the API there.
+#
+# Step 5 is the point. Reading the file back proves the database row, the stored object and the
+# Data Protection keys were restored consistently with each other. Checking that the archives
+# unpack proves none of that: each one can be perfectly valid and still describe a different
+# moment than the other two.
+#
+# It creates and removes its own Compose projects, volumes, networks and env files, and never
+# touches seo-intelligence-prod.
+set -euo pipefail
+
+# Git Bash rewrites POSIX-looking arguments into Windows paths before docker sees them.
+export MSYS_NO_PATHCONV=1
+
+cd "$(dirname "$0")/.."
+repo_root="$PWD"
+
+if ! command -v docker > /dev/null 2>&1 || ! docker info > /dev/null 2>&1; then
+  echo "skip: the restore rehearsal needs a reachable Docker daemon."
+  exit 0
+fi
+
+# The backup it calls takes the production lock, which needs a real flock. Git Bash has none, so
+# the rehearsal runs on Linux - the VPS, CI, or a Linux container with the daemon socket.
+if ! command -v flock > /dev/null 2>&1; then
+  echo "skip: the restore rehearsal needs flock (this is $(uname -s)); run it on Linux."
+  exit 0
+fi
+
+# The generated env files hold a password and a service key. They are short-lived, but they are
+# still credentials on disk.
+umask 077
+
+work="artifacts/restore-test-$$-${RANDOM}"
+mkdir -p "$work"
+
+suffix="$$-${RANDOM}"
+src_project="seo-restore-src-${suffix}"
+dst_project="seo-restore-dst-${suffix}"
+src_network="seo-restore-src-net-${suffix}"
+dst_network="seo-restore-dst-net-${suffix}"
+
+src_env="$work/.env.src"
+dst_env="$work/.env.dst"
+app_env="$work/.env.app"
+
+keys_path="/app/.data/data-protection-keys"
+
+src_compose() {
+  docker compose --project-name "$src_project" --env-file "$src_env" \
+    -f compose.yaml -f compose.production.yaml "$@"
+}
+
+dst_compose() {
+  docker compose --project-name "$dst_project" --env-file "$dst_env" \
+    -f compose.yaml -f compose.production.yaml "$@"
+}
+
+cleanup() {
+  local status=$?
+  src_compose down --volumes --remove-orphans > /dev/null 2>&1 || true
+  dst_compose down --volumes --remove-orphans > /dev/null 2>&1 || true
+  docker network rm "$src_network" "$dst_network" > /dev/null 2>&1 || true
+  rm -rf "$work"
+  return "$status"
+}
+trap cleanup EXIT
+
+fail() {
+  echo "FAIL: $*" >&2
+  exit 1
+}
+
+# The same pinned image the backup script uses, so the rehearsal restores with the tooling the
+# backup was written by.
+tar_image() {
+  local entry
+  entry="$(tr -d '\r' < image-digests.lock | grep -E "^postgres$(printf '\t')")"
+  printf '%s@%s' "$(cut -f2 <<< "$entry")" "$(cut -f3 <<< "$entry")"
+}
+
+random_hex() {
+  openssl rand -hex 16 2>/dev/null || printf 'rehearsal%s%s' "$$" "${RANDOM}"
+}
+
+# --- an isolated production-shaped stack ---------------------------------------------------------
+
+postgres_password="$(random_hex)"
+service_key="$(random_hex)"
+
+write_env() {
+  local target="$1" network="$2"
+  sed -e "s|^APP_ENV_FILE=.*|APP_ENV_FILE=${app_env}|" \
+      -e "s|^POSTGRES_DB=.*|POSTGRES_DB=seo_restore_rehearsal|" \
+      -e "s|^POSTGRES_USER=.*|POSTGRES_USER=seo_restore|" \
+      -e "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=${postgres_password}|" \
+      -e "s|^CADDY_NETWORK=.*|CADDY_NETWORK=${network}|" \
+      -e "s|^API_SERVICE_KEY=.*|API_SERVICE_KEY=${service_key}|" \
+      -e "s|^ADMIN_SEED_EMAIL=.*|ADMIN_SEED_EMAIL=rehearsal@localhost|" \
+      -e "s|^ADMIN_SEED_PASSWORD=.*|ADMIN_SEED_PASSWORD=Rehearsal!Pass1|" \
+      .env.production.example > "$target"
+}
+
+cp .env.production.app.example "$app_env"
+write_env "$src_env" "$src_network"
+write_env "$dst_env" "$dst_network"
+
+# `caddy` is an external network in the production overlay: on the VPS the reverse proxy owns it.
+docker network create "$src_network" > /dev/null
+docker network create "$dst_network" > /dev/null
+
+if [[ "${RESTORE_REHEARSAL_SKIP_BUILD:-false}" == "true" ]]; then
+  echo "Using the already-built production images."
+else
+  echo "Building the production images..."
+  src_compose build api web worker migrate > /dev/null
+fi
+
+echo "Starting the source stack (${src_project})..."
+src_compose up -d postgres redis > /dev/null
+src_compose --profile tools run --rm migrate > /dev/null
+src_compose up -d --wait --wait-timeout 180 api worker web > /dev/null
+
+# --- real data and a real artifact ----------------------------------------------------------------
+
+# Called from inside the api container: the production overlay publishes no ports, because on the
+# VPS only Caddy reaches the API. This is also what the runbook's restore check describes.
+api_curl() {
+  local project="$1" env_file="$2"
+  shift 2
+  # --fail-with-body rather than --fail: when the API refuses something the envelope says why, and
+  # a rehearsal reporting only "curl exited 22" would send the reader looking in the wrong place.
+  docker compose --project-name "$project" --env-file "$env_file" \
+    -f compose.yaml -f compose.production.yaml \
+    exec -T api curl --silent --show-error --fail-with-body \
+    --header "X-Service-Key: ${service_key}" "$@"
+}
+
+# JSON calls: the body is captured so a failure can be reported together with it.
+api_call() {
+  local project="$1" env_file="$2"
+  shift 2
+  local body status=0
+  body="$(api_curl "$project" "$env_file" "$@" 2>&1)" || status=$?
+  if [[ "$status" -ne 0 ]]; then
+    fail "the API call failed (curl exited ${status}): ${body}"
+  fi
+  printf '%s' "$body"
+}
+
+src_api() {
+  api_call "$src_project" "$src_env" "$@"
+}
+
+dst_api() {
+  api_call "$dst_project" "$dst_env" "$@"
+}
+
+# The artifact is streamed straight to a file, so the bytes are compared exactly as they were
+# stored. curl's own exit code is checked rather than left to `set -e`: a bare non-zero exit here
+# ends the run with nothing but "exited 22", which says nothing about which refusal it hit.
+fetch_artifact() {
+  local project="$1" env_file="$2" url="$3" target="$4" status=0
+  api_curl "$project" "$env_file" "$url" > "$target" 2> "$work/fetch-error" || status=$?
+  if [[ "$status" -ne 0 ]]; then
+    fail "fetching the artifact failed (curl exited ${status}): $(cat "$work/fetch-error")"
+  fi
+}
+
+first_guid() {
+  local field="$1"
+  sed -nE "s/.*\"${field}\":\"([0-9a-fA-F-]{36})\".*/\1/p" | head -1
+}
+
+project_json="$(src_api \
+  --header 'Content-Type: application/json' \
+  --data '{"name":"Restore rehearsal","defaultLocation":"JP","defaultLanguage":"ja"}' \
+  'http://localhost:8080/api/projects')"
+project_id="$(first_guid projectId <<< "$project_json")"
+[[ -n "$project_id" ]] || fail "the rehearsal project was not created: $project_json"
+
+job_json="$(src_api \
+  --header 'Content-Type: application/json' \
+  --data '{"exportType":"keyword_metrics","format":"csv"}' \
+  "http://localhost:8080/api/projects/${project_id}/exports/csv")"
+job_id="$(first_guid jobId <<< "$job_json")"
+[[ -n "$job_id" ]] || fail "the export job was not accepted: $job_json"
+
+export_id=""
+for _ in $(seq 1 60); do
+  job="$(src_api "http://localhost:8080/api/jobs/${job_id}")"
+  case "$job" in
+    *'"failed_fatal"'*|*'"failed_retryable"'*|*'"canceled"'*)
+      fail "the export job did not succeed: $job"
+      ;;
+  esac
+  export_id="$(first_guid resourceId <<< "$job")"
+  if [[ -n "$export_id" ]]; then
+    break
+  fi
+  sleep 2
+done
+[[ -n "$export_id" ]] || fail "the export job produced no artifact within two minutes."
+
+# The job names the export as soon as the row exists, which is before the file has been written.
+# The export's own status is what says the artifact is there; fetching earlier answers 409.
+export_ready=false
+for _ in $(seq 1 60); do
+  export_details="$(src_api "http://localhost:8080/api/projects/${project_id}/exports/${export_id}")"
+  case "$export_details" in
+    *'"status":"succeeded"'*)
+      export_ready=true
+      break
+      ;;
+    *'"status":"failed'*)
+      fail "the export did not succeed: $export_details"
+      ;;
+  esac
+  sleep 2
+done
+[[ "$export_ready" == "true" ]] || fail "the export did not complete within two minutes."
+
+fetch_artifact "$src_project" "$src_env" \
+  "http://localhost:8080/api/projects/${project_id}/exports/${export_id}/content" \
+  "$work/artifact-source.bin"
+[[ -s "$work/artifact-source.bin" ]] || fail "the exported artifact was empty before the backup."
+artifact_hash="$(sha256sum < "$work/artifact-source.bin" | cut -d' ' -f1)"
+
+# The keys are what decrypts existing sign-in cookies. Restoring a database without them leaves an
+# application that starts and then rejects every session.
+keys_hash="$(src_compose exec -T web sh -c "cat ${keys_path}/key-*.xml" | sha256sum | cut -d' ' -f1)"
+
+echo "Source stack seeded: project ${project_id}, export ${export_id}."
+
+# --- the backup, taken by the production script ----------------------------------------------------
+
+src_compose stop web api worker > /dev/null
+BACKUP_PROJECT_NAME="$src_project" ENV_FILE="$src_env" \
+  bash scripts/backup-production.sh "$repo_root/$work/backup"
+backup_dir="$work/backup"
+
+# --- restore into a second, empty project -----------------------------------------------------------
+
+echo "Restoring into an empty stack (${dst_project})..."
+
+# `create` rather than `up`: it makes the volumes with the labels Compose expects, without starting
+# an application against a database that has not been restored yet.
+dst_compose create postgres redis api worker web > /dev/null
+
+restore_volume() {
+  local volume="$1" archive="$2"
+  docker run --rm -i --network none --entrypoint tar \
+    --volume "${volume}:/target" "$(tar_image)" \
+    -C /target -xzf - < "${backup_dir}/${archive}"
+}
+
+restore_volume "${dst_project}_seo-storage" seo-storage.tar.gz
+restore_volume "${dst_project}_web-data-protection" web-data-protection.tar.gz
+
+dst_compose up -d --wait --wait-timeout 120 postgres redis > /dev/null
+dst_compose exec -T postgres sh -c \
+  'pg_restore --no-owner --no-privileges --exit-on-error --username "$POSTGRES_USER" --dbname "$POSTGRES_DB"' \
+  < "${backup_dir}/postgres.dump"
+
+# The restored schema is already at the backup's version, so this has to be a no-op. If it is not,
+# the dump and the code have drifted apart and the restore is not usable as-is.
+dst_compose --profile tools run --rm migrate > /dev/null
+
+dst_compose up -d --wait --wait-timeout 180 api worker web > /dev/null
+
+# --- what the restored stack has to be able to do -----------------------------------------------
+
+# /readyz fails while migrations are pending, so this also covers the no-op migration above.
+readyz_status=0
+readyz="$(api_curl "$dst_project" "$dst_env" 'http://localhost:8080/readyz' 2>&1)" || readyz_status=$?
+[[ "$readyz_status" -eq 0 ]] \
+  || fail "the restored API never became ready (curl exited ${readyz_status}): ${readyz}"
+
+restored_project="$(dst_api "http://localhost:8080/api/projects/${project_id}")"
+grep -q 'Restore rehearsal' <<< "$restored_project" \
+  || fail "the restored database does not have the rehearsal project: $restored_project"
+
+fetch_artifact "$dst_project" "$dst_env" \
+  "http://localhost:8080/api/projects/${project_id}/exports/${export_id}/content" \
+  "$work/artifact-restored.bin"
+restored_hash="$(sha256sum < "$work/artifact-restored.bin" | cut -d' ' -f1)"
+[[ "$restored_hash" == "$artifact_hash" ]] \
+  || fail "the restored artifact differs from the one that was backed up ($restored_hash != $artifact_hash)."
+
+restored_keys_hash="$(dst_compose exec -T web sh -c "cat ${keys_path}/key-*.xml" | sha256sum | cut -d' ' -f1)"
+[[ "$restored_keys_hash" == "$keys_hash" ]] \
+  || fail "the Data Protection keys were not restored; existing sessions would be rejected."
+
+echo "Restore rehearsal succeeded: the database, the stored artifact and the Data Protection keys"
+echo "came back together, and the artifact reads byte-for-byte through the API."

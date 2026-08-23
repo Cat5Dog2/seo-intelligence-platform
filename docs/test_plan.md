@@ -182,6 +182,14 @@ bash scripts/verify-production-lock.sh
 
 いずれも「守るべき挙動を壊すと落ちること」を退行注入で確認したうえで採用している。`verify-production-compose.sh`はレンダリング結果を照合し、`verify-deployment-guards.sh`はCompose/スキャン/バックアップをstub化してdeployスクリプトの実行順を検証し、`verify-backup-production.sh`はdockerをstub化してバックアップの拒否条件を検証し、`verify-production-lock.sh`は実`flock`と`/proc`でロックの偽装耐性を検証する（Linux以外ではskipする）。
 
+復元そのものの検証だけはstubでは代替できないため、実スタックを使う別スクリプトにしてある。
+
+```text
+bash scripts/verify-production-restore.sh
+```
+
+隔離Compose projectを2つ作り、片方に実データと実成果物を作ってから`scripts/backup-production.sh`でバックアップし、もう片方の空Volumeへ復元して、同じ成果物がAPI経由でバイト一致で読めることまで確認する。実イメージのbuildと2スタックの起動を伴うため毎PRのCIには入れず、`operations_runbook.md`の四半期ごとの復元検証と、バックアップ手順を変更したときに実行する。実`flock`が要るのでLinuxで実行する（Windowsではskipする）。イメージをbuild済みの場合は`RESTORE_REHEARSAL_SKIP_BUILD=true`を付ける。
+
 GitHub Actionsと同じスクリプトで確認する場合は以下を使う。
 
 ```text

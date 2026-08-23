@@ -180,6 +180,50 @@ else
   echo "ok: the dump is read back with pg_restore."
 fi
 
+# --- what the backup is pointed at ---------------------------------------------------------------
+
+# COMPOSE_PROJECT_NAME is commonly already set in a shell, and Compose lets it override `name:` in
+# the file. Reaching this script it would dump one stack's database while reporting another's.
+state="$(new_state hostile-project)"
+if ( export COMPOSE_PROJECT_NAME=not-the-production-stack
+     run_backup "$state" "$repo_root/$work/out-hostile" ) > "$work/out" 2>&1; then
+  if grep -q -- "--project-name not-the-production-stack" "$state/argv"; then
+    echo "FAIL: COMPOSE_PROJECT_NAME redirected the backup at another stack." >&2
+    failures=$((failures + 1))
+  elif ! grep -q -- "--project-name seo-intelligence-prod" "$state/argv"; then
+    echo "FAIL: the backup did not pin --project-name to the production stack." >&2
+    failures=$((failures + 1))
+  else
+    echo "ok: COMPOSE_PROJECT_NAME cannot redirect the backup."
+  fi
+else
+  echo "FAIL: the backup failed outright with COMPOSE_PROJECT_NAME set." >&2
+  sed 's/^/      /' "$work/out" >&2
+  failures=$((failures + 1))
+fi
+
+# BACKUP_PROJECT_NAME is the deliberate override the restore rehearsal uses. The volume names have
+# to follow it: a rehearsal that dumped its own database but archived production's volumes would
+# produce a backup that looks complete and restores a mixture of two stacks.
+state="$(new_state rehearsal-project)"
+printf 'rehearsal-stack_seo-storage
+rehearsal-stack_web-data-protection
+' > "$state/volumes"
+if ( export BACKUP_PROJECT_NAME=rehearsal-stack
+     run_backup "$state" "$repo_root/$work/out-rehearsal" ) > "$work/out" 2>&1; then
+  if grep -q -- "--project-name rehearsal-stack" "$state/argv"      && grep -q -- "rehearsal-stack_web-data-protection" "$state/argv"      && ! grep -q -- "seo-intelligence-prod" "$state/argv"; then
+    echo "ok: BACKUP_PROJECT_NAME moves the dump and the volumes together."
+  else
+    echo "FAIL: BACKUP_PROJECT_NAME did not move both the dump and the volumes." >&2
+    sed 's/^/      /' "$state/argv" >&2
+    failures=$((failures + 1))
+  fi
+else
+  echo "FAIL: the backup failed with BACKUP_PROJECT_NAME set." >&2
+  sed 's/^/      /' "$work/out" >&2
+  failures=$((failures + 1))
+fi
+
 # --- path handling -------------------------------------------------------------------------------
 
 # The output directory is no longer bind mounted - archives are streamed through the container's

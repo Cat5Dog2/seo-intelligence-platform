@@ -27,7 +27,11 @@ cd "$(dirname "$0")/.."
 # which this deployment stores unencrypted on the filesystem. Neither may be world-readable.
 umask 077
 
-PROJECT_NAME="seo-intelligence-prod"
+# BACKUP_PROJECT_NAME exists for the restore rehearsal, which has to back up an isolated stack.
+# It is deliberately not COMPOSE_PROJECT_NAME: that one is commonly already set in a shell and
+# would redirect this at another stack by accident, which is what pinning the name prevents. A
+# variable only this script reads has to be set on purpose.
+PROJECT_NAME="${BACKUP_PROJECT_NAME:-seo-intelligence-prod}"
 ENV_FILE="${ENV_FILE:-.env.production}"
 
 # --project-name is passed explicitly because a COMPOSE_PROJECT_NAME in the environment overrides

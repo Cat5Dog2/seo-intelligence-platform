@@ -1645,6 +1645,13 @@ CRLF起因のバグ（検証中に発覚）:
 
 - [x] `scripts/verify-production-lock.sh`を追加した（8ケース）。取得、パーミッション600、正規の子プロセスの再入、他プロセス保持中の偽装マーカーの拒否、FDなしマーカーの拒否、二重取得の拒否、world-writableディレクトリの拒否、`XDG_RUNTIME_DIR=/tmp`を採用しないこと。実`flock`と`/proc`が要るためLinuxで実行し、それ以外の環境ではskipする。CIへ組み込み済み。
 
+復元検証（レビューで繰り返し指摘され、先送りしていた項目）:
+
+- [x] `scripts/verify-production-restore.sh`を追加した。隔離Compose projectを2つ作り、片方に実プロジェクトと実CSVエクスポートを作ってから`scripts/backup-production.sh`でバックアップし、もう片方の空Volumeへdumpと2つのarchiveを復元して、Migrationがno-opであること、`/readyz`が通ること、プロジェクト行が戻ること、**同じ成果物がAPI経由でバイト一致で読めること**、Data Protection keysが一致することを確認する。archiveが展開できることは3点が同一時点である証拠にならないため、最後の読み取りだけが復元可能性を示す。
+- [x] Linux（docker:cliコンテナ＋ホストdaemon）で実行し、成功を確認済み。Storage復元を落とす退行注入で、成果物読み取りが失敗することも確認済み。実`flock`が要るためWindowsではskipする。
+- [x] `backup-production.sh`に`BACKUP_PROJECT_NAME`を追加した。リハーサルが隔離スタックを対象にするための明示的な指定で、`COMPOSE_PROJECT_NAME`は従来どおり効かない。dumpとVolume名が同じprojectを指すことをテストで固定した（両方に退行注入で確認済み）。
+- [x] 実イメージのbuildと2スタック起動を伴うため毎PRのCIには入れず、四半期ごとの復元検証とバックアップ手順変更時に実行する運用にした。`operations_runbook.md`と`docker_deployment.md` 5.2、`test_plan.md`へ反映した。
+
 判断の記録（4次）:
 
 - 実VPSでのCaddy/Cloudflare経由のクライアントIP置換確認だけは、環境依存のためローカルで代替できない。partitionロジック自体はテストで固定済み。

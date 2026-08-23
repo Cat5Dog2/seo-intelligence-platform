@@ -284,6 +284,14 @@ bash scripts/deploy-production.sh backup
 
 復元は最初に空の隔離Compose projectまたはステージング相当で行う。確認済みの空DBへ`pg_restore --no-owner`でdumpを戻し、空のStorage/Data Protection Volumeへ各archiveを展開する。その後、Migration状態、コンテナ内部からの`/readyz`、DB利用API、Workerジョブ、成果物読取を確認する。稼働中の本番Volumeへ直接上書きしない。
 
+この手順は文章だけにせず、スクリプトで実行できるようにしてある。
+
+```bash
+bash scripts/verify-production-restore.sh
+```
+
+隔離projectを2つ作り、片方に実プロジェクトと実エクスポートを作ってから`scripts/backup-production.sh`でバックアップし、もう片方の空Volumeへ復元して、同じ成果物がAPI経由でバイト一致で読めるところまで確認する。**3点が揃って復元できたことを示すのはこの最後の読み取りだけ**である。archiveが展開できることは、DB・Storage・Data Protection keysが同じ時点であることを何も示さない。実`flock`が要るためLinux（VPSまたはLinux CI）で実行する。イメージをbuild済みなら`RESTORE_REHEARSAL_SKIP_BUILD=true`を付ける。本番projectには一切触れない。
+
 このComposeだけでは日次スケジュール、WAL/PITR、VPS外冗長化は提供しない。NFR-011を満たすには、ホスティング側のsnapshot/backupまたは外部PostgreSQL/Storageサービスを別途構成する。
 
 ## 6. 確認とトラブルシュート
