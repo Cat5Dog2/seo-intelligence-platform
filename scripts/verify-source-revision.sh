@@ -113,13 +113,15 @@ exported="$repo_root/$work/exported"
 mkdir -p "$exported"
 printf 'content\n' > "$exported/tracked.txt"
 
-# GIT_CEILING_DIRECTORIES stops git walking up into the repository this test lives in, which is what
-# an exported tarball looks like on a machine that has no checkout at all.
-check "an explicit value is honoured where there is no git" "abc123" \
-  "$(resolve_in "$exported" SOURCE_REVISION=abc123 GIT_CEILING_DIRECTORIES="$repo_root/$work")"
+# Deliberately without GIT_CEILING_DIRECTORIES. This directory sits inside the repository the test
+# is running from, which is exactly the situation that matters: an implementation that asks git
+# "are we in a checkout?" gets yes, from the repository above, and labels an exported tree with a
+# commit that has nothing to do with its contents.
+check "an explicit value is honoured where the tree itself is not a checkout" "abc123" \
+  "$(resolve_in "$exported" SOURCE_REVISION=abc123)"
 
-check "no git and no value resolves to unknown" "unknown" \
-  "$(resolve_in "$exported" -u SOURCE_REVISION GIT_CEILING_DIRECTORIES="$repo_root/$work")"
+check "no checkout and no value resolves to unknown" "unknown" \
+  "$(resolve_in "$exported" -u SOURCE_REVISION)"
 
 # --- git that will not answer -------------------------------------------------------------------
 
@@ -146,6 +148,46 @@ git -C "$unborn" init --quiet
 git -C "$unborn" config core.autocrlf false
 check "a checkout with no resolvable HEAD does not fall back to SOURCE_REVISION" REFUSED \
   "$(resolve_or_refuse_in "$unborn" SOURCE_REVISION=1111111111111111111111111111111111111111)"
+
+# --- git pointed somewhere else ---------------------------------------------------------------
+
+# The environment must not be able to move the answer to another repository. What gets built is the
+# source root, so the source root's own .git is what has to describe it - a GIT_DIR left over from
+# some other tool would otherwise label the image with a commit from a different project entirely.
+check "a misconfigured GIT_DIR does not move the answer" "$head_sha" \
+  "$(resolve_in "$scratch" -u SOURCE_REVISION GIT_DIR=/nonexistent/path.git)"
+
+check "a misconfigured GIT_DIR does not open the door to an inherited value" "$head_sha" \
+  "$(resolve_in "$scratch" GIT_DIR=/nonexistent/path.git SOURCE_REVISION=2222222222222222222222222222222222222222)"
+
+other="$repo_root/$work/other-checkout"
+mkdir -p "$other"
+git -C "$other" init --quiet
+git -C "$other" config core.autocrlf false
+printf 'elsewhere\n' > "$other/file.txt"
+git -C "$other" add file.txt
+git -C "$other" -c user.email=test@localhost -c user.name=test commit --quiet -m "other"
+
+check "GIT_WORK_TREE cannot redirect the answer to another checkout" "$head_sha" \
+  "$(resolve_in "$scratch" -u SOURCE_REVISION GIT_WORK_TREE="$other")"
+
+# --- git that warns but succeeds -------------------------------------------------------------------
+
+# An unreadable core.excludesFile makes git print a warning and carry on. Warnings go to stderr and
+# the porcelain listing to stdout; an implementation that reads them together sees a non-empty
+# "listing" and calls a clean tree dirty. Simulated with a wrapper rather than by breaking a config
+# file, because which conditions produce a warning differs between git versions and platforms.
+real_git="$(type -P git)"
+mkdir -p "$work/bin"
+cat > "$work/bin/git" <<GITSTUB
+#!/usr/bin/env bash
+echo "warning: unable to access '/nonexistent/excludes': No such file or directory" >&2
+exec "$real_git" "\$@"
+GITSTUB
+chmod +x "$work/bin/git"
+
+check "a warning on stderr does not make a clean tree dirty" "$head_sha" \
+  "$(resolve_in "$scratch" -u SOURCE_REVISION PATH="$repo_root/$work/bin:$PATH")"
 
 # --- what counts as an exact revision --------------------------------------------------------------
 

@@ -1707,6 +1707,19 @@ CRLF起因のバグ（検証中に発覚）:
 - [x] `.git`はあるがHEADを解決できない場合に、`SOURCE_REVISION`へfallbackしないこと（commit前のリポジトリで再現）。
 - [x] 解決失敗時にデプロイがbuild前に中止すること（`verify-deployment-guards.sh`）。3件とも退行注入で落ちることを確認済み。
 
+22次レビューによる追加是正:
+
+- [x] **Medium**: checkout判定を`git rev-parse --git-dir`で行っていた。このコマンドは親ディレクトリも探索するため、別リポジトリ配下へ展開した非Gitツリーを親のcheckoutと誤認する。また`GIT_DIR`の誤設定や権限問題でも失敗し、それを「Gitなし」として`SOURCE_REVISION`へfallbackしていた。実測でも、checkout内で`GIT_DIR`を存在しないパスへ向けると任意の40桁値をexit 0で返した。**ソースルート直下の`.git`の有無**（worktree/submoduleのファイル形式も含む）を正本に変更し、`GIT_DIR`、`GIT_WORK_TREE`、`GIT_COMMON_DIR`はすべてのgit呼び出しで無効化する。ビルド対象はソースルートなので、それを記述するのはソースルート自身の`.git`である。
+- [x] **Medium**: `git status --porcelain 2>&1`により、exit 0のwarningまでporcelain出力として扱っていた。アクセスできない`core.excludesFile`などがあると、cleanなcheckoutが`<sha>-dirty`になる。stdoutだけを取り、終了コードは別に検査する。失敗時の診断はgit自身のstderrをそのまま通す。
+
+テストの追加:
+
+- [x] exit 0でstderrにwarningを出してもcleanと判定されること（gitラッパーで再現。gitのバージョンや環境によってwarningの発生条件が異なるため、設定ファイルを壊す方式は採らない）。
+- [x] checkout内で`GIT_DIR`が不正でも、実際のHEADを返し、継承値も採用しないこと。
+- [x] 非Gitの展開済みツリーを別リポジトリ配下に置いても、親のHEADを採用しないこと（従来のテストは`GIT_CEILING_DIRECTORIES`を付けており、この問題を隠していた）。
+- [x] `GIT_WORK_TREE`で別checkoutへ誘導できないこと。
+- [x] 上記を、stderr混入・親探索・環境変数の無効化解除の3種類の退行注入で確認済み。合計18ケース。
+
 判断の記録（4次）:
 
 - 実VPSでのCaddy/Cloudflare経由のクライアントIP置換確認だけは、環境依存のためローカルで代替できない。partitionロジック自体はテストで固定済み。
