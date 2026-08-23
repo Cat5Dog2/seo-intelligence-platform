@@ -26,7 +26,8 @@ internal sealed class ReportService(
     IShareTokenService shareTokenService,
     IJobQueueClient jobQueueClient,
     INotificationService notificationService,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    ILogger<ReportService> logger)
     : IReportService
 {
     public const string JobType = "MonthlyReportJob";
@@ -35,7 +36,6 @@ internal sealed class ReportService(
 
     private const int MaxSectionCount = 20;
     private const int MaxSectionLength = 50;
-    private static readonly TimeSpan DownloadUrlTtl = TimeSpan.FromMinutes(15);
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private static readonly string[] DefaultSections =
     [
@@ -179,8 +179,7 @@ internal sealed class ReportService(
             return Result<ReportDownload>.Failure(readiness.Error!);
         }
 
-        var expiresAt = NowOffset().Add(DownloadUrlTtl);
-        var downloadUrl = BuildDownloadUrl(report.FileUri!, expiresAt);
+        var downloadUrl = BuildReportContentUrl(context, report.Id);
         AddReportAudit(
             context,
             AuditLogActionNames.ReportDownloadUrlIssued,
@@ -188,23 +187,104 @@ internal sealed class ReportService(
             new
             {
                 report = ToReportAuditSnapshot(report),
-                downloadUrl,
-                expiresAt
-            });
-        AddReportAudit(
-            context,
-            AuditLogActionNames.ReportDownloaded,
-            report,
-            new
-            {
-                report = ToReportAuditSnapshot(report),
-                downloadUrl,
-                expiresAt,
-                via = "short_lived_url"
+                downloadUrl
             });
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        return Result<ReportDownload>.Success(new ReportDownload(report.Id, downloadUrl, expiresAt));
+        return Result<ReportDownload>.Success(new ReportDownload(report.Id, downloadUrl));
+    }
+
+    public async Task<Result<ArtifactContent>> OpenReportContentAsync(
+        ProjectExecutionContext context,
+        Guid reportId,
+        CancellationToken cancellationToken = default)
+    {
+        var report = await FindReportAsync(context, reportId, asTracking: false, cancellationToken);
+        if (report is null)
+        {
+            return Failure<ArtifactContent>(ErrorCode.NotFound, "Report was not found.");
+        }
+
+        var readiness = await ValidateReportFileAsync(report, cancellationToken);
+        if (!readiness.IsSuccess)
+        {
+            return Result<ArtifactContent>.Failure(readiness.Error!);
+        }
+
+        return await OpenReportContentCoreAsync(context, report, via: "api_content_endpoint", cancellationToken);
+    }
+
+    public async Task<Result<ArtifactContent>> OpenSharedReportContentAsync(
+        ProjectExecutionContext context,
+        string token,
+        CancellationToken cancellationToken = default)
+    {
+        var access = await ResolveSharedReportAsync(context, token, cancellationToken);
+        if (!access.IsSuccess)
+        {
+            return Result<ArtifactContent>.Failure(access.Error!);
+        }
+
+        var report = access.Value!;
+
+        // The share token carries the project, so the audit lands on the report's own project
+        // rather than whatever scope the anonymous request arrived with.
+        return await OpenReportContentCoreAsync(
+            context with { ProjectId = report.ProjectId },
+            report,
+            via: "share_url",
+            cancellationToken);
+    }
+
+    private async Task<Result<ArtifactContent>> OpenReportContentCoreAsync(
+        ProjectExecutionContext context,
+        ReportEntity report,
+        string via,
+        CancellationToken cancellationToken)
+    {
+        if (!TryGetObjectKey(report.FileUri!, out var key))
+        {
+            return Failure<ArtifactContent>(ErrorCode.Conflict, "Report file URI is invalid.");
+        }
+
+        // Opened before the audit is written. The readiness check can still be followed by a
+        // deletion or a permission failure, and recording a download that never started would put
+        // a false entry in the record the audit log exists to be trusted for.
+        Stream content;
+        try
+        {
+            content = await objectStorage.OpenReadAsync(key, cancellationToken);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            logger.LogWarning(exception, "Report {report_id} could not be opened for download.", report.Id);
+            return Failure<ArtifactContent>(ErrorCode.Conflict, "Report file could not be read from storage.");
+        }
+
+        try
+        {
+            AddReportAudit(
+                context,
+                AuditLogActionNames.ReportDownloaded,
+                report,
+                new
+                {
+                    report = ToReportAuditSnapshot(report),
+                    via
+                });
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch
+        {
+            // The caller never receives the stream on this path, so nothing else would close it.
+            await content.DisposeAsync();
+            throw;
+        }
+
+        return Result<ArtifactContent>.Success(new ArtifactContent(
+            content,
+            ResolveContentType(report.Format),
+            BuildReportFileName(report)));
     }
 
     public async Task<Result<ReportShareDetails>> ShareReportAsync(
@@ -300,53 +380,17 @@ internal sealed class ReportService(
         string token,
         CancellationToken cancellationToken = default)
     {
-        var normalizedToken = OptionalText(token);
-        var tokenHash = normalizedToken is null ? "empty" : shareTokenService.HashToken(normalizedToken);
-        var report = await dbContext.Reports
-            .FirstOrDefaultAsync(entity => entity.ShareTokenHash == tokenHash, cancellationToken);
-
-        if (report is null)
+        var access = await ResolveSharedReportAsync(context, token, cancellationToken);
+        if (!access.IsSuccess)
         {
-            AddReportShareAudit(
-                context,
-                tokenHash,
-                ShareTokenValidationStatus.Unknown,
-                "unknown_or_tampered");
-            await dbContext.SaveChangesAsync(cancellationToken);
-            return Failure<ReportShareAccessDetails>(ErrorCode.NotFound, "Report share was not found.");
+            return Result<ReportShareAccessDetails>.Failure(access.Error!);
         }
 
-        var validation = shareTokenService.Validate(
-            normalizedToken,
-            report.ShareTokenHash,
-            ToOffset(report.ShareExpiresAt),
-            ToOffset(report.ShareRevokedAt),
-            NowOffset());
-        if (validation.Status != ShareTokenValidationStatus.Valid)
-        {
-            AddReportAudit(
-                context with { ProjectId = report.ProjectId },
-                AuditLogActionNames.ReportShareAccessRejected,
-                report,
-                new
-                {
-                    report = ToReportAuditSnapshot(report),
-                    reason = validation.Status.ToString().ToLowerInvariant()
-                });
-            await dbContext.SaveChangesAsync(cancellationToken);
-            return validation.Status == ShareTokenValidationStatus.Unknown
-                ? Failure<ReportShareAccessDetails>(ErrorCode.NotFound, "Report share was not found.")
-                : Failure<ReportShareAccessDetails>(ErrorCode.Gone, "Report share is expired or revoked.");
-        }
-
-        var readiness = await ValidateReportFileAsync(report, cancellationToken);
-        if (!readiness.IsSuccess)
-        {
-            return Result<ReportShareAccessDetails>.Failure(readiness.Error!);
-        }
-
-        var expiresAt = NowOffset().Add(DownloadUrlTtl);
-        var downloadUrl = BuildDownloadUrl(report.FileUri!, expiresAt);
+        var report = access.Value!;
+        // The share's own expiry, not an unrelated short TTL. This is the deadline that is actually
+        // enforced: every access revalidates the token against it and against the revocation time.
+        var expiresAt = ToOffset(report.ShareExpiresAt);
+        var downloadUrl = BuildSharedReportContentUrl(token);
         var reportContext = context with { ProjectId = report.ProjectId };
         AddReportAudit(
             reportContext,
@@ -355,19 +399,11 @@ internal sealed class ReportService(
             new
             {
                 report = ToReportAuditSnapshot(report),
-                downloadUrl,
+                // The route template, not the resolved URL. The resolved one embeds the share
+                // token, and writing that here would put the secret in the clear in a table whose
+                // whole point is that only its hash is stored.
+                downloadUrlTemplate = SharedReportContentUrlTemplate,
                 downloadExpiresAt = expiresAt
-            });
-        AddReportAudit(
-            reportContext,
-            AuditLogActionNames.ReportDownloaded,
-            report,
-            new
-            {
-                report = ToReportAuditSnapshot(report),
-                downloadUrl,
-                expiresAt,
-                via = "share_url"
             });
         await dbContext.SaveChangesAsync(cancellationToken);
 
@@ -535,6 +571,61 @@ internal sealed class ReportService(
                 Message: BuildReportCompletedNotificationMessage(report),
                 JobId: jobId),
             cancellationToken);
+    }
+
+    /// <summary>
+    /// Resolves a share token to its report, recording the same rejection audit for every caller.
+    /// Both the metadata endpoint and the file endpoint go through here, so a revoked or expired
+    /// token cannot be valid for one and not the other.
+    /// </summary>
+    private async Task<Result<ReportEntity>> ResolveSharedReportAsync(
+        ProjectExecutionContext context,
+        string token,
+        CancellationToken cancellationToken)
+    {
+        var normalizedToken = OptionalText(token);
+        var tokenHash = normalizedToken is null ? "empty" : shareTokenService.HashToken(normalizedToken);
+        var report = await dbContext.Reports
+            .FirstOrDefaultAsync(entity => entity.ShareTokenHash == tokenHash, cancellationToken);
+
+        if (report is null)
+        {
+            AddReportShareAudit(
+                context,
+                tokenHash,
+                ShareTokenValidationStatus.Unknown,
+                "unknown_or_tampered");
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return Failure<ReportEntity>(ErrorCode.NotFound, "Report share was not found.");
+        }
+
+        var validation = shareTokenService.Validate(
+            normalizedToken,
+            report.ShareTokenHash,
+            ToOffset(report.ShareExpiresAt),
+            ToOffset(report.ShareRevokedAt),
+            NowOffset());
+        if (validation.Status != ShareTokenValidationStatus.Valid)
+        {
+            AddReportAudit(
+                context with { ProjectId = report.ProjectId },
+                AuditLogActionNames.ReportShareAccessRejected,
+                report,
+                new
+                {
+                    report = ToReportAuditSnapshot(report),
+                    reason = validation.Status.ToString().ToLowerInvariant()
+                });
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return validation.Status == ShareTokenValidationStatus.Unknown
+                ? Failure<ReportEntity>(ErrorCode.NotFound, "Report share was not found.")
+                : Failure<ReportEntity>(ErrorCode.Gone, "Report share is expired or revoked.");
+        }
+
+        var readiness = await ValidateReportFileAsync(report, cancellationToken);
+        return readiness.IsSuccess
+            ? Result<ReportEntity>.Success(report)
+            : Result<ReportEntity>.Failure(readiness.Error!);
     }
 
     private async Task<Result> ValidateReportFileAsync(
@@ -894,14 +985,60 @@ internal sealed class ReportService(
         return true;
     }
 
-    private static string BuildDownloadUrl(string fileUri, DateTimeOffset expiresAt)
+    /// <summary>
+    /// The API path that streams the generated report to a signed-in operator. Returned instead of
+    /// the raw <c>storage://</c> URI, which no client can fetch.
+    /// </summary>
+    private static string BuildReportContentUrl(ProjectExecutionContext context, Guid reportId)
+        => $"/api/projects/{context.ProjectId!.Value:D}/reports/{reportId:D}/content";
+
+    /// <summary>
+    /// The route the share content endpoint is mapped at. Safe to persist and log: unlike a
+    /// resolved URL it carries no token.
+    /// </summary>
+    private const string SharedReportContentUrlTemplate = "/api/report-shares/{token}/content";
+
+    /// <summary>
+    /// The public path that streams the report to a share-link recipient. The token is the access
+    /// control, so this stays reachable without a service key - the same rule as the share metadata
+    /// endpoint it sits beside.
+    /// <para>
+    /// The result is a secret: it is returned to the recipient and never written to the audit log,
+    /// application logs, or anywhere else. Persist
+    /// <see cref="SharedReportContentUrlTemplate"/> instead.
+    /// </para>
+    /// </summary>
+    private static string BuildSharedReportContentUrl(string token)
+        => $"/api/report-shares/{Uri.EscapeDataString(token)}/content";
+
+    /// <summary>
+    /// The name the report is saved under. Report type and period make it recognisable in a
+    /// downloads folder; the id keeps two regenerations of the same period distinct.
+    /// </summary>
+    private static string BuildReportFileName(ReportEntity report)
     {
-        var separator = fileUri.Contains('?', StringComparison.Ordinal) ? "&" : "?";
-        return string.Concat(
-            fileUri,
-            separator,
-            "expiresAt=",
-            Uri.EscapeDataString(expiresAt.ToString("O", CultureInfo.InvariantCulture)));
+        var extension = string.Equals(report.Format, "pdf", StringComparison.OrdinalIgnoreCase) ? "pdf" : "xls";
+        return $"{SanitizeFileNameComponent(report.ReportType)}-{SanitizeFileNameComponent(report.Period)}-{report.Id:N}.{extension}";
+    }
+
+    /// <summary>
+    /// Keeps a stored value from steering the saved file name. Everything outside a conservative
+    /// set becomes '-', so a name can hold no directory separator and no quote that would end the
+    /// Content-Disposition parameter early.
+    /// </summary>
+    private static string SanitizeFileNameComponent(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return "report";
+        }
+
+        var sanitized = new string(value
+            .Select(character => char.IsAsciiLetterOrDigit(character) || character is '-' or '_' ? character : '-')
+            .ToArray())
+            .Trim('-');
+
+        return sanitized.Length == 0 ? "report" : sanitized;
     }
 
     private static string BuildShareUrl(string token)

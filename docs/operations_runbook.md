@@ -118,7 +118,7 @@ OpenTelemetry Meter名は `SeoIntelligence`。MVPで記録する運用メトリ�
 | Storage | ローデータ、レポート、CSV/Excelを冗長化。 |
 | Web Data Protection keys | `web-data-protection` Volumeを保持し、Web再作成時も継続利用する。 |
 | Secret | Key Vault等でバージョン管理。実値はRunbookに書かない。 |
-| 復元検証 | 四半期ごとにステージング相当へ復元し、主要APIをスモークテストする。 |
+| 復元検証 | 四半期ごと、およびバックアップ手順を変更したときに`bash scripts/verify-production-restore.sh`を実行する。隔離Compose projectへ実際に復元し、成果物がAPI経由でバイト一致で読めること、復元先のWorkerが新しいジョブを完走できることまで確認する（`docs/docker_deployment.md` 5.2）。Linux専用で、実行できない環境では**exit 2**になる。この失敗を「環境の都合」として無視しないこと。無視した時点で、復元検証は実施されていない。 |
 
 復元時は、DB、Storage、Secret参照、アプリ設定の整合性を確認する。ローデータ本体を保持期間で削除済みの場合でも、DB上のハッシュ、ステータス、クレジット、契約スコープは監査用に残す。
 
@@ -139,7 +139,7 @@ VPSの初回デプロイ・更新・バックアップの正本手順は `docs/d
 
 運用上の注意（正本手順に加えて守ること）:
 
-- `.env.production`は`chmod 600`で権限を制限し、`POSTGRES_PASSWORD`、APIキー、Webhook URL等をGit、Dockerfile、build引数、ログへ含めない。
+- `.env.production`と`.env.production.app`は`chmod 600`で権限を制限し、`POSTGRES_PASSWORD`、APIキー、Webhook URL等をGit、Dockerfile、build引数、ログへ含めない。外部APIキーとDiscord Webhookは`.env.production.app`にだけ置く。同ファイルはapiとworkerだけが読み、Webへは渡らない。
 - Migration前にDB/Storageのバックアップを確認する。更新時はWeb/API/Worker停止中にバックアップとMigrationを行う（メンテナンス時間）。
 - `RakkoKeywordV1120DataBackfill`を含む更新では、停止前に非終端ジョブを確認し、停止後は旧imageのAPI/Workerを再起動しない。Migrationは旧コード値を保持する非終端の検索ボリューム登録ジョブだけを`canceled`へ同期し、`audit_logs`へ`job.canceled`を記録する。`waiting_external`の外部requestId自体は取り消せず、消費済みクレジットは返却されない。
 - 開発・CIでは`scripts/verify-rakko-v1120-migration.ps1`が一時DBへ合成データを投入し、対象限定、子request、業務status、監査ログ、既適用環境の補正と再登録可否を検証する。通常は`scripts/smoke-local.ps1`から自動実行される。
@@ -153,6 +153,63 @@ VPSの初回デプロイ・更新・バックアップの正本手順は `docs/d
 アプリ内の単一管理者ログイン（ASP.NET Core Identity + Cookie）とAPIサービスキーで保護する。Caddyは`/api/report-shares/*`だけを`seo-api:8080`へ、それ以外は`seo-web:8080`へproxyし、他の`/api/*`は公開しない。Blazorの`/_blazor` WebSocketもCaddy経由とする。Caddy Basic認証、VPN、Cloudflare Access等の外部ゲートは多層防御として併用を推奨する。設定例は `docs/docker_deployment.md` の3.3節を正本とする。
 
 他アプリと同一VPSへ同居させる場合は別サブドメインで公開する。認証Cookieが`__Host-`接頭辞を使うため、同一ホスト名でパス分割するとCookie名が衝突する。
+
+`/readyz`は公開しない。匿名で到達でき、1リクエストごとにDBクエリ、Redis ping、Storageへの実ファイル書込/読込/削除、Secret Storeアクセスを行うため、無認証の負荷増幅点になる。未適用Migrationがある場合はMigration名も応答へ含む。`/healthz`は`self`チェックだけを返すため公開してよい。Readinessの内訳はVPS内部から`docker compose ... exec api curl http://localhost:8080/readyz`で確認する。
+
+### 7.3 コンテナイメージ脆弱性の扱い
+
+スキャンとゲートは `scripts/scan-container-images.sh` に集約し、CIから3モードで呼ぶ。修正版が存在する（`--ignore-unfixed`）HIGH/CRITICALだけを対象にする。
+
+| モード | 対象 | 扱い |
+| --- | --- | --- |
+| `app` | `seo-intelligence-api` / `web` / `worker` / `migrate` | 自前でre-buildできるため、検出があればCIを失敗させる。 |
+| `runtime` | `postgres:16-alpine` / `redis:7-alpine` | 本番で稼働するためゲート対象。下表の除外に該当しない検出があればCIを失敗させる。 |
+| `dev` | `minio/minio` / `minio/mc` | 開発専用の任意profileで、本番Composeは起動しない。報告のみでゲートしない。 |
+
+ローカル再確認:
+
+```bash
+bash scripts/scan-container-images.sh runtime
+```
+
+#### 受容の記録
+
+受容はCVE単位で登録する。`<image>` `<CVE id>` `<Target>` `<PkgName>` の4項目すべてが一致した場合だけ除外され、コンポーネント単位の一括除外は行わない。一括除外にすると、同じバイナリに後から出た**到達可能な**脆弱性まで自動的に隠れるためである。
+
+| 対象 | 受容コンポーネント | 件数 | 判断 | 記録日 |
+| --- | --- | --- | --- | --- |
+| `postgres:16-alpine` | `usr/local/bin/gosu` の `stdlib` | 22件（Critical 1 / High 21） | **受容**。`gosu`はentrypointが起動時にrootからpostgresへ権限降格するためだけに1回`exec`する補助バイナリで、ネットワーク通信を一切行わない。受容した22件はいずれもGo標準ライブラリのTLS/HTTP/暗号系であり、到達するコードパスが存在しない。CVE IDの一覧は `scripts/scan-container-images.sh` の `RUNTIME_ACCEPTED` を正本とする。 | 2026-08-22 |
+
+受容を見直す条件:
+
+- `gosu`の用途がentrypointの権限降格以外へ広がった場合。
+- 上流イメージがパッチ済みGoで再ビルドされた場合（受容を解除する）。
+- 新しいCVEが検出された場合。**自動的には除外されない**ため、CIが失敗して個別判断を促す。特に`os/exec`、ファイルシステム、引数処理など`gosu`から到達し得る領域の脆弱性は受容しない。
+
+#### digestの固定
+
+受容を判断したイメージのdigestは `image-digests.lock` を正本とする。同ファイルは `compose.yaml` が起動するイメージ、`scripts/scan-container-images.sh` が検査するイメージ、本節の受容判断の3者を一致させるための単一の定義であり、値を本書へ複製しない（複製すると更新漏れで食い違う）。
+
+`scripts/verify-production-compose.sh` が、Composeの**レンダリング結果**を同ファイルと完全一致で照合する。ソースへのgrepではないため、コメント行に期待値があっても通らない。
+
+更新手順:
+
+1. `image-digests.lock` のdigestを新しい値へ変更する。
+2. `bash scripts/scan-container-images.sh runtime` を実行し、新イメージの検出内容を確認する。
+3. 本節の受容表を再判断し、`RUNTIME_ACCEPTED` を更新する。
+4. `compose.yaml` のimage参照を新digestへ更新する。
+5. `bash scripts/verify-production-compose.sh` で3者一致を確認する。
+
+現在の値は次で確認する。
+
+```bash
+cat image-digests.lock
+docker image inspect --format '{{index .RepoDigests 0}}' postgres:16-alpine
+```
+
+#### スキャナへDockerソケットを渡さない
+
+各イメージは `docker save` でtarへ書き出し、`trivy image --input` で読ませる。Dockerソケットを渡すとスキャナのコンテナがDockerデーモンを操作でき、これはホストのroot相当の権限に等しい。開発PCとCI runnerを第三者イメージへ委ねないため、渡すのはtar 1ファイルだけにする。スキャナimageもタグではなくdigestで固定する。
 
 ## 8. スモークテスト
 
@@ -193,12 +250,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-local.ps1 -Run
 ```bash
 curl --fail --silent --show-error https://seo.example.com/healthz
 curl --fail --silent --show-error https://seo.example.com/api-healthz
-curl --fail --silent --show-error https://seo.example.com/api-readyz
+# /readyz は公開しない。無認証でDB/Redis/Storage/Secret Storeへ実アクセスするため、内部から確認する。
+docker compose --project-name seo-intelligence-prod --env-file .env.production -f compose.yaml -f compose.production.yaml exec api curl --fail --silent http://localhost:8080/readyz
 # 未サインインのページ要求はサインイン画面へリダイレクトされる。
 curl --silent --output /dev/null --write-out '%{http_code}\n' https://seo.example.com/dashboard
 curl --fail --silent --show-error https://seo.example.com/login > /dev/null
-docker compose --env-file .env.production -f compose.yaml -f compose.production.yaml ps
-docker compose --env-file .env.production -f compose.yaml -f compose.production.yaml logs --tail 200 web api worker
+docker compose --project-name seo-intelligence-prod --env-file .env.production -f compose.yaml -f compose.production.yaml ps
+docker compose --project-name seo-intelligence-prod --env-file .env.production -f compose.yaml -f compose.production.yaml logs --tail 200 web api worker
 ```
 
 `/dashboard`が`302`を返し、`/login`が`200`を返すことを確認する。続けてブラウザで管理者アカウントによりサインインし、管理画面またはAPIから小さいMockジョブを1件登録して、Workerにより`succeeded`へ進むことを確認する。Real APIモードやDiscord通知のスモークはクレジット、契約スコープ、Secretを確認した場合だけ行う。

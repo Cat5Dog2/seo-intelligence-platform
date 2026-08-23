@@ -447,6 +447,38 @@ public interface ISeoIntelligenceApiClient
         Guid projectId,
         Guid exportId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Fetches the generated export file. The caller owns the returned response and must dispose
+    /// it: the body is still being streamed from the API when this returns.
+    /// </summary>
+    Task<ApiClientResult<ApiFileResponse>> DownloadExportAsync(
+        Guid projectId,
+        Guid exportId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Fetches the generated report file. The caller owns the returned response and must dispose
+    /// it: the body is still being streamed from the API when this returns.
+    /// </summary>
+    Task<ApiClientResult<ApiFileResponse>> DownloadReportAsync(
+        Guid projectId,
+        Guid reportId,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// A file streamed straight from the API. <see cref="Response"/> is kept so the caller can hold
+/// the connection open while copying; disposing it releases both the response and
+/// <see cref="Content"/>.
+/// </summary>
+public sealed record ApiFileResponse(
+    HttpResponseMessage Response,
+    Stream Content,
+    string ContentType,
+    string FileName) : IDisposable
+{
+    public void Dispose() => Response.Dispose();
 }
 
 public sealed record AuditLogSearchParameters(

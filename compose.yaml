@@ -31,7 +31,10 @@ x-backend-environment: &backend-environment
 
 services:
   postgres:
-    image: postgres:16-alpine
+    # Pinned by digest so the VPS cannot pull a different image than the one whose
+    # vulnerabilities were reviewed. Update together with scripts/scan-container-images.sh
+    # (RUNTIME_REVIEWED_DIGESTS) and docs/operations_runbook.md section 7.3.
+    image: postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-seo}
       POSTGRES_USER: ${POSTGRES_USER:-seo}
@@ -47,7 +50,8 @@ services:
     logging: *service-logging
 
   redis:
-    image: redis:7-alpine
+    # Pinned by digest; see the note on postgres above.
+    image: redis:7-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
     command: ["redis-server", "--appendonly", "yes"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -67,6 +71,8 @@ services:
       context: .
       dockerfile: Dockerfile
       target: migrate
+      args:
+        SOURCE_REVISION: ${SOURCE_REVISION:-unknown}
     image: seo-intelligence-migrate
     environment:
       <<: *backend-environment
@@ -80,6 +86,8 @@ services:
       context: .
       dockerfile: Dockerfile
       target: api
+      args:
+        SOURCE_REVISION: ${SOURCE_REVISION:-unknown}
     image: seo-intelligence-api
     env_file:
       - path: ${APP_ENV_FILE:-.env}
@@ -108,6 +116,8 @@ services:
       context: .
       dockerfile: Dockerfile
       target: worker
+      args:
+        SOURCE_REVISION: ${SOURCE_REVISION:-unknown}
     image: seo-intelligence-worker
     env_file:
       - path: ${APP_ENV_FILE:-.env}
@@ -131,10 +141,12 @@ services:
       context: .
       dockerfile: Dockerfile
       target: web
+      args:
+        SOURCE_REVISION: ${SOURCE_REVISION:-unknown}
     image: seo-intelligence-web
-    env_file:
-      - path: ${APP_ENV_FILE:-.env}
-        required: false
+    # Deliberately no env_file. That file carries the external API key and the Discord webhook,
+    # which only api/worker call out with; the Web host is the internet-facing service and has no
+    # use for them. Everything it does need is listed explicitly below.
     environment:
       # The Web host needs the database for the administrator sign-in (ASP.NET Core Identity)
       # and the service key for its API calls. All business data still goes through the API.

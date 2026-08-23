@@ -140,7 +140,7 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | 観点 | 確認内容 |
 | --- | --- |
 | 秘密情報 | APIキー/Webhook/AIキー/APIサービスキー/パスワードがログ、レスポンス、画面に出ない。 |
-| API認証 | サービスキーなし、および不一致のAPI呼び出しを共通エラー形式の401で拒否する。エンドポイントメタデータを走査し、`AllowAnonymous`が付くのが`/healthz`、`/readyz`、`GET /api/report-shares/{token}`の3件だけであることを検証する。 |
+| API認証 | サービスキーなし、および不一致のAPI呼び出しを共通エラー形式の401で拒否する。エンドポイントメタデータを走査し、`AllowAnonymous`が付くのが`/healthz`、`/readyz`、`GET /api/report-shares/{token}`、`GET /api/report-shares/{token}/content`の4件だけであることを検証する。共有2経路はレート制限の境界（30件目まで通し31件目で429）、同時実行8件の上限（9件目が429）、429の共通エンベロープ、認証済みエンドポイントへ波及しないことを検証する。`Retry-After`は固定窓429でのみ付与され同時実行429では付与されないことを、双方で検証する。共有トークンが監査ログとアプリケーションログのいずれにも出ないことを検証する。 |
 | Web認証 | 未サインインのページ要求を`/login`へリダイレクトする。ルート可能コンポーネントのうち匿名で到達できるのは`/login`だけであることを反射で検証する。5回失敗で15分ロックアウトし、ロックアウト中は正しいパスワードでもサインインできない。 |
 | Web認可 | 業務画面は`RequireAdmin`ポリシーを要求する。パスワード変更と`/forbidden`は本人操作のため認証済みのみを要求する。 |
 | 初期管理者シード | Adminが0人でシード資格情報が未設定の場合は起動に失敗する。シードユーザーが存在しロールだけ欠けている場合は、再作成せずロール付与を再試行して復旧する。 |
@@ -170,6 +170,30 @@ docker compose --profile tools run --rm migrate
 ```
 
 VPS用定義は検証用`POSTGRES_PASSWORD`を環境変数へ設定し、`docker compose --env-file .env.production.example -f compose.yaml -f compose.production.yaml config --quiet`で構文とoverlay mergeを確認する。コンテナ実起動試験はCIと同一の`bash scripts/container-smoke.sh`を使う。同スクリプトは分離したCompose project/Volume上でMigration、API `/healthz`・`/readyz`（未適用Migration検知を含む）、DB利用API、Web表示、Worker起動、Storage共有、Data Protection keys永続化、非root UIDを確認し、終了時にテスト用コンテナとVolumeを削除する。
+
+デプロイ手順そのものの検証は、実行トレースを取る5本のスクリプトで行う。CIでも同じものを実行する。
+
+```text
+bash scripts/verify-production-compose.sh
+bash scripts/verify-deployment-guards.sh
+bash scripts/verify-backup-production.sh
+bash scripts/verify-production-lock.sh
+bash scripts/verify-source-revision.sh
+```
+
+いずれも「守るべき挙動を壊すと落ちること」を退行注入で確認したうえで採用している。`verify-production-compose.sh`はレンダリング結果を照合し、`verify-deployment-guards.sh`はCompose/スキャン/バックアップをstub化してdeployスクリプトの実行順を検証し、`verify-backup-production.sh`はdockerをstub化してバックアップの拒否条件を検証し、`verify-production-lock.sh`は実`flock`と`/proc`でロックの偽装耐性を検証する（Linux以外ではskipする）。`verify-source-revision.sh`は、imageへ刻むrevisionがgit優先で決まること、継承された`SOURCE_REVISION`で上書きできないこと、未コミット変更（untrackedを含む）が`-dirty`として現れること、**gitの状態を確認できないときに解決自体が失敗すること**（index破損で`git status`が失敗する場合、`.git`はあるがHEADを解決できない場合）、そして**別のリポジトリを指させられないこと**（`GIT_DIR`/`GIT_WORK_TREE`の誤設定、別リポジトリ配下へ展開した非Gitツリー、exit 0でstderrにwarningを出すgit）を、使い捨てのgitリポジトリで検証する。
+
+復元そのものの検証だけはstubでは代替できないため、実スタックを使う別スクリプトにしてある。
+
+```text
+bash scripts/verify-production-restore.sh
+```
+
+隔離Compose projectを2つ作り、片方に実データと実成果物を作ってから`scripts/backup-production.sh`でバックアップし、もう片方の空Volumeへ復元して、Migration履歴が不変であること、同じ成果物がAPI経由でバイト一致で読めること、復元先のWorkerが新しいエクスポートを完走できること、本番imageタグが変化していないことまで確認する（一覧は`docker_deployment.md` 5.2）。実イメージのbuildと2スタックの起動を伴うため毎PRのCIには入れず、`operations_runbook.md`の四半期ごとの復元検証と、バックアップ手順を変更したときに実行する。
+
+実`flock`が要るのでLinuxで実行する。実行できない環境では**exit 2で失敗する**。skipをexit 0にしないのは、四半期検証を自動化したときに「検証できなかった」が成功として記録されるのを避けるためである。対話的に見送る場合だけ`RESTORE_REHEARSAL_ALLOW_SKIP=true`を指定する。
+
+イメージをbuild済みの場合は`RESTORE_REHEARSAL_SKIP_BUILD=true`を付ける。再利用するimageの`org.opencontainers.image.revision`が検証対象のcommitと一致しなければ失敗する（意図する場合のみ`RESTORE_REHEARSAL_ALLOW_STALE_IMAGES=true`）。`.git`の無い展開済みツリーで実行するときは`SOURCE_REVISION`を渡す。cleanupは成功・失敗いずれの経路でも残骸検査と本番タグ不変検査を行い、結果を終了コードへ反映する。
 
 GitHub Actionsと同じスクリプトで確認する場合は以下を使う。
 

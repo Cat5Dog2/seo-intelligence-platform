@@ -87,7 +87,7 @@ public sealed class BlazorPhase3UiTests
                     HttpStatusCode.OK,
                     ApiResponseEnvelope<ReportDownload>.Success(
                         "req-report-download",
-                        new ReportDownload(reportId, "https://download.example/report.pdf", DateTimeOffset.UtcNow.AddMinutes(10))));
+                        new ReportDownload(reportId, $"/api/projects/{projectId:D}/reports/{reportId:D}/content")));
             }
 
             if (request.Method == HttpMethod.Post && path.EndsWith($"/reports/{reportId:D}/share", StringComparison.Ordinal))

@@ -570,6 +570,106 @@ public sealed partial class SeoIntelligenceApiClient : ISeoIntelligenceApiClient
         CancellationToken cancellationToken = default)
         => SendAsync<DataExportDownload>(HttpMethod.Get, $"/api/projects/{projectId:D}/exports/{exportId:D}/download", cancellationToken: cancellationToken);
 
+    public Task<ApiClientResult<ApiFileResponse>> DownloadExportAsync(
+        Guid projectId,
+        Guid exportId,
+        CancellationToken cancellationToken = default)
+        => SendForFileAsync(
+            $"/api/projects/{projectId:D}/exports/{exportId:D}/content",
+            fallbackFileName: $"export-{exportId:N}",
+            cancellationToken);
+
+    public Task<ApiClientResult<ApiFileResponse>> DownloadReportAsync(
+        Guid projectId,
+        Guid reportId,
+        CancellationToken cancellationToken = default)
+        => SendForFileAsync(
+            $"/api/projects/{projectId:D}/reports/{reportId:D}/content",
+            fallbackFileName: $"report-{reportId:N}",
+            cancellationToken);
+
+    /// <summary>
+    /// Fetches a file endpoint. Unlike <see cref="SendAsync{T}"/> the success body is not JSON and
+    /// is never buffered: <see cref="HttpCompletionOption.ResponseHeadersRead"/> lets the caller
+    /// copy it straight through, so a large export does not have to fit in memory twice. Failures
+    /// still arrive as the common envelope and are parsed as usual.
+    /// </summary>
+    private async Task<ApiClientResult<ApiFileResponse>> SendForFileAsync(
+        string requestUri,
+        string fallbackFileName,
+        CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, requestUri);
+
+        HttpResponseMessage? response = null;
+        try
+        {
+            response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                var content = await response.Content.ReadAsStringAsync(cancellationToken);
+                var statusCode = response.StatusCode;
+                response.Dispose();
+                response = null;
+
+                // Deserialized with JsonElement as the payload type rather than ApiFileResponse:
+                // that record has no parameterless constructor and owns an HttpResponseMessage, so
+                // a failure body that ever carried a non-null "data" would throw here instead of
+                // reporting the error it was meant to describe.
+                var envelope = string.IsNullOrWhiteSpace(content)
+                    ? null
+                    : JsonSerializer.Deserialize<ApiResponseEnvelope<JsonElement>>(content, SerializerOptions);
+
+                return envelope is null
+                    ? ApiClientResult<ApiFileResponse>.Failure(
+                        [new ApiError("Api.InvalidResponse", "API response envelope could not be parsed.")],
+                        statusCode: statusCode)
+                    : ApiClientResult<ApiFileResponse>.Failure(
+                        envelope.Errors,
+                        envelope.Meta,
+                        statusCode,
+                        envelope.RequestId);
+            }
+
+            var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            var file = new ApiFileResponse(
+                response,
+                stream,
+                response.Content.Headers.ContentType?.ToString() ?? "application/octet-stream",
+                ResolveFileName(response, fallbackFileName));
+
+            // Ownership moves to the caller with the response; the local must not be disposed here.
+            response = null;
+            return ApiClientResult<ApiFileResponse>.Success(file, ApiResponseMeta.Empty, file.Response.StatusCode, null);
+        }
+        catch (HttpRequestException exception)
+        {
+            _logger.LogWarning(exception, "API file request failed: GET {RequestUri}", requestUri);
+            return ApiClientResult<ApiFileResponse>.Failure([new ApiError("Api.RequestFailed", exception.Message)]);
+        }
+        catch (JsonException exception)
+        {
+            _logger.LogWarning(exception, "API file error response parsing failed: GET {RequestUri}", requestUri);
+            return ApiClientResult<ApiFileResponse>.Failure([new ApiError("Api.InvalidJson", "API response JSON could not be parsed.")]);
+        }
+        catch (TaskCanceledException exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogWarning(exception, "API file request timed out: GET {RequestUri}", requestUri);
+            return ApiClientResult<ApiFileResponse>.Failure([new ApiError("Api.Timeout", "API request timed out.")]);
+        }
+        finally
+        {
+            response?.Dispose();
+        }
+    }
+
+    private static string ResolveFileName(HttpResponseMessage response, string fallbackFileName)
+    {
+        var disposition = response.Content.Headers.ContentDisposition;
+        var name = disposition?.FileNameStar ?? disposition?.FileName?.Trim('"');
+        return string.IsNullOrWhiteSpace(name) ? fallbackFileName : name;
+    }
+
     private async Task<ApiClientResult<T>> SendAsync<T>(
         HttpMethod method,
         string requestUri,

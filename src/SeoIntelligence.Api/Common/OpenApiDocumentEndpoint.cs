@@ -64,13 +64,16 @@ internal static class OpenApiDocumentEndpoint
         new("/api/projects/{projectId}/cannibalization/refresh", Post: "Register cannibalization refresh job", PostSuccessCode: "202"),
         new("/api/projects/{projectId}/reports", Post: "Register monthly report generation job", PostSuccessCode: "202"),
         new("/api/projects/{projectId}/reports/{reportId}", Get: "Get report state and file metadata"),
-        new("/api/projects/{projectId}/reports/{reportId}/download", Get: "Issue a short-lived report download URL"),
+        new("/api/projects/{projectId}/reports/{reportId}/download", Get: "Resolve the report download URL"),
+        new("/api/projects/{projectId}/reports/{reportId}/content", Get: "Download the generated report file", BinaryGet: true),
         new("/api/projects/{projectId}/reports/{reportId}/share", Post: "Issue report share URL", Delete: "Revoke report share URL"),
-        new("/api/report-shares/{token}", Get: "Access shared report"),
+        new("/api/report-shares/{token}", Get: "Access shared report", ShareTokenGet: true),
+        new("/api/report-shares/{token}/content", Get: "Download the shared report file", BinaryGet: true, ShareTokenGet: true),
         new("/api/projects/{projectId}/exports", Post: "Register CSV or Excel export job", PostSuccessCode: "202"),
         new("/api/projects/{projectId}/exports/csv", Post: "Register Phase 1 CSV export job", PostSuccessCode: "202"),
         new("/api/projects/{projectId}/exports/{exportId}", Get: "Get export state and file metadata"),
-        new("/api/projects/{projectId}/exports/{exportId}/download", Get: "Issue a short-lived export download URL"),
+        new("/api/projects/{projectId}/exports/{exportId}/download", Get: "Resolve the export download URL"),
+        new("/api/projects/{projectId}/exports/{exportId}/content", Get: "Download the generated export file", BinaryGet: true),
         new("/api/projects/{projectId}/imports/upload-url", Post: "Issue a short-lived import source upload URL"),
         new("/api/projects/{projectId}/imports", Post: "Register CSV or Excel import job", PostSuccessCode: "202"),
         new("/api/projects/{projectId}/imports/{importId}", Get: "Get import state and validation summary"),
@@ -213,13 +216,15 @@ internal static class OpenApiDocumentEndpoint
         string? post = null,
         string? put = null,
         string? delete = null,
-        string postSuccessCode = "200")
+        string postSuccessCode = "200",
+        bool binaryGet = false,
+        bool shareTokenGet = false)
     {
         var operations = new Dictionary<string, object?>();
 
         if (get is not null)
         {
-            operations["get"] = Operation(get, "200");
+            operations["get"] = Operation(get, "200", binaryGet, shareTokenGet);
         }
 
         if (post is not null)
@@ -258,16 +263,60 @@ internal static class OpenApiDocumentEndpoint
             }
         };
 
-    private static object Operation(string summary, string successCode)
+    private static object Operation(
+        string summary,
+        string successCode,
+        bool binarySuccess = false,
+        bool shareToken = false)
+    {
+        var responses = new Dictionary<string, object?>
+        {
+            [successCode] = binarySuccess
+                ? BinaryResponse("The generated file.")
+                : JsonResponse("Success envelope."),
+            ["400"] = JsonResponse("Validation error envelope."),
+            ["404"] = JsonResponse("Not found error envelope."),
+            ["409"] = JsonResponse("Conflict error envelope.")
+        };
+
+        if (shareToken)
+        {
+            // Only the share endpoints can answer these: a share can expire or be revoked, and
+            // they are the only anonymous endpoints and so the only rate limited ones.
+            responses["410"] = JsonResponse("Expired or revoked share error envelope.");
+            responses["429"] = JsonResponse("Rate limit exceeded error envelope.");
+        }
+
+        return new { summary, responses };
+    }
+
+    /// <summary>
+    /// A success response carrying the file itself rather than the common envelope. Declared as an
+    /// untyped binary body across every media type the download endpoints can answer with, so a
+    /// generated client saves the bytes instead of trying to parse them as JSON.
+    /// </summary>
+    private static object BinaryResponse(string description)
         => new
         {
-            summary,
-            responses = new Dictionary<string, object?>
+            description,
+            content = new Dictionary<string, object?>
             {
-                [successCode] = JsonResponse("Success envelope."),
-                ["400"] = JsonResponse("Validation error envelope."),
-                ["404"] = JsonResponse("Not found error envelope."),
-                ["409"] = JsonResponse("Conflict error envelope.")
+                ["application/octet-stream"] = BinarySchema(),
+                ["application/pdf"] = BinarySchema(),
+                ["text/csv"] = BinarySchema(),
+                ["text/markdown"] = BinarySchema(),
+                ["application/vnd.ms-excel"] = BinarySchema(),
+                ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"] = BinarySchema()
+            }
+        };
+
+    private static object BinarySchema()
+        => new
+        {
+            schema = new
+            {
+                type = "string",
+                format = "binary"
             }
         };
 
@@ -278,7 +327,11 @@ internal static class OpenApiDocumentEndpoint
         string? Put = null,
         string? Delete = null,
         string PostSuccessCode = "200",
-        bool UseKeywordDiscoveryResponses = false)
+        bool UseKeywordDiscoveryResponses = false,
+        // The download endpoints answer with the file itself, not the common envelope.
+        bool BinaryGet = false,
+        // The share endpoints can also answer 410 (expired or revoked) and 429 (rate limited).
+        bool ShareTokenGet = false)
     {
         public object ToPathItem()
             => UseKeywordDiscoveryResponses
@@ -288,6 +341,8 @@ internal static class OpenApiDocumentEndpoint
                     post: Post,
                     put: Put,
                     delete: Delete,
-                    postSuccessCode: PostSuccessCode);
+                    postSuccessCode: PostSuccessCode,
+                    binaryGet: BinaryGet,
+                    shareTokenGet: ShareTokenGet);
     }
 }

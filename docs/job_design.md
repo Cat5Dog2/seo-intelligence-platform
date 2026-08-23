@@ -159,7 +159,7 @@ queued -> running -> waiting_external -> running -> succeeded
 | --- | --- |
 | 入力 | export_type、format、filter、columns。 |
 | 処理 | プロジェクトスコープを検証し、DBから抽出してStorageへファイルを保存する。 |
-| 出力 | `data_exports.file_uri`、短時間有効なdownloadUrl、`audit_logs`。 |
+| 出力 | `data_exports.file_uri`、認証必須のdownloadUrl（`.../content`）、`audit_logs`。 |
 | Phase | MVPはCSVのみ。Phase 3でExcelを追加する。 |
 
 ### 7.6 MonthlyReportJob
@@ -169,7 +169,7 @@ queued -> running -> waiting_external -> running -> succeeded
 | 入力 | report_type、period、format（pdf/excel）、sections、share_expires_at。 |
 | 処理 | プロジェクトスコープを検証し、集計データと成果物バージョンを作成してStorageへ保存する。 |
 | 出力 | `reports.format`、`reports.file_uri`、`reports.current_version`、`artifact_versions`、`audit_logs`。レポート完了通知を送る場合は`notification_deliveries.resource_type=report`、`resource_id=reportId`で送信元を保持する。 |
-| ダウンロード | `GET /api/projects/{projectId}/reports/{reportId}/download`で短時間URLを発行し、発行操作を`audit_logs`へ記録する。 |
+| ダウンロード | `GET /api/projects/{projectId}/reports/{reportId}/download`が取得先URLを返し、発行操作を`audit_logs`へ記録する。ファイル本体は`.../content`が配信し、取得を`audit_logs`へ記録する。 |
 
 ### 7.7 NotificationDeliveryJob
 

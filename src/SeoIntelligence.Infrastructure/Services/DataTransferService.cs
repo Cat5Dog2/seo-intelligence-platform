@@ -23,7 +23,8 @@ internal sealed class DataTransferService(
     IObjectStorage objectStorage,
     IAuditLogWriter auditLogWriter,
     IJobQueueClient jobQueueClient,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    ILogger<DataTransferService> logger)
     : IDataTransferService
     , IDataImportService
 {
@@ -38,7 +39,6 @@ internal sealed class DataTransferService(
     private const string StrictValidationMode = "strict";
     private const int MaxImportRows = 50_000;
     private const long MaxImportFileBytes = 20L * 1024 * 1024;
-    private static readonly TimeSpan DownloadUrlTtl = TimeSpan.FromMinutes(15);
     private static readonly TimeSpan UploadUrlTtl = TimeSpan.FromMinutes(15);
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private static readonly string[] KeywordMetricsColumns =
@@ -248,8 +248,7 @@ internal sealed class DataTransferService(
             return Failure<DataExportDownload>(ErrorCode.Conflict, "Data export file was not found in storage.");
         }
 
-        var expiresAt = NowUtc().Add(DownloadUrlTtl);
-        var downloadUrl = BuildDownloadUrl(export.FileUri, expiresAt);
+        var downloadUrl = BuildExportContentUrl(context, export.Id);
         AddExportAudit(
             context,
             ExportDownloadUrlIssuedAction(export.Format),
@@ -257,23 +256,81 @@ internal sealed class DataTransferService(
             new
             {
                 export = ToExportAuditSnapshot(export),
-                downloadUrl,
-                expiresAt
-            });
-        AddExportAudit(
-            context,
-            ExportDownloadedAction(export.Format),
-            export,
-            new
-            {
-                export = ToExportAuditSnapshot(export),
-                downloadUrl,
-                expiresAt,
-                via = "short_lived_url"
+                downloadUrl
             });
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        return Result<DataExportDownload>.Success(new DataExportDownload(export.Id, downloadUrl, expiresAt));
+        return Result<DataExportDownload>.Success(new DataExportDownload(export.Id, downloadUrl));
+    }
+
+    public async Task<Result<ArtifactContent>> OpenExportContentAsync(
+        ProjectExecutionContext context,
+        Guid exportId,
+        CancellationToken cancellationToken = default)
+    {
+        var export = await FindExportAsync(context, exportId, asTracking: false, cancellationToken);
+        if (export is null)
+        {
+            return Failure<ArtifactContent>(ErrorCode.NotFound, "Data export was not found.");
+        }
+
+        if (!string.Equals(export.Status, StatusValues.Succeeded, StringComparison.Ordinal) ||
+            string.IsNullOrWhiteSpace(export.FileUri))
+        {
+            return Failure<ArtifactContent>(ErrorCode.Conflict, "Data export is not ready for download.");
+        }
+
+        if (!TryGetObjectKey(export.FileUri, out var key))
+        {
+            return Failure<ArtifactContent>(ErrorCode.Conflict, "Data export file URI is invalid.");
+        }
+
+        if (!await objectStorage.ExistsAsync(key, cancellationToken))
+        {
+            return Failure<ArtifactContent>(ErrorCode.Conflict, "Data export file was not found in storage.");
+        }
+
+        // Opened before the audit is written. The existence check above can still be followed by a
+        // deletion or a permission failure, and recording a download that never started would put
+        // a false entry in the record the audit log exists to be trusted for.
+        Stream content;
+        try
+        {
+            content = await objectStorage.OpenReadAsync(key, cancellationToken);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            logger.LogWarning(
+                exception,
+                "Data export {export_id} could not be opened for download.",
+                export.Id);
+            return Failure<ArtifactContent>(ErrorCode.Conflict, "Data export file could not be read from storage.");
+        }
+
+        try
+        {
+            AddExportAudit(
+                context,
+                ExportDownloadedAction(export.Format),
+                export,
+                new
+                {
+                    export = ToExportAuditSnapshot(export),
+                    via = "api_content_endpoint"
+                });
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch
+        {
+            // The caller never receives the stream on this path, so nothing else would close it.
+            await content.DisposeAsync();
+            throw;
+        }
+
+        return Result<ArtifactContent>.Success(new ArtifactContent(
+            content,
+            GetExportContentType(export.Format),
+            BuildExportFileName(export)));
     }
 
     public Task<Result<DataExportDetails>> GenerateCsvExportAsync(
@@ -424,7 +481,7 @@ internal sealed class DataTransferService(
             $"imports/{context.WorkspaceId:N}/{project.Id:N}/incoming/{UuidV7.New():N}/{fileName}");
         var sourceFileUri = $"storage://local/{key.Value}";
         var expiresAt = NowOffset().Add(UploadUrlTtl);
-        var uploadUrl = BuildDownloadUrl(sourceFileUri, expiresAt.UtcDateTime);
+        var uploadUrl = BuildExpiringStorageUri(sourceFileUri, expiresAt.UtcDateTime);
 
         _ = importType;
         return Result<ImportUploadUrlDetails>.Success(new ImportUploadUrlDetails(uploadUrl, sourceFileUri, expiresAt));
@@ -1940,13 +1997,25 @@ internal sealed class DataTransferService(
     private static string BuildExportObjectKey(ProjectExecutionContext context, Guid exportId, string format)
         => $"exports/{context.WorkspaceId:N}/{context.ProjectId!.Value:N}/{exportId:N}.{ExportFileExtension(format)}";
 
+    // Article brief exports are written by ContentAnalysisService but stored as data_exports, so
+    // "markdown" reaches the download path here even though this service never produces it.
+    private const string MarkdownFormat = "markdown";
+
     private static string ExportFileExtension(string format)
-        => string.Equals(format, CsvFormat, StringComparison.OrdinalIgnoreCase) ? "csv" : "xlsx";
+        => format switch
+        {
+            _ when string.Equals(format, CsvFormat, StringComparison.OrdinalIgnoreCase) => "csv",
+            _ when string.Equals(format, MarkdownFormat, StringComparison.OrdinalIgnoreCase) => "md",
+            _ => "xlsx"
+        };
 
     private static string GetExportContentType(string format)
-        => string.Equals(format, CsvFormat, StringComparison.OrdinalIgnoreCase)
-            ? "text/csv; charset=utf-8"
-            : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+        => format switch
+        {
+            _ when string.Equals(format, CsvFormat, StringComparison.OrdinalIgnoreCase) => "text/csv; charset=utf-8",
+            _ when string.Equals(format, MarkdownFormat, StringComparison.OrdinalIgnoreCase) => "text/markdown; charset=utf-8",
+            _ => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        };
 
     private static bool TryGetObjectKey(string fileUri, out StorageObjectKey key)
     {
@@ -1967,7 +2036,11 @@ internal sealed class DataTransferService(
         return true;
     }
 
-    private static string BuildDownloadUrl(string fileUri, DateTime expiresAt)
+    /// <summary>
+    /// Builds the storage URI an importer uploads to, carrying its own expiry. This is not a URL a
+    /// browser can fetch; see <see cref="BuildExportContentUrl"/> for the download side.
+    /// </summary>
+    private static string BuildExpiringStorageUri(string fileUri, DateTime expiresAt)
     {
         var separator = fileUri.Contains('?', StringComparison.Ordinal) ? "&" : "?";
         return string.Concat(
@@ -1975,6 +2048,41 @@ internal sealed class DataTransferService(
             separator,
             "expiresAt=",
             Uri.EscapeDataString(expiresAt.ToString("O", CultureInfo.InvariantCulture)));
+    }
+
+    /// <summary>
+    /// The API path that streams the generated file. It is returned instead of the raw
+    /// <c>storage://</c> URI because that scheme is not fetchable by any client, which left every
+    /// export unreachable from the browser.
+    /// </summary>
+    private static string BuildExportContentUrl(ProjectExecutionContext context, Guid exportId)
+        => $"/api/projects/{context.ProjectId!.Value:D}/exports/{exportId:D}/content";
+
+    /// <summary>
+    /// The name the file is saved under. The export id keeps it unique per export, so repeated
+    /// downloads of different exports of the same type do not overwrite each other.
+    /// </summary>
+    private static string BuildExportFileName(DataExportEntity export)
+        => $"{SanitizeFileNameComponent(export.ExportType)}-{export.Id:N}.{ExportFileExtension(export.Format)}";
+
+    /// <summary>
+    /// Keeps a stored value from steering the saved file name. Everything outside a conservative
+    /// set becomes '-', so a name can hold no directory separator and no quote that would end the
+    /// Content-Disposition parameter early.
+    /// </summary>
+    private static string SanitizeFileNameComponent(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return "export";
+        }
+
+        var sanitized = new string(value
+            .Select(character => char.IsAsciiLetterOrDigit(character) || character is '-' or '_' ? character : '-')
+            .ToArray())
+            .Trim('-');
+
+        return sanitized.Length == 0 ? "export" : sanitized;
     }
 
     private void AddJobQueuedAudit(ProjectExecutionContext context, JobEntity job)

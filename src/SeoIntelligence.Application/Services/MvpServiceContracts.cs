@@ -174,6 +174,12 @@ public interface IDataTransferService
     Task<Result<DataExportDetails>> GetExportAsync(ProjectExecutionContext context, Guid exportId, CancellationToken cancellationToken = default);
 
     Task<Result<DataExportDownload>> CreateDownloadUrlAsync(ProjectExecutionContext context, Guid exportId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Opens the stored export file for streaming to the caller. The caller owns the returned
+    /// stream and must dispose it.
+    /// </summary>
+    Task<Result<ArtifactContent>> OpenExportContentAsync(ProjectExecutionContext context, Guid exportId, CancellationToken cancellationToken = default);
 }
 
 public interface IExternalApiUsageService
@@ -826,10 +832,29 @@ public sealed record DataExportDetails(
     DateTime CreatedAt,
     DateTime? CompletedAt);
 
+/// <summary>
+/// Where a finished export can be fetched from.
+/// <para>
+/// There is deliberately no expiry. The URL is a plain API path guarded by authentication on every
+/// request, not a pre-signed URL that works on its own - so an expiry on it would control nothing.
+/// The earlier contract carried one, which promised a limit that was never enforced. Where an
+/// expiry does mean something, the anonymous report share link, it lives on the share token and is
+/// checked on every access.
+/// </para>
+/// </summary>
 public sealed record DataExportDownload(
     Guid ExportId,
-    string DownloadUrl,
-    DateTime ExpiresAt);
+    string DownloadUrl);
+
+/// <summary>
+/// A generated file being handed to a caller. <see cref="Content"/> is owned by the caller and
+/// must be disposed; it is read straight from storage rather than buffered, so an export large
+/// enough to matter never sits in memory.
+/// </summary>
+public sealed record ArtifactContent(
+    Stream Content,
+    string ContentType,
+    string FileName);
 
 public sealed record ExternalApiUsageQuery(DateOnly? From, DateOnly? To, string? Provider);
 

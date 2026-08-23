@@ -19,7 +19,7 @@
 認証を次の2層で構成する。
 
 1. 利用者向け認証はASP.NET Core Identity + Cookie認証とし、`web-writing-tool` と同じ設定値を使う。パスワードポリシーは12文字以上かつ数字/大文字/小文字/記号必須、ロックアウトは5回失敗で15分とする。Identityテーブルは既存の `SeoIntelligenceDbContext` を `IdentityDbContext<ApplicationUser, IdentityRole, string>` 継承へ変更して同一DBへ配置し、テーブル名は本リポジトリのsnake_case規約に合わせて `identity_` 接頭辞で命名する。
-2. Web からAPIへの呼び出しは `X-Service-Key` ヘッダーの共有シークレットで認証する。値はSecret Storeから取得し、定数時間比較で検証する。APIはfallback policyで全エンドポイントを要認証とし、`/healthz`、`/readyz`、`GET /api/report-shares/{token}` のみ匿名許可とする。
+2. Web からAPIへの呼び出しは `X-Service-Key` ヘッダーの共有シークレットで認証する。値はSecret Storeから取得し、定数時間比較で検証する。APIはfallback policyで全エンドポイントを要認証とし、`/healthz`、`/readyz`、`GET /api/report-shares/{token}`、`GET /api/report-shares/{token}/content` のみ匿名許可とする。共有2経路は共有トークンをアクセス制御とし、ファイル配信側もトークンを再検証する。匿名でDB照会と監査書込が発生するためレート制限を適用する。
 
 あわせて共通Caddyの公開面を縮小し、`/api/report-shares/*` 以外の `/api/*` は公開しない。
 

@@ -102,6 +102,7 @@ app.MapHealthChecks("/readyz", new HealthCheckOptions
 
 app.MapStaticAssets();
 app.MapAccountEndpoints();
+app.MapDownloadEndpoints();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 

@@ -44,7 +44,7 @@
 | 9 | キーワード探索 | `KeywordDiscoveryJob`、候補語保存、同期/非同期分岐 | T-MVP-007/008 |
 | 10 | 一括検索ボリューム | 登録、ポーリング、結果取得、分割、重複除外 | T-MVP-009から011 |
 | 11 | 機会スコア | `OpportunityScoringJob`、`project_keyword_scores` | スコア再計算 |
-| 12 | CSV出力 | `DataExportJob`、Storage、短時間URL、監査 | T-MVP-012 |
+| 12 | CSV出力 | `DataExportJob`、Storage、認証必須のダウンロードAPI、監査 | T-MVP-012 |
 | 13 | Discord通知 | テスト通知、job_failed、credit_low、再送 | T-MVP-006/017 |
 | 14 | Blazor MVP画面 | S-001、S-900、S-020、S-030、S-010 | UI/E2E |
 | 15 | 受入固め | AC-001、AC-002、AC-003、AC-008からAC-014、AC-019 | targeted test |

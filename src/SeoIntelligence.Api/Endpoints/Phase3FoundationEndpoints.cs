@@ -88,6 +88,7 @@ internal static class Phase3FoundationEndpoints
         reports.MapPost("", CreateReportAsync);
         reports.MapGet("/{reportId:guid}", GetReportAsync);
         reports.MapGet("/{reportId:guid}/download", CreateReportDownloadUrlAsync);
+        reports.MapGet("/{reportId:guid}/content", GetReportContentAsync);
         reports.MapPost("/{reportId:guid}/share", ShareReportAsync);
         reports.MapDelete("/{reportId:guid}/share", RevokeReportShareAsync);
 
@@ -106,10 +107,16 @@ internal static class Phase3FoundationEndpoints
         ai.MapPost("/chat", ChatWithAiAsync);
         var reportShares = app.MapGroup(Phase3EndpointRoutes.ReportShares);
 
-        // Report share links are handed to people outside the application, so this one endpoint is
-        // reachable without a service key; the share token itself is the access control. Applied to
-        // the endpoint rather than the group so anything added here later stays authenticated.
+        // Report share links are handed to people outside the application, so these two endpoints
+        // are reachable without a service key; the share token itself is the access control.
+        // Applied per endpoint rather than to the group so anything added here later stays
+        // authenticated. The file endpoint revalidates the token, so revoking a share stops the
+        // download and not just the metadata lookup.
+        // Both are rate limited by the global limiter in ApiRateLimitingExtensions, which matches
+        // them by route: they are the only anonymous business endpoints, and a request carrying an
+        // unknown token still costs a lookup and a rejection audit row.
         reportShares.MapGet("/{token}", GetSharedReportAsync).AllowAnonymous();
+        reportShares.MapGet("/{token}/content", GetSharedReportContentAsync).AllowAnonymous();
 
         return app;
     }
@@ -323,6 +330,49 @@ internal static class Phase3FoundationEndpoints
                 CreateSharedContext(contextService, httpContext),
                 token,
                 cancellationToken));
+
+    /// <summary>
+    /// Streams the generated report itself. A success answer is the bytes rather than the common
+    /// response envelope, which cannot carry a binary body; failures still use the envelope.
+    /// </summary>
+    private static async Task<IResult> GetReportContentAsync(
+        Guid projectId,
+        Guid reportId,
+        [FromServices] IReportService service,
+        [FromServices] IProjectContextService contextService,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        var result = await service.OpenReportContentAsync(
+            CreateContext(contextService, httpContext, projectId),
+            reportId,
+            cancellationToken);
+
+        return result.IsSuccess
+            ? ApiResponseResults.File(result.Value!)
+            : ApiResponseResults.FromError(httpContext, result.Error!);
+    }
+
+    /// <summary>
+    /// Streams the report to a share-link recipient. Anonymous like the metadata endpoint beside
+    /// it; the share token is checked again here rather than trusted from the earlier lookup.
+    /// </summary>
+    private static async Task<IResult> GetSharedReportContentAsync(
+        string token,
+        [FromServices] IReportService service,
+        [FromServices] IProjectContextService contextService,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        var result = await service.OpenSharedReportContentAsync(
+            CreateSharedContext(contextService, httpContext),
+            token,
+            cancellationToken);
+
+        return result.IsSuccess
+            ? ApiResponseResults.File(result.Value!)
+            : ApiResponseResults.FromError(httpContext, result.Error!);
+    }
 
     private static async Task<IResult> GetConnectorsAsync(
         Guid projectId,

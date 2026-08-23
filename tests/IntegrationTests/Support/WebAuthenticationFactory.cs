@@ -108,6 +108,13 @@ public sealed class WebAuthenticationFactory : WebApplicationFactory<App>
         private readonly List<string> _requests = [];
         private readonly Lock _gate = new();
 
+        /// <summary>
+        /// Lets a test answer a specific API call instead of the default failure, so the Web host's
+        /// own handling of a real response can be exercised. Returning null falls through to the
+        /// default.
+        /// </summary>
+        public Func<HttpRequestMessage, HttpResponseMessage?>? Responder { get; set; }
+
         public IReadOnlyList<string> Requests
         {
             get
@@ -134,6 +141,12 @@ public sealed class WebAuthenticationFactory : WebApplicationFactory<App>
             lock (_gate)
             {
                 _requests.Add($"{request.Method} {request.RequestUri?.AbsolutePath}");
+            }
+
+            if (Responder?.Invoke(request) is { } configured)
+            {
+                configured.RequestMessage = request;
+                return Task.FromResult(configured);
             }
 
             // The API is not part of these tests; an empty failure keeps components on their

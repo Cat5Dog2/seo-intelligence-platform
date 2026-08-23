@@ -24,7 +24,10 @@ public sealed class BrowserSmokeTests
             {
                 Width = 1366,
                 Height = 900
-            }
+            },
+            // The flow saves the generated report and inspects it; without this Chromium cancels
+            // the download and the assertion would never see a file.
+            AcceptDownloads = true
         });
         var page = await context.NewPageAsync();
         page.SetDefaultTimeout(15_000);

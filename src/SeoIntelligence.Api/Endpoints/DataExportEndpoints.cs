@@ -18,6 +18,7 @@ internal static class DataExportEndpoints
         exports.MapPost("/csv", CreateCsvExportAsync);
         exports.MapGet("/{exportId:guid}", GetExportAsync);
         exports.MapGet("/{exportId:guid}/download", CreateDownloadUrlAsync);
+        exports.MapGet("/{exportId:guid}/content", GetExportContentAsync);
 
         var imports = app.MapGroup("/api/projects/{projectId:guid}/imports");
 
@@ -98,6 +99,28 @@ internal static class DataExportEndpoints
                 CreateContext(contextService, httpContext, projectId),
                 exportId,
                 cancellationToken));
+
+    /// <summary>
+    /// Streams the generated file itself. A success answer is the bytes rather than the common
+    /// response envelope, which cannot carry a binary body; failures still use the envelope.
+    /// </summary>
+    private static async Task<IResult> GetExportContentAsync(
+        Guid projectId,
+        Guid exportId,
+        [FromServices] IDataTransferService service,
+        [FromServices] IProjectContextService contextService,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        var result = await service.OpenExportContentAsync(
+            CreateContext(contextService, httpContext, projectId),
+            exportId,
+            cancellationToken);
+
+        return result.IsSuccess
+            ? ApiResponseResults.File(result.Value!)
+            : ApiResponseResults.FromError(httpContext, result.Error!);
+    }
 
     private static async Task<IResult> CreateImportUploadUrlAsync(
         Guid projectId,

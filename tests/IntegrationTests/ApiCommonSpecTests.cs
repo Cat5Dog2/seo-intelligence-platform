@@ -134,6 +134,113 @@ public sealed partial class ApiCommonSpecTests
         }
     }
 
+    [Theory]
+    [Trait("Category", "Integration")]
+    [InlineData("/api/projects/{projectId}/exports/{exportId}/content")]
+    [InlineData("/api/projects/{projectId}/reports/{reportId}/content")]
+    [InlineData("/api/report-shares/{token}/content")]
+    public async Task OpenApiDescribesDownloadSuccessAsBinaryAndFailuresAsTheEnvelope(string path)
+    {
+        var storagePath = CreateTempStoragePath();
+        await using var factory = new ApiFactory(storagePath);
+        using var client = CreateClient(factory);
+
+        try
+        {
+            using var response = await client.GetAsync("/openapi/v1.json");
+            using var document = await ReadJsonAsync(response);
+            var responses = document.RootElement
+                .GetProperty("paths")
+                .GetProperty(path)
+                .GetProperty("get")
+                .GetProperty("responses");
+
+            // These endpoints answer with the file, not the common envelope. Describing the 200 as
+            // application/json would make a generated client try to parse a PDF or a CSV as JSON.
+            var successContent = responses.GetProperty("200").GetProperty("content");
+            Assert.False(successContent.TryGetProperty("application/json", out _));
+
+            foreach (var mediaType in successContent.EnumerateObject())
+            {
+                var schema = mediaType.Value.GetProperty("schema");
+                Assert.Equal("string", schema.GetProperty("type").GetString());
+                Assert.Equal("binary", schema.GetProperty("format").GetString());
+            }
+
+            // Failures still use the envelope, so error handling stays the same as everywhere else.
+            foreach (var failureCode in (string[])["400", "404", "409"])
+            {
+                Assert.True(
+                    responses.GetProperty(failureCode).GetProperty("content").TryGetProperty("application/json", out _),
+                    $"{path} should describe {failureCode} as the common JSON envelope.");
+            }
+        }
+        finally
+        {
+            DeleteTempStoragePath(storagePath);
+        }
+    }
+
+    [Theory]
+    [Trait("Category", "Integration")]
+    [InlineData("/api/report-shares/{token}")]
+    [InlineData("/api/report-shares/{token}/content")]
+    public async Task OpenApiDocumentsTheStatusesOnlyTheShareEndpointsCanAnswer(string path)
+    {
+        var storagePath = CreateTempStoragePath();
+        await using var factory = new ApiFactory(storagePath);
+        using var client = CreateClient(factory);
+
+        try
+        {
+            using var response = await client.GetAsync("/openapi/v1.json");
+            using var document = await ReadJsonAsync(response);
+            var responses = document.RootElement
+                .GetProperty("paths")
+                .GetProperty(path)
+                .GetProperty("get")
+                .GetProperty("responses");
+
+            // A share can expire or be revoked, and these are the only anonymous - therefore the
+            // only rate limited - endpoints. Leaving either status out makes it an undefined
+            // response for a generated client.
+            Assert.True(responses.TryGetProperty("410", out _), $"{path} should document 410.");
+            Assert.True(responses.TryGetProperty("429", out _), $"{path} should document 429.");
+        }
+        finally
+        {
+            DeleteTempStoragePath(storagePath);
+        }
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task OpenApiDoesNotDocumentShareOnlyStatusesOnAuthenticatedEndpoints()
+    {
+        var storagePath = CreateTempStoragePath();
+        await using var factory = new ApiFactory(storagePath);
+        using var client = CreateClient(factory);
+
+        try
+        {
+            using var response = await client.GetAsync("/openapi/v1.json");
+            using var document = await ReadJsonAsync(response);
+            var responses = document.RootElement
+                .GetProperty("paths")
+                .GetProperty("/api/projects/{projectId}/reports/{reportId}/content")
+                .GetProperty("get")
+                .GetProperty("responses");
+
+            // Guards the test above from passing because 410 and 429 were added everywhere.
+            Assert.False(responses.TryGetProperty("410", out _));
+            Assert.False(responses.TryGetProperty("429", out _));
+        }
+        finally
+        {
+            DeleteTempStoragePath(storagePath);
+        }
+    }
+
     [Fact]
     [Trait("Category", "Integration")]
     public async Task OpenApiV1JsonDocumentsMappedMvpApiEndpoints()

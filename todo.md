@@ -1382,6 +1382,365 @@ vendor仕様の構造差分(説明文を除く16件):
 - 内部API `/keyword-discovery/suggest` の `limit` 上限は1〜100のまま据え置いた。vendorの上限拡大(1,000)は上限のみの変更で、内部契約を変える必要がないため。
 - SERP詳細の業務テーブルへの取込(見出し/競合分析への活用)は本Issueの範囲外とし、クライアント層までの実装に留めた。
 
+### ISSUE-FIX-001 成果物をブラウザからダウンロードできるようにする
+
+参照ドキュメント: `docs/api_design.md`, `docs/requirements.md`, `docs/screen_design.md`, `docs/docker_deployment.md`
+
+関連: FR-120, FR-121, AC-007, AC-013
+
+背景:
+
+- `.../download` が `storage://local/...` を返すだけで、どのHTTPクライアントも解決できなかった。CSV/Excel/PDFの生成と監査は成功する一方、通常利用者がファイルを取得できず、MVPのAC-013とPhase 3のAC-007を満たしていなかった。
+- `docker_deployment.md` は「HTTP adapterは別Issue」と記していたが、該当Issueは存在しなかった。VPSデプロイ前レビューで検出し、本Issueとして起票した。
+
+目的:
+
+- [x] 生成済みのCSV/Excel/PDF/Markdownを、ブラウザから認証付きで取得できるようにする。
+
+範囲:
+
+- [x] API に `.../exports/{exportId}/content` と `.../reports/{reportId}/content` を追加し、`IObjectStorage.OpenReadAsync` の内容をストリーミング配信する。
+- [x] 共有URL経由の `/api/report-shares/{token}/content` を追加し、共有トークンを再検証したうえで匿名配信する。
+- [x] `.../download` の戻り値を `storage://` から到達可能なAPIパスへ変更する。
+- [x] Webホストへ `/downloads/projects/{projectId}/exports|reports/{id}` を追加し、管理者Cookieで認可してサービスキー付きでAPIを呼び中継する。
+- [x] 監査を発行と取得へ分離する。`*_url_issued` は `download`、`*_downloaded` は `content` が記録し、`via` で経路を残す。
+- [x] `Reports.razor` の壊れたリンクを差し替え、`JobProgressPanel` へ完了ジョブのダウンロード導線を追加する。
+
+受入条件:
+
+- [x] `download` が `/api/projects/{projectId}/exports|reports/{id}/content` を返す。
+- [x] `content` が200、正しい`Content-Type`、`Content-Disposition: attachment`、Storage上の内容と一致する本体を返す。
+- [x] 未完了のexportは409、他プロジェクトのIDでは404になる。
+- [x] 共有URLの `content` はサービスキーなしで200を返し、失効後は`Gone`になる。
+- [x] Webの `/downloads/...` は未サインインを`/login`、非Adminを`/forbidden`へ送り、いずれもAPIを呼ばない。
+- [x] APIのステータスコードがWeb経由でも保たれる（存在しないexportは404のまま）。
+- [x] 匿名エンドポイントは4件（`/healthz`、`/readyz`、share 2件）に限定され、Security testで固定される。
+
+検証:
+
+- [x] `dotnet build SeoIntelligence.sln -c Release -warnaserror`
+- [x] `dotnet test SeoIntelligence.sln -c Release`（BrowserE2Eを除く258件成功）
+- [x] `bash scripts/container-smoke.sh`
+
+補足:
+
+- `article_brief_export` も `data_exports` に格納されるため同じ経路で配信できる。`markdown` 形式の拡張子とContent-Typeを追加した。
+- ファイル本体は常にAPI経由で配信し、Storage Volumeは公開しない。MinIO署名付きURLは引き続き未対応。
+
+レビュー指摘による追加是正:
+
+- [x] `expiresAt` を `DataExportDownload` / `ReportDownload` から削除した。返すURLは認証必須のAPIパスであり、署名付きの期限付きURLではない。期限を持たせても毎リクエストの認証がアクセス制御であるため何も制御せず、旧実装では実際に未強制のまま表示だけされていた。期限が意味を持つ共有URLは、共有トークンの `share_expires_at` / `share_revoked_at` を毎回検証して強制する（実装済み・テスト済み）。
+- [x] `ReportShareAccessDetails.DownloadExpiresAt` を、無関係な15分値から共有トークンの実際の期限へ変更した。受信者へ強制されない期限を示さない。
+- [x] `*_downloaded` 監査をStorageのオープン成功後に移した。存在確認後の削除や権限エラーで「ダウンロード済み」が残らない。監査保存に失敗した場合はストリームを破棄する。
+- [x] OpenAPIで `content` 系の200応答を `type: string, format: binary` として公開し、エラー応答のみ共通エンベロープにした。JSONとして公開したままでは生成クライアントが壊れる。
+- [x] Trivyを `scripts/scan-container-images.sh` へ集約し、`postgres`/`redis` をゲート対象にした。除外はCVE ID列挙ではなくコンポーネント（`usr/local/bin/gosu` の `stdlib`）で指定し、同イメージの別箇所の新規CVEは検出できる形にした。MinIOは本番非使用のため報告のみ。
+- [x] `basic_design.md` / `api_design.md` / `domain_glossary.md` / `mvp_implementation_plan.md` の「短時間URL」記述を実装に合わせた。
+- [x] `JobProgressPanel` のリンク生成を `ArtifactDownloadLinks.ForJob` へ抽出し、成功/未完了/対象外リソースの分岐をテストで固定した。
+
+判断の記録:
+
+- `*_url_issued` は `download` を呼んだ事実の記録に留め、取得の正本は `*_downloaded` とした。画面のジョブ一覧は `download` を経由せず直接ダウンロードへ遷移するため対で残らないが、実取得は経路によらず必ず記録される。
+
+2次レビューによる追加是正:
+
+- [x] 共有トークンが `audit_logs.before_after_json` へ平文で入る退行を修正した。`report.share_accessed` にはトークンを含む解決済みURLではなくルートテンプレートを保存する。既存の `AssertTokenIsStoredOnlyAsHashAsync` は共有アクセス**前**に呼ばれていたため素通りしていた。アクセス後にも検査するよう追加した。
+- [x] APIのHTTPログが `Request.Path` をそのまま記録していたため、共有トークンが全ログシンクへ出ていた。`RouteEndpoint.RoutePattern.RawText` へ変更し、未マッチ要求はパスを記録しない（攻撃者制御かつトークンが現れ得る箇所のため）。
+- [x] 匿名共有2経路へレート制限を追加した（IP単位30回/分 + 全体同時実行8）。未知トークンでもDB照会と監査書込が発生するため。認証済みエンドポイントへ波及しないことをテストで固定した。
+- [x] TrivyへDockerソケットを渡すのをやめた。`docker save` したtarを `--input` で読ませ、スキャナimageはdigestで固定した。ソケットを渡すとスキャナがDockerデーモンを操作でき、開発PCとCI runnerに対してroot相当になる。
+- [x] Trivyの受容をコンポーネント単位からCVE単位（image+CVE+target+package の4項目一致）へ変更した。コンポーネント一括では同じバイナリに後から出た到達可能な脆弱性まで隠れる。受容CVEを1件外すとゲートが発火することを確認済み。
+- [x] 受容判断時のdigestを記録し、スキャン時に照合するようにした。タグが動いていればCIが失敗し、判断のやり直しを強制する。発火を確認済み。
+- [x] 共有endpointの410（期限切れ/失効）と429（レート制限）をOpenAPIへ追加した。認証済みendpointには付かないことも併せて固定した。
+- [x] ファイル消失テストがリクエスト前に削除しており `ExistsAsync` で終了していた。Exists=true かつ OpenReadAsync が例外を投げるfake storageへ置き換えた。監査をオープン前へ戻すと落ちることを確認済み。
+- [x] `job_design.md` / `api_design.md` / `basic_design.md` の残存記述（短時間URL、`expiresAt`、API一覧、匿名endpoint数）を実装に合わせた。
+- [x] Caddyのcatch-allでWebの `/readyz` は外部到達することを明記し、非公開にすべきなのはAPIの `/readyz` だと書き分けた。
+
+3次レビューによる追加是正:
+
+- [x] `compose.yaml` の `postgres` / `redis` をdigest固定した。スキャンをdigestで行っても、VPSがタグでpullすれば別イメージが起動し得るため、鎖の最後が抜けていた。バックアップ手順の一時コンテナも同じ参照へ揃えた。
+- [x] digestが `compose.yaml` / `RUNTIME_REVIEWED_DIGESTS` / Runbookの3箇所で一致することを、`verify-production-compose.sh` と `scan-container-images.sh` の両方で検証するようにした。固定を外すと両方が失敗することを確認済み。
+- [x] 429が空ボディだった点を `OnRejected` で共通エンベロープ（`RateLimit.Exceeded`）＋`Retry-After` へ修正した。OpenAPIの公開内容と実応答が一致していなかった。
+- [x] Trivy JSON評価が `Results` 欠落を「検出0件」として成功させていた（fail-open）。スキーマを検証してfail-closedにした。
+- [x] `requirements.md` / `test_plan.md` / ADR 0008 の匿名許可一覧を4件へ更新した。CIコメントの「コンポーネント単位の除外」という旧説明も実装（CVE単位）に合わせた。
+- [x] `Phase3ApplicationContractTests` の共有URLサンプルを新契約へ更新した。
+- [x] Caddyの `log_skip @report_shares` を「必須」としてデプロイ手順へ明記し、確認コマンドを添えた。アプリ側を直しても前段がURIを記録すれば漏えいは成立するため。
+
+追加したテスト:
+
+- [x] レート制限の正確な境界（30件目まで通し31件目で429）を、メタデータ経路と `/content` 経路の両方で固定した。
+- [x] 429が共通エンベロープを返すことを固定した。
+- [x] 共有トークンが**アプリケーションログ**に出ないことを、ログプロバイダーを差し替えて全ログ行に対し検証した。ルートテンプレートは記録されることも併せて確認し、検査対象が正しいことを保証した。生パスのログへ戻すと落ちることを確認済み。
+
+4次レビューによる追加是正:
+
+- [x] デプロイ手順の `docker compose ... build` がサービス名を省いており、`tools` profile配下の `migrate` がビルド対象から外れていた。dry-runで実測して確認。初回はmigrate image不在、更新時は前リリースのbundleでMigrationを実行し得る実バグ。初回・更新の両手順を `build api web worker migrate` へ修正し、手順書のbuildコマンドがサービス名を明示しているかを `verify-production-compose.sh` が検証する（スモークスクリプトは元から明示していたため、手順書とスクリプトが乖離していた）。
+- [x] CIが検査したアプリimageと本番が起動するimageが同一である保証がない（VPSは同一コミットから再buildし、base image・apt・NuGetはいずれも可変）。`scripts/scan-container-images.sh app` を初回・更新の両手順へ**buildの直後・起動の前**の必須ステップとして追加した。CIスキャンの限界と、registry経由でdigestを固定する強い代替案も手順書へ明記した。registry導入自体は構成変更のため実施していない。
+- [x] digestの「3箇所一致」ガードが実質2点しか見ておらず、grepのためコメント行でも通り得た。`image-digests.lock` を単一の正本にし、`verify-production-compose.sh` がComposeの**レンダリング結果**と完全一致で照合する形へ変更した。Runbookは値を複製せず同ファイルを参照する。lock側を書き換えると失敗することを確認済み。
+- [x] Caddyログ確認手順がfalse-passし得た（file/network sink未考慮、Base64URLの `-`/`_` に不一致な正規表現、有効トークンの使用）。一意な無効プローブ文字列でアクセスし、全sinkを `grep -F` の完全一致で検索する手順へ書き換えた。
+- [x] `BothAnonymousShareEndpointsStopAtTheThirtieth...` を実際の挙動に合わせ `AllowThirtyRequestsAndRejectTheThirtyFirst` へ改名した。
+- [x] 429テストに `Content-Type`、`Retry-After`、`requestId` の検証を追加した。
+
+追加したテスト:
+
+- [x] 同時実行8の上限を、`TaskCompletionSource` でStorage読み取りをブロックする決定的な形で固定した（sleep不使用）。8件を到達させてから9件目の429を確認し、最後に解放する。上限を64へ上げると落ちることを確認済み。
+- [x] IP partitionロジックをローカルで固定した（異なるIPは別partition、同一IPは同一partition、アドレス不明は単一partitionへ集約して制限を回避させない）。レート制限対象がルートパターン一致で共有2経路だけであることも併せて固定した。
+
+5次レビューによる追加是正:
+
+- [x] lock照合がservice→imageの対応を固定しておらず、postgresとredisのimageを入れ替えても通っていた。lock形式へCompose service名を加え、レンダリング結果と**辞書全体を完全一致**で比較する形へ変更した。入れ替えを模擬すると失敗することを確認済み。
+- [x] デプロイ手順のガードが「不正な行の検出」だったため、行を削除すると通っていた。4サービスbuildとappスキャンが**初回・更新で各2件存在すること**を件数で検証する形へ変更した。削除を模擬すると失敗することを確認済み。
+- [x] 同時実行429に`Retry-After`が付かない点を契約として確定した。同時実行制限は権限がいつ空くかを提示できず、値を捏造するのは誤りであるため、**`Retry-After`は任意**とした。固定窓429では付与、同時実行429では非付与を、それぞれテストで固定し、`api_design.md`と`test_plan.md`へ明記した。
+- [x] 同時実行テストを `AcrossAllCallers` へ改名した（TestServer上では異なるremote IPを表現していないため）。
+- [x] 9件目がStorageへ到達した場合に即失敗するよう、リクエストと到達シグナルを`Task.WhenAny`で競合させる形にした。上限を退行させてもHttpClient timeoutを待たずに落ちる。
+- [x] `scan-container-images.sh` に残っていた、廃止済み`RUNTIME_REVIEWED_DIGESTS`への追加を案内するエラー文言を`image-digests.lock`参照へ修正した。
+
+6次レビューによる追加是正:
+
+- [x] 比較対象serviceをlockファイルから導出していたため、lockから行を削除すると両辺から消えて通っていた。必須service集合（`postgres`/`redis`）をコード側に明示し、その集合で比較する形へ変更した。
+- [x] コマンド件数の照合が`grep -cF`の部分一致だったため、コメントアウトしても件数に含まれていた。`grep -cxF`の行全体一致へ変更し、実行行の完全形で照合するようにした。
+- [x] `NoMoreThanEightShareDownloadsRunAtOnce` へ改名し（異なるremote IPは表現していないため）、匿名HttpClientを1つに集約して破棄するようにした。
+
+追加したテスト:
+
+- [x] `scripts/verify-deployment-guards.sh` を追加し、デプロイ用ガード自体の退行を検出するようにした。lockからのservice削除、digest不一致、appスキャンのコメントアウト、appスキャンの片方削除、buildのコメントアウト、buildのサービス名不足の6ケースすべてで検証が失敗することを確認する。改変はコピー上で行い、リポジトリを変更しない。CIの「Validate Compose files」へ組み込んだ。
+- ガードのパスは`DEPLOYMENT_DOC` / `DIGEST_LOCK_FILE`環境変数で差し替え可能にし、この退行テストから改変済みコピーを指せるようにした。
+
+7次レビューによる追加是正:
+
+- [x] コマンド件数の検証が文書全体の合計だったため、初回手順へ2件集約し更新手順から削除すると通っていた。実測で再現（合計2件・更新0件）したうえで、**初回・更新の各節で1件ずつ**を検証する形へ変更した。更新こそstale migrate imageの被害が出る経路である。
+- [x] ガード退行テストの作業ディレクトリを一意化した（固定パスは既存成果物を消し、並列実行同士が競合する）。`/tmp`ではなく`artifacts/`配下に置くのは、検証スクリプトがlockパスをPythonへ渡し、Git Bash上ではWindows PythonがMSYSパスを開けないため。
+- [x] 「初回側へ2件集約、更新側0件」の退行ケースを追加し、退行テストを7ケースへ拡張した。
+
+8次レビューによる追加是正:
+
+- [x] appスキャンの「存在」は検証していたが「順序」を検証していなかった。起動後へ移動しても通っていた。**build → scan → 起動**の順序を初回・更新の両節で検証する形へ変更した。起動後に走るスキャンは、既にトラフィックを受けているimageを報告するだけで統制にならない。
+- [x] 「各節に1件ずつあるが起動後に実行される」退行ケースを追加し、退行テストを8ケースへ拡張した。存在チェックは通り順序で落ちることを実測で確認済み。
+
+9次レビューによる追加是正:
+
+- [x] 起動判定が`up -d`という**表記**に依存しており、`up --detach`へ書き換えると順序違反を検出できなかった。加えて、手順をシェルへ貼り付けた場合スキャンが非0でも次の`up`が実行され、順序は正しくても**ゲートとして機能していなかった**。
+- [x] デプロイ手順を`scripts/deploy-production.sh <initial|update>`へ移した。`set -euo pipefail`により、スキャン失敗でデプロイが中断する。順序と中断保証を文書の記述ではなく実行可能なコードへ移したことで、両方の指摘が同時に解消する。
+- [x] 更新モードは`--backup-confirmed`を必須にした。5.1のバックアップ取得を明示しない限り実行を拒否する。Migration失敗時の戻り先がなくなるため。
+- [x] 起動判定を`up|run|start|restart`のサブコマンドで行う形に変え、表記依存を解消した。
+- [x] `verify-production-compose.sh`の`line_number_of`が`pipefail`により未検出時に無言で中断していた（エラーメッセージを出す前にスクリプトが終了）。`|| true`を追加して修正した。退行テストの文言照合がこれを検出した。
+- [x] デプロイスクリプトのモード検証を環境ファイル検証より前に移し、引数なし実行でusageが出るようにした。
+
+退行テストの拡張（12ケース）:
+
+- [x] `expect_failure`が任意の非0終了を成功扱いしていたため、**期待するエラー文言との一致**も検証するようにした。これにより上記の`pipefail`バグが露見した。
+- [x] 「スキャンがbuild前」「スキャンが起動後」「`up --detach`の後にスキャン」「`set -e`なし」「スキャン欠落」「buildがmigrateを含まない」「初回/更新それぞれでスクリプト呼び出しが消える」を独立ケースにした。
+- [x] **スクリプトが実際に中断すること**を、Composeをスタブ化して検証する。スキャン到達を確認したうえで、起動コマンドが1つも実行されていないことを出力から確認する。
+
+10次レビューによる追加是正:
+
+- [x] **High**: `COMPOSE_PROJECT_NAME`が`compose.production.yaml`の`name:`より優先され、外部環境変数で別projectへデプロイできた（実測で`review-wrong-project`として描画されることを確認）。意図しないVolumeへのMigrationやコンテナ停止につながる。全本番Compose操作へ`--project-name seo-intelligence-prod`を明示し、検証は**敵対的な`COMPOSE_PROJECT_NAME`を設定した状態でレンダリング**して本番project名になることを確認する形にした。`--project-name`を外すと失敗することを確認済み。
+- [x] バックアップと停止の順序が文書とスクリプトで食い違い、指示どおり実施すると stop→backup→build→scan→stop→migrate となって停止時間が延びていた。バックアップを**スクリプトへ統合**し、build → scan → stop → backup → migrate → recreate の一本道にした。3成果物のいずれかが空ならMigrationへ進まない。`--backup-confirmed`フラグは不要になったため廃止した。
+- [x] 検証がソースの正規表現解析だったため、`build_and_scan`の**呼び出しだけを削除**しても関数本体に文字列が残り通っていた。順序検証を**実行トレース**へ置き換えた。Compose・スキャナ・バックアップをスタブ化し、initial/updateそれぞれの完全なコマンド列を照合する。
+
+退行テストの再構成:
+
+- [x] initial/updateの**成功系の完全なコマンドトレース**を固定した。
+- [x] 「`build_and_scan`が定義されているが呼ばれない」ケースを追加。ソース解析では通り、トレースでは検出される。
+- [x] 「`--project-name`を渡さない」ケースを追加。
+- [x] バックアップディレクトリ名はUTC秒を含み、期待値の生成と実行の間で秒が繰り上がり得るため、比較時に正規化する（検証対象は名前ではなく位置であるため）。
+
+11次レビューによる追加是正:
+
+- [x] **High**: バックアップの出力先が相対パス（`backups/<ts>`）で、`docker run -v`は`/`または`./`で始まらないsourceを名前付きVolumeとして扱い、`/`を含む名前は拒否する。**アプリ停止後・バックアップ時点でupdateが中断する**バグだった。絶対パスへ正規化した。
+- [x] **High**: 自動デプロイはproject固定したが、手動のバックアップ/再起動/状態確認コマンドが未固定だった。`docker_deployment.md`と`operations_runbook.md`の全本番Composeコマンド11件へ`--project-name`を付け、未固定コマンドが残っていないことを検証するガードを追加した。
+- [x] 空ディレクトリのtar.gz自体は非空のため、サイズ検査では空バックアップを検出できなかった。archive内のエントリ数を数える形にした。Data Protection keyは1件以上を必須とし（無ければサインイン中のセッションが復元できない）、Storageは新規デプロイで空があり得るため0件を許容する。あわせて対象Volumeの存在確認と、dumpが`PGDMP`で始まることの検証を追加した。
+- [x] `expect_trace`が終了コードを取得しながら確認していなかった。期待どおりのトレースを出した後に失敗しても成功扱いだった。終了コード0を要求する形に修正し、`exit 7`を追加すると落ちることを確認済み。
+
+バックアップの切り出しとテスト:
+
+- [x] バックアップを`scripts/backup-production.sh`へ切り出した。デプロイスクリプトから呼び、手動取得でも同じものを使う。文書へ手順を書き写さないのは、バックアップの失敗が「復元が必要になるまで気づかない」種類のためである。
+- [x] `scripts/verify-backup-production.sh`を追加し、`docker`をPATHスタブへ置き換えて本体を検証する。healthy成功、相対パスの絶対化、既存ディレクトリ拒否、Volume不在拒否、不正dump拒否、空DP key拒否、空Storage許容の7ケース。CIへ組み込んだ。
+
+12次レビューによる追加是正:
+
+- [x] **High**: dumpの完全性検証が先頭5バイトの`PGDMP`確認だけだった。切り詰められたcustom dumpも先頭は`PGDMP`である。固定PostgreSQLイメージで`pg_restore --list`まで成功すること、かつ目次が1件以上のオブジェクトを含むことを必須にした。
+- [x] **High**: `tar -tzf`の失敗を末尾の`|| true`が握りつぶしていた。Storageは0件を許容するため、壊れたarchiveでもMigrationへ進んでいた。一覧を先に取得して終了コードを確認する形にした。
+- [x] バックアップがアプリ停止を検査していなかった。稼働中に直接実行するとdumpとStorage archiveが別時点になる。web/api/workerが停止済みかを検査して拒否する。
+- [x] Data Protection keyの判定が「エントリ数」で、空のサブディレクトリだけでも通っていた。`tar -tzv`で**通常ファイル**のみを数え、`.xml`が1件以上あることを要求する。
+- [x] デプロイ文書の「3成果物のいずれかが空なら中断」が実装と不一致だった（Storageの空は許容）。検証内容の表へ置き換えた。
+
+CRLF起因のバグ（検証中に発覚）:
+
+- [x] コミット時に`image-digests.lock`がCRLF化し、digest比較が「同じ値に見えるのに不一致」で失敗するようになった。`scan-container-images.sh`と`backup-production.sh`のlock解析でCRを除去した。後者は不正なimage参照を生成していた。
+- [x] `.gitattributes`を追加し、`*.sh`・lockファイル・compose/Dockerfileの改行をLFに固定した。CRLFのシェルスクリプトはVPS上で`bad interpreter`になる。パーサ側のCR除去は二重の防御として残す。
+
+テストの強化:
+
+- [x] 相対パステストがDockerの実引数を検査しておらず、正規化を削除しても通る状態だった。スタブが受け取ったargvをトレースへ記録して検証する形にした。
+- [x] バックアップテストを7→14ケースへ拡張した。pg_restore不可、目次が空、archive読み戻し失敗（Storage/DP keyの両方）、ディレクトリのみ、key以外のファイルのみ、アプリ稼働中、を追加した。
+- [x] 相対パス正規化の削除と`tar`失敗の握りつぶし復活で、いずれも落ちることを確認済み。
+
+13次レビューによる追加是正:
+
+- [x] **High**: `pg_restore --list` は目次しか読まないため、データ領域を切り詰めたdumpを通していた。実測で確認（33KBのdumpを3KBへ切り詰め→`--list` はexit 0で3オブジェクトを報告）。`pg_restore --file=/dev/null` による全走査を追加し、これが検出することを確認した。実PostgreSQLへの復元でも、完全なdumpは5000行を復元でき、切り詰めdumpは失敗する。
+- [x] **High**: 成果物のパーミッションが制限されていなかった。`umask 077` を設定し、archiveはbind mountではなくコンテナのstdoutからホストへリダイレクトして作成する（bind mountへ書くとコンテナのrootが644で作る）。Linux上でディレクトリ700・全成果物600を確認した。
+- [x] 停止状態確認がfail-openだった。`docker compose ps` 自体の失敗を「稼働なし」として扱っていた。終了コードを確認して拒否する。
+- [x] 出力ディレクトリの作成がatomicでなかった。親のみ `mkdir -p` し、末端は通常の `mkdir` で排他的に作成する。
+- [x] Data Protection keyの判定が任意の `.xml` を許容していた。`(^|/)key-[^/]+[.]xml$` へ絞った。
+- [x] 作業ツリーの `Dockerfile` / `compose*.yaml` / `image-digests.lock` がCRLFのままだった。`.gitattributes` に従って再正規化した。
+
+退行テストの拡張（14→18ケース）:
+
+- [x] 目次は正常だがデータ領域が切り詰められたdump
+- [x] `docker compose ps` が非0終了するケース
+- [x] 同一出力先への2プロセス同時実行（片方だけが成功すること）
+- [x] Linux上でのディレクトリ700・成果物600（Windowsではskip）
+
+実環境での確認:
+
+- [x] 隔離したPostgreSQLへ実際に復元し、5000行・payload長2000が復元されることを確認した。
+- [x] 切り詰めdumpは実restoreでも失敗することを確認した。
+
+14次レビューによる追加是正:
+
+- [x] デプロイ全体がsingle-flightでなかった。排他的`mkdir`は同一秒の衝突しか防がず、1秒以上ずれた2つのupdateは別ディレクトリになるため両方Migrationへ進めた。2つ目がdumpを取る間に1つ目がMigrationを開始する状態だった。`deploy-production.sh`冒頭で`flock`を取得し、build〜再作成の全体を排他する。Linuxで実際に2重起動が拒否されることを確認済み。
+- [x] バックアップの停止判定に`migrate`が含まれていなかった。Migration進行中はスキーマがdumpの下で変わる。フィルタへ追加した。
+- [x] stdout方式へ変更した結果、相対パステストが探す`--volume ...:/backup`が一度も現れず**完全な空振り**になっていた。スクリプトが報告する出力先を直接検証する形に直した。あわせて、bind mount回避という旧来の理由は消えたため、絶対パス化の理由を「スクリプトがリポジトリルートへcdするので、相対パスは呼び出し元の意図した場所に落ちない」へ改めた。相対パスは**呼び出し元のcwd基準**で解決する。
+- [x] 並列バックアップテストが「一方成功・一方失敗」しか見ていなかった。敗者が排他的`mkdir`で拒否されたことをエラー文言で固定した。
+
+テストの追加:
+
+- [x] 秒をまたいで開始した2つの`deploy-production.sh update`が排他されること（Linuxで実行、Windowsは`flock`不在のためskip）。
+- [x] ガードのトレーステストへ`flock`スタブを用意した。順序の検証は排他とは別の関心事であり、`flock`不在の環境でも実行できる必要がある。
+
+15次レビューによる追加是正:
+
+- [x] ロックが`artifacts/`配下にあり、別cloneやworktreeからの実行を排他できていなかった。排他すべき対象は作業コピーではなくCompose projectである。`scripts/lib/production-lock.sh`へ切り出し、checkout外の`${XDG_RUNTIME_DIR:-/tmp}/<project>.deploy.lock`をロックに使う（XDG_RUNTIME_DIRはユーザー専用0700なので、他ユーザーによるsymlink設置ができない）。
+- [x] 手動バックアップ手順が`stop`をロック外で実行し、バックアップスクリプト自体もロックに参加していなかった。`backup-production.sh`を同じロックへ参加させ（デプロイから呼ばれた場合はマーカーで再入可）、`deploy-production.sh backup`モードで停止・取得・再起動をロック内にまとめた。手順書も3コマンドからこの1コマンドへ変更した。
+- [x] 絶対パス化の理由がbind mount回避のまま残っていた記述を、実装（呼び出し元cwd基準）へ同期した。
+- [x] 停止拒否のエラー文言に`migrate`を追加した。
+- [x] `.gitignore`の`backups/`が全階層に効き、`tests/fixtures/backups/`まで無視していた。`/backups/`へアンカーした。
+
+テストの追加:
+
+- [x] 別cwdから相対パスで呼び、出力先が**呼び出し元のcwd配下**になること。従来はリポジトリルートから呼んでいたため、`$invocation_dir`を`$PWD`へ戻しても通っていた。実際に戻して落ちることを確認済み。
+- [x] `migrate`単独での拒否。フィルタから`migrate`を外すと落ちることを確認済み。
+- [x] 排他的`mkdir`を単独で検証するケース。ロックが効く環境では敗者がロックで止まるため、それぞれ別のロックファイルを与えてmkdir側だけを分離した。ロックとmkdirの二重防御が個別に検証される。
+
+16次レビューによる追加是正:
+
+- [x] **High**: 前回追加した後片付けが、実装から報告された任意のパスを`rm -rf`していた。「想定外の場所への出力を消す」処理そのものが、想定外の場所を無条件に再帰削除する状態だった。削除をやめ、作業ディレクトリ外へ出力された場合はパスを報告するだけにした（正しい経路の出力は`$work`配下でtrapが消す）。
+- [x] `backup`モードでバックアップが失敗すると、`set -e`によりアプリが停止したままになっていた。EXIT trapで再起動する。Migrationを伴わないため、旧サービスを戻すのが正しい。`update`モードは逆で、失敗時は停止したままにする（Migrationが触れたかもしれないDBに対して旧コードを起動しない）。
+- [x] `PRODUCTION_LOCK_HELD`だけで再入を許していたため、環境変数を設定すればロックを迂回できた。継承FDが同じロックファイルを指していること、かつ実際にロックが保持されていることを検証する。マーカーだけの主張は拒否する。
+- [x] ロックの置き場所を明確化した。`XDG_RUNTIME_DIR`（ユーザー専用0700）→`/var/lock`の順で探し、どちらも使えなければ`/tmp`へフォールバックせず**実行を拒否**する。誰でも保持できるロックはロックではない。排他範囲が同一Unixユーザーに限られることを手順書へ明記し、複数ユーザー運用時は`PRODUCTION_LOCK_DIR`の事前構成を求める。
+- [x] `deploy-production.sh`の使用例へ`backup`を追加し、`backup-production.sh`は内部用途であることを明記した（直接実行するとスタックが停止したままになる）。
+
+テストの追加:
+
+- [x] 偽の`PRODUCTION_LOCK_HELD`が拒否されること。検証を外すと落ちることを確認済み。
+- [x] `backup`モードの成功トレース（stop → backup → up → ps）と、失敗時に再起動されること。trapを外すと落ちることを確認済み。
+- [x] 別cwdテストにも`PRODUCTION_LOCK_DIR`を指定した。従来はLinuxで実ホストの本番ロック名を使っていた。
+
+17次レビューによる追加是正:
+
+- [x] `PRODUCTION_LOCK_DIR`の検証を追加した。従来は指定されたディレクトリをそのまま使っていたため、他ユーザーが先回りして作成したディレクトリでも受け入れていた。`readlink -f`で解決した上で、実行ユーザーの所有かつother書き込み不可の既存ディレクトリであることを要求し、スクリプト側では作成しない。
+- [x] 再入検証を継承FD自体のロックへ変更した。パスを開き直す実装は「誰かが保持している」ことしか示さないため、他プロセスが保持している最中に`PRODUCTION_LOCK_HELD`を立てればロックを迂回できた。Linuxで、偽装が拒否され正規の子プロセスだけが再入できることを確認済み。
+- [x] 別cwdテストの入力を、正しい実装でも退行した実装でも`$work`配下へ落ちる相対パスへ変更した。従来は退行を実証するたびにリポジトリへ成果物が残った。退行注入時に残置がないことを確認済み。
+
+テストの追加:
+
+- [x] `scripts/verify-production-lock.sh`を追加した（8ケース）。取得、パーミッション600、正規の子プロセスの再入、他プロセス保持中の偽装マーカーの拒否、FDなしマーカーの拒否、二重取得の拒否、world-writableディレクトリの拒否、`XDG_RUNTIME_DIR=/tmp`を採用しないこと。実`flock`と`/proc`が要るためLinuxで実行し、それ以外の環境ではskipする。CIへ組み込み済み。
+
+復元検証（レビューで繰り返し指摘され、先送りしていた項目）:
+
+- [x] `scripts/verify-production-restore.sh`を追加した。隔離Compose projectを2つ作り、片方に実プロジェクトと実CSVエクスポートを作ってから`scripts/backup-production.sh`でバックアップし、もう片方の空Volumeへdumpと2つのarchiveを復元して、Migrationがno-opであること、`/readyz`が通ること、プロジェクト行が戻ること、**同じ成果物がAPI経由でバイト一致で読めること**、Data Protection keysが一致することを確認する。archiveが展開できることは3点が同一時点である証拠にならないため、最後の読み取りだけが復元可能性を示す。
+- [x] Linux（docker:cliコンテナ＋ホストdaemon）で実行し、成功を確認済み。Storage復元を落とす退行注入で、成果物読み取りが失敗することも確認済み。実`flock`が要るためWindowsではskipする。
+- [x] `backup-production.sh`に`BACKUP_PROJECT_NAME`を追加した。リハーサルが隔離スタックを対象にするための明示的な指定で、`COMPOSE_PROJECT_NAME`は従来どおり効かない。dumpとVolume名が同じprojectを指すことをテストで固定した（両方に退行注入で確認済み）。
+- [x] 実イメージのbuildと2スタック起動を伴うため毎PRのCIには入れず、四半期ごとの復元検証とバックアップ手順変更時に実行する運用にした。`operations_runbook.md`と`docker_deployment.md` 5.2、`test_plan.md`へ反映した。
+
+18次レビューによる追加是正:
+
+- [x] **High**: 復元リハーサルが本番imageタグを上書きしていた。`compose.yaml`は`seo-intelligence-api`等の固定タグを`image:`で明示しており、Compose project名を変えてもこのタグは分離されない。リハーサルのbuildが本番タグを差し替え、その後の`deploy-production.sh backup`の`up`で、未スキャンimageから本番コンテナが再作成され得る状態だった。リハーサル専用タグを与えるoverrideを生成し、終了時にタグを削除する。開始前後で本番4タグのimage IDが不変であることをリハーサル自身が検証する。
+- [x] ロックテスト8件目が、正しいfail-closed結果を失敗扱いしていた。Debianの`/var/lock`は`/run/lock`への1777シンボリックリンクなので拒否され、`XDG_RUNTIME_DIR=/tmp`も拒否されるため安全な置き場所がなくなり`NONE`になる。これは設計どおりの動作である。判定を「`/tmp`に置かれないこと」へ変更し、あわせて「安全なディレクトリが与えられれば実際に使われること」を別ケースで固定した（fallbackが死にコードでないことの確認）。Debian非root（GitHub Actionsと同じ形）で9件通過を確認済み。
+- [x] `BACKUP_PROJECT_NAME`が本番デプロイへ継承され得た。継承されると、親は本番のロック、子は別projectのロックを要求するため再入に失敗し、`update`ではアプリを停止したまま止まる。`deploy-production.sh`の2箇所で明示的に`BACKUP_PROJECT_NAME="$PROJECT_NAME"`を渡す。
+- [x] Migrationがno-opだったことを検証していなかった。`migrate`は未適用Migrationを適用しても成功するため、driftを隠していた。復元前後で`__EFMigrationsHistory`の件数を比較し、増えていないことを検証する。
+- [x] Docker/`flock`不在時にexit 0で終了していた。四半期検証を自動化した場合、「検証未実施」が成功として記録される。既定でexit 2とし、`RESTORE_REHEARSAL_ALLOW_SKIP=true`のときだけskipを許す。
+- [x] 複数ユーザーでのデプロイ運用は、ロックディレクトリの所有者一致要求とロックファイル600により成立しない。手順書とライブラリの記述を「単一デプロイユーザーは要件」に改め、`PRODUCTION_LOCK_DIR`の位置づけを「既定の置き場所が使えないホストとリハーサル用」に修正した。
+- [x] ロックテストのホルダー起動待ちが固定`sleep 1`だった。負荷の高いCIでは、ロックを保持する前にケースが走って別の理由で通る。ホルダーがflock取得後にreadyファイルを作り、それを待つ方式へ変更した。
+
+テストの追加:
+
+- [x] `COMPOSE_PROJECT_NAME`ではなく`BACKUP_PROJECT_NAME`が継承された場合でも、本番デプロイのバックアップ射先が`seo-intelligence-prod`に固定されること。stubを別プロセスにして「バックアップが実際に受け取る値」を観測する。ピン留めを外すと落ちることを確認済み。
+- [x] 復元先で新しいエクスポートを実行し、Workerが完走・保存できること。復元後のWorkerが「起動する」だけでないことの確認。
+- [x] `RESTORE_REHEARSAL_SKIP_BUILD=true`のとき、使用するimage IDと作成日時を出力する。古いimageで通っても気づけるようにするため。
+- [x] リハーサル開始前後で本番imageタグが不変であること。build経路（実build）とSKIP_BUILD経路の両方で確認済み。
+
+19次レビューによる追加是正:
+
+- [x] 復元リハーサルが`PRODUCTION_LOCK_DIR`を指定せずバックアップを呼んでいた。ホストの本番ロック領域を使おうとするうえ、Debian非rootのようにどの既定位置も拒否される環境ではバックアップ段で失敗する。`$work/lock`を700で作成して明示する。非rootでの実行で失敗を再現し、修正後の通過を確認済み。
+- [x] cleanupがfail-openだった。`down`、network削除、image削除がすべて`|| true`で、残骸があっても正常終了していた。存在するものだけを削除し、削除できなければ問題として数え、container/volume/network/imageの残骸検査と本番タグ不変検査をcleanupへ移して**全終了経路**で実行する。EXIT trapでは`return`では終了コードが変わらないため`exit`で反映する。
+- [x] 本番タグ不変検査が正常系の最後にしかなかった。build後に途中失敗した場合こそ危険なため、cleanupで必ず比較する。あわせて、buildの**前**にレンダリング結果を検査し、4サービスが専用タグ以外を指していたらbuild自体を拒否する（buildしてからでは戻せないため）。
+- [x] Migrationエラー文が「適用件数」に読めた。履歴総数の変化として表現し直した。
+- [x] `SKIP_BUILD`時のimage同一性が人手確認頼みだった。Dockerfileの4つのruntime stageで`org.opencontainers.image.revision`を付与し（最終レイヤのみに影響）、composeの`args`とdeployスクリプトから`SOURCE_REVISION`を渡す。リハーサルは再利用するimageのrevisionを検証対象のcheckoutと突き合わせ、不一致なら失敗する（`RESTORE_REHEARSAL_ALLOW_STALE_IMAGES=true`で明示的に許容）。本番でも「動いているコンテナがどのコミットか」を追えるようになる。
+- [x] ロックテストのholderを`kill`後に`wait`するようにした。次ケースが同じファイルをロックするため、reapされていないholderがロックを保持し続ける瞬間を避ける。
+
+テストの追加:
+
+- [x] `BACKUP_PROJECT_NAME`固定テストを`update`と`backup`の両モードで実行する。`update`側の代入だけを削除すると`update`側だけが落ちることを確認済み。
+- [x] cleanupでの残骸検査（container、volume、network、リハーサルimage）と本番タグ不変検査を、成功・失敗いずれの終了経路でも実行する。
+
+20次レビューによる追加是正:
+
+- [x] **Medium**: `SOURCE_REVISION`が環境変数優先で、作業ツリーのdirtyも見ていなかった。シェルに残った値で、実際とは違うcommitを名乗るimageを作れてしまい、`SKIP_BUILD`はその誤ったラベルを同一性の証拠として受け入れていた。`scripts/lib/source-revision.sh`へ切り出し、**gitがある場所では常にgitを優先**する。未コミット変更（untrackedを含む）は`<sha>-dirty`とする。untrackedを含めるのは、`.dockerignore`で除外していない限りbuild contextに入りimageの中身になるため。`-dirty`で拒否しないのは障害対応中のデプロイを止めないためだが、リハーサルの再利用判定では「不正確」として拒否する（異なるdirtyツリーが同じ文字列になり、一致しても何も証明しないため）。
+- [x] cleanupの残骸検査のうち、image検索だけが現在の実行に限定されていなかった。リハーサルを2本並列実行すると、一方が他方の正常なimageを残骸と判定して失敗する。この実行の4タグだけを名指しで確認する方式に変更した。
+
+テストの追加:
+
+- [x] `scripts/verify-source-revision.sh`を追加した（12ケース）。clean checkoutはHEAD、継承`SOURCE_REVISION`は無視、tracked変更とuntrackedはいずれも`-dirty`、gitの無いツリーでは明示値または`unknown`、`source_revision_is_exact`の受理/拒否。使い捨てgitリポジトリで実行する。環境変数優先とdirty無視の2種類の退行注入で落ちることを確認済み。CIへ組み込み済み。
+- [x] build直後に、4つのリハーサルimageすべてが期待するrevisionラベルを持つことを検査する。DockerfileまたはComposeの1サービス分の配線が落ちても通ってしまう状態だった。
+- [x] 無関係な`seo-restore-rehearsal-*`タグが存在しても、現在の実行が残骸と誤判定しないことを実測で確認した。
+- [x] フル復元リハーサルを、非root・実buildで再実行して通過を確認済み。
+
+21次レビューによる追加是正:
+
+- [x] **Medium**: `git status --porcelain`の終了コードを見ておらず、失敗をcleanとして扱っていた。index破損や権限問題でstatusが失敗すると標準出力は空になり、これはcleanなツリーの出力と区別がつかない。実測でも、`GIT_INDEX_FILE`を壊した状態で`git status`はexit 128、`git rev-parse HEAD`は成功し、resolverはexit 0で裸のSHAを返していた。終了コードを検査してfail-closedにした。
+- [x] `.git`があるのにHEADを解決できない場合、展開済みツリー扱いで`SOURCE_REVISION`へfallbackしていた。壊れたcheckoutは呼び出し側の申告が最も当てにならない状況なので、拒否する。`git rev-parse --git-dir`で「gitがあるか」と「gitが答えられるか」を分けて判定する。
+- [x] 呼び出し側も追随させた。`deploy-production.sh`は解決失敗でbuild前に中止し、`verify-production-restore.sh`は`fail`で停止する。
+
+テストの追加:
+
+- [x] `rev-parse HEAD`は成功するが`git status`が失敗する場合に、解決自体が失敗すること（index破損で再現）。
+- [x] `.git`はあるがHEADを解決できない場合に、`SOURCE_REVISION`へfallbackしないこと（commit前のリポジトリで再現）。
+- [x] 解決失敗時にデプロイがbuild前に中止すること（`verify-deployment-guards.sh`）。3件とも退行注入で落ちることを確認済み。
+
+22次レビューによる追加是正:
+
+- [x] **Medium**: checkout判定を`git rev-parse --git-dir`で行っていた。このコマンドは親ディレクトリも探索するため、別リポジトリ配下へ展開した非Gitツリーを親のcheckoutと誤認する。また`GIT_DIR`の誤設定や権限問題でも失敗し、それを「Gitなし」として`SOURCE_REVISION`へfallbackしていた。実測でも、checkout内で`GIT_DIR`を存在しないパスへ向けると任意の40桁値をexit 0で返した。**ソースルート直下の`.git`の有無**（worktree/submoduleのファイル形式も含む）を正本に変更し、`GIT_DIR`、`GIT_WORK_TREE`、`GIT_COMMON_DIR`はすべてのgit呼び出しで無効化する。ビルド対象はソースルートなので、それを記述するのはソースルート自身の`.git`である。
+- [x] **Medium**: `git status --porcelain 2>&1`により、exit 0のwarningまでporcelain出力として扱っていた。アクセスできない`core.excludesFile`などがあると、cleanなcheckoutが`<sha>-dirty`になる。stdoutだけを取り、終了コードは別に検査する。失敗時の診断はgit自身のstderrをそのまま通す。
+
+テストの追加:
+
+- [x] exit 0でstderrにwarningを出してもcleanと判定されること（gitラッパーで再現。gitのバージョンや環境によってwarningの発生条件が異なるため、設定ファイルを壊す方式は採らない）。
+- [x] checkout内で`GIT_DIR`が不正でも、実際のHEADを返し、継承値も採用しないこと。
+- [x] 非Gitの展開済みツリーを別リポジトリ配下に置いても、親のHEADを採用しないこと（従来のテストは`GIT_CEILING_DIRECTORIES`を付けており、この問題を隠していた）。
+- [x] `GIT_WORK_TREE`で別checkoutへ誘導できないこと。
+- [x] 上記を、stderr混入・親探索・環境変数の無効化解除の3種類の退行注入で確認済み。合計18ケース。
+
+23次レビューによる追加是正:
+
+- [x] linked worktree（`.git`がディレクトリではなくファイルになるケース）の実ケースを追加した。実装は`-e .git`とgit標準処理で対応済みだったが、テストが常に`.git`ディレクトリしか見ていなかったため、`-d`へ変わっても気づけない状態だった。3ケース追加（`.git`がファイルであることの前提確認、worktree自身のHEADを返すこと、worktreeがdirtyなら`-dirty`になること）。worktreeは本流checkoutと**別のcommit**を指すようにしてあり、リポジトリ側で解決した場合は偶然一致せず落ちる。`-e`を`-d`へ変える退行注入で、いずれも`unknown`になって落ちることを確認済み。合計21ケース。
+
+CI失敗の是正:
+
+- [x] GitHub Actionsで`verify-deployment-guards.sh`のsingle-flightケースが失敗した。`make_traceable`をコマンド部分のみの置換へ変えた際に生成行が`BACKUP_PROJECT_NAME="$PROJECT_NAME" echo TRACE backup`となり、行頭アンカー付きの`sleep 5`注入が一致しなくなっていた。1本目が遅延せず即終了するため、2本目が普通にロックを取得していた。Windowsはflock不在でこのケースをskipするため、ローカルでは見えていなかった。
+- [x] sed条件を直すだけでは同じ表記変更で再び壊れるため、固定`sleep`による競合再現をやめ、ready/releaseファイルによる同期へ変更した。1本目はロック内でreadyを作成しreleaseを待つ。テストはreadyを確認してから2本目を起動し、ロックエラーを検証してからreleaseする。`sleep 5`と`sleep 2`は削除した。
+- [x] 2本目には別のready/releaseを与え、releaseを事前に作成しておく。ロックをすり抜けた場合に、1本目向けのreleaseを待ってタイムアウトし「拒否された」ように見えるのを防ぐ。2本目がロック内へ到達したこと自体もreadyファイルの有無で検証する。
+- [x] `backup_fails`ケースも`make_traceable`の引数経由へ統一し、後付けの`sed -i`注入を廃止した。`make_traceable`は置換が実際に行われたことを検証するため、空振りが黙って通ることがない。
+- [x] source-revisionガードは、ソースルートが git checkout でない場合に明示skipする。CIは`actions/checkout`があるため実行されるが、展開済みツリーで実行したときに無関係な理由で落ちないようにする。
+- [x] Linux（実flock・実checkout、GitHub Actionsと同じ形）で17ケース通過を確認。ロック取得を外す退行注入で、readyファイル検査と終了コード検査の両方が発火することも確認済み。
+
+判断の記録（4次）:
+
+- 実VPSでのCaddy/Cloudflare経由のクライアントIP置換確認だけは、環境依存のためローカルで代替できない。partitionロジック自体はテストで固定済み。
+
+判断の記録（2次）:
+
+- `*_downloaded` は**取得の開始**（Storage読み取り成功＋呼び出し元への引き渡し）を意味する。読み取り失敗時は記録しないが、引き渡し後の転送中断・クライアント切断は検知しない。転送完了の保証には使えないことを `api_design.md` に明記した。
+
 ## Phase 4
 
 ### ISSUE-P4-001 エンタープライズ拡張を設計する

@@ -25,6 +25,18 @@ public interface IReportService
 
     Task<Result<ReportDownload>> CreateDownloadUrlAsync(ProjectExecutionContext context, Guid reportId, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Opens the stored report file for streaming to the caller. The caller owns the returned
+    /// stream and must dispose it.
+    /// </summary>
+    Task<Result<ArtifactContent>> OpenReportContentAsync(ProjectExecutionContext context, Guid reportId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Opens the stored report file for a share-link recipient. The token is revalidated here, so
+    /// a revoked or expired share cannot still hand out the file. The caller owns the stream.
+    /// </summary>
+    Task<Result<ArtifactContent>> OpenSharedReportContentAsync(ProjectExecutionContext context, string token, CancellationToken cancellationToken = default);
+
     Task<Result<ReportShareDetails>> ShareReportAsync(ProjectExecutionContext context, Guid reportId, ReportShareRequest request, CancellationToken cancellationToken = default);
 
     Task<Result<ReportShareDetails>> RevokeShareAsync(ProjectExecutionContext context, Guid reportId, CancellationToken cancellationToken = default);
@@ -116,10 +128,13 @@ public sealed record ReportDetails(
     DateTime CreatedAt,
     DateTime UpdatedAt);
 
+/// <summary>
+/// Where a finished report can be fetched from. No expiry, for the reason given on
+/// <see cref="DataExportDownload"/>: the URL is an authenticated API path, not a pre-signed one.
+/// </summary>
 public sealed record ReportDownload(
     Guid ReportId,
-    string DownloadUrl,
-    DateTimeOffset ExpiresAt);
+    string DownloadUrl);
 
 public sealed record ReportShareRequest(DateTimeOffset ShareExpiresAt);
 
@@ -130,13 +145,21 @@ public sealed record ReportShareDetails(
     DateTimeOffset? ShareRevokedAt,
     string Status);
 
+/// <summary>
+/// What a share-link recipient is told about the report.
+/// <para>
+/// <see cref="DownloadExpiresAt"/> is the share's own expiry, which is enforced: every access
+/// revalidates the token against it and against the revocation time. It used to be an unrelated
+/// 15-minute value that nothing checked, so a recipient was shown a deadline that did not apply.
+/// </para>
+/// </summary>
 public sealed record ReportShareAccessDetails(
     Guid ReportId,
     string ReportType,
     string Period,
     string Format,
     string DownloadUrl,
-    DateTimeOffset DownloadExpiresAt);
+    DateTimeOffset? DownloadExpiresAt);
 
 public sealed record ImportUploadUrlRequest(
     string? ImportType,

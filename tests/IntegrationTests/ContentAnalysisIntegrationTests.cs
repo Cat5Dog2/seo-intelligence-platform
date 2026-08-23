@@ -157,6 +157,7 @@ public sealed class ContentAnalysisIntegrationTests
             var exportJobId = exportDocument.RootElement.GetProperty("data").GetProperty("jobId").GetGuid();
             await DispatchAsync(factory, exportJobId);
 
+            Guid briefExportId;
             await using (var scope = factory.Services.CreateAsyncScope())
             {
                 var dbContext = scope.ServiceProvider.GetRequiredService<SeoIntelligenceDbContext>();
@@ -168,6 +169,24 @@ public sealed class ContentAnalysisIntegrationTests
                 Assert.Equal("markdown", export.Format);
                 Assert.Equal(StatusValues.Succeeded, export.Status);
                 Assert.False(string.IsNullOrWhiteSpace(export.FileUri));
+                briefExportId = export.Id;
+            }
+
+            // Brief exports are written by the content analysis service but stored as data_exports,
+            // so they come back through the same download endpoint. Markdown is a format only this
+            // path produces: without its own mapping it would be served as an .xlsx spreadsheet.
+            using (var contentResponse = await client.GetAsync(
+                $"/api/projects/{projectId}/exports/{briefExportId}/content"))
+            {
+                Assert.Equal(HttpStatusCode.OK, contentResponse.StatusCode);
+                Assert.Equal("text/markdown", contentResponse.Content.Headers.ContentType?.MediaType);
+
+                var fileName = contentResponse.Content.Headers.ContentDisposition?.FileNameStar
+                    ?? contentResponse.Content.Headers.ContentDisposition?.FileName?.Trim('"');
+                Assert.Equal($"article_brief-{briefExportId:N}.md", fileName);
+                Assert.False(
+                    string.IsNullOrWhiteSpace(await contentResponse.Content.ReadAsStringAsync()),
+                    "The brief export download returned an empty body.");
             }
 
             using (var otherProjectAnalysesResponse = await client.GetAsync($"/api/projects/{otherProjectId}/content-analyses"))
