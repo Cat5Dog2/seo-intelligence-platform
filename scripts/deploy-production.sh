@@ -27,9 +27,10 @@ ENV_FILE="${ENV_FILE:-.env.production}"
 COMPOSE=(docker compose --project-name "$PROJECT_NAME" --env-file "$ENV_FILE" -f compose.yaml -f compose.production.yaml)
 
 usage() {
-  echo "Usage: bash scripts/deploy-production.sh <initial|update>" >&2
+  echo "Usage: bash scripts/deploy-production.sh <initial|update|backup>" >&2
   echo "  initial  First deployment: build, scan, migrate, start." >&2
   echo "  update   Update: build, scan, stop, back up, migrate, recreate." >&2
+  echo "  backup   Ad-hoc backup: stop, back up, start again." >&2
 }
 
 mode="${1:-}"
@@ -41,7 +42,7 @@ if [[ $# -gt 0 ]]; then
 fi
 
 case "$mode" in
-  initial|update) ;;
+  initial|update|backup) ;;
   *) usage; exit 1 ;;
 esac
 
@@ -50,26 +51,14 @@ if [[ ! -f "$ENV_FILE" ]]; then
   exit 1
 fi
 
-# One deployment at a time, for the whole run rather than for any single step. Two updates started
-# more than a second apart get different backup directories, so nothing collides there - but the
-# second would be dumping the database while the first is already running its migration, and both
-# would recreate the containers. The lock covers build through recreate.
-#
-# flock, not a lock directory: it is released when the process dies, so a killed deployment does
-# not leave a stale lock that the operator has to know to remove.
-if ! command -v flock > /dev/null 2>&1; then
-  echo "ERROR: flock is required so two deployments cannot run at once. Install util-linux." >&2
-  exit 1
-fi
-
-mkdir -p artifacts
-exec {deploy_lock}> artifacts/deploy-production.lock
-if ! flock --nonblock "$deploy_lock"; then
-  echo "ERROR: another deployment is already running (artifacts/deploy-production.lock is held)." >&2
-  echo "       Wait for it to finish. Running two at once would dump the database during the" >&2
-  echo "       other's migration and recreate the containers twice." >&2
-  exit 1
-fi
+# One operation at a time on this Compose project, for the whole run rather than for any single
+# step. Two updates started more than a second apart get different backup directories, so nothing
+# collides there - but the second would be dumping the database while the first is already running
+# its migration, and both would recreate the containers. The lock covers build through recreate,
+# and backup-production.sh joins the same lock so a hand-run backup cannot interleave either.
+# shellcheck source=scripts/lib/production-lock.sh
+source scripts/lib/production-lock.sh
+acquire_production_lock "$PROJECT_NAME" || exit 1
 
 # Both paths run these first, in this order.
 build_and_scan() {
@@ -98,6 +87,14 @@ case "$mode" in
     "${COMPOSE[@]}" up -d --wait --force-recreate api worker web
     "${COMPOSE[@]}" ps
     "${COMPOSE[@]}" logs --tail 200 web api worker
+    ;;
+  backup)
+    # Stopping and starting again is part of the backup, so it belongs inside the lock rather than
+    # being three commands an operator runs by hand around an unlocked script.
+    "${COMPOSE[@]}" stop web api worker
+    bash scripts/backup-production.sh
+    "${COMPOSE[@]}" up -d --wait api worker web
+    "${COMPOSE[@]}" ps
     ;;
 esac
 

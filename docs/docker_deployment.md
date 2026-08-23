@@ -251,17 +251,17 @@ docker compose --project-name seo-intelligence-prod --env-file .env.production -
 更新時は `scripts/deploy-production.sh update` が停止後・Migration前に自動で取得する。更新以外の目的で取得する場合も、同じスクリプトを直接呼ぶ。
 
 ```bash
-docker compose --project-name seo-intelligence-prod --env-file .env.production -f compose.yaml -f compose.production.yaml stop web api worker
-bash scripts/backup-production.sh
-docker compose --project-name seo-intelligence-prod --env-file .env.production -f compose.yaml -f compose.production.yaml up -d --wait api worker web
+bash scripts/deploy-production.sh backup
 ```
+
+停止・取得・再起動をスクリプトにまとめてあるのは、この3つが**デプロイと同じロックの中**で行われる必要があるためである。手動で3コマンドを打つと、その間にデプロイが走ればMigration中のdumpや、進行中デプロイのサービス停止が起こり得る。ロックはCompose project名で決まるホスト共通のパスに置くので、別のcloneやworktreeから実行しても排他される。
 
 手順を文書へ書き写さずスクリプトへ集約しているのは、バックアップの失敗が「復元が必要になるまで気づかない」種類のものだからである。スクリプトは次を検証し、1つでも満たさなければ失敗する。
 
 | 検証 | 理由 |
 | --- | --- |
 | web/api/worker/migrateが停止している | 稼働中に取得するとdumpとStorage archiveが別時点になる。ジョブが2つの取得の間にファイルを書けば、復元しても整合しない。`migrate`稼働中はスキーマがdumpの下で変わる。状態を取得できなかった場合も拒否する（停止している証拠がないため）。 |
-| 出力先が絶対パスである | `docker run -v` は `/` または `./` で始まらないsourceを名前付きVolumeとして扱い、`/`を含む名前は拒否される。相対パスではバックアップ自体が失敗する。 |
+| 出力先が絶対パスである | スクリプトはリポジトリルートへ`cd`するため、相対パスをそのまま使うと呼び出し元が意図しない場所へ書き、報告される出力先も実際と食い違う。相対パスは**呼び出し元のcwd基準**で絶対化する。 |
 | 出力先が既存でない | 既存のバックアップを上書きしない。 |
 | 対象Volumeが存在する | 存在しないVolumeを指定するとDockerが空のVolumeを作り、「空だが妥当な」archiveができてしまう。 |
 | `postgres.dump` の目次を `pg_restore --list` で読める | 先頭バイトの確認では不十分。切り詰められたdumpも先頭は `PGDMP` である。 |

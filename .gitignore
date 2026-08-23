@@ -44,7 +44,8 @@ ScaffoldingReadMe.txt
 !.env.production.app.example
 
 # Production backups. These hold the whole database and the Data Protection keys.
-backups/
+# Anchored: an unanchored pattern would also swallow a tests/fixtures/backups/ directory.
+/backups/
 
 # Others
 ~$*

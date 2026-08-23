@@ -231,7 +231,7 @@ else
   elif [[ "$second_status" -eq 0 ]]; then
     echo "FAIL: a second deployment ran while the first was still going." >&2
     failures=$((failures + 1))
-  elif ! grep -qF "another deployment is already running" "$work/lock-second"; then
+  elif ! grep -qF "another operation is already working on" "$work/lock-second"; then
     echo "FAIL: the second deployment failed, but not on the lock." >&2
     sed 's/^/      /' "$work/lock-second" >&2
     failures=$((failures + 1))

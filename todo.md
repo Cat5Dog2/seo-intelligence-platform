@@ -1607,6 +1607,20 @@ CRLF起因のバグ（検証中に発覚）:
 - [x] 秒をまたいで開始した2つの`deploy-production.sh update`が排他されること（Linuxで実行、Windowsは`flock`不在のためskip）。
 - [x] ガードのトレーステストへ`flock`スタブを用意した。順序の検証は排他とは別の関心事であり、`flock`不在の環境でも実行できる必要がある。
 
+15次レビューによる追加是正:
+
+- [x] ロックが`artifacts/`配下にあり、別cloneやworktreeからの実行を排他できていなかった。排他すべき対象は作業コピーではなくCompose projectである。`scripts/lib/production-lock.sh`へ切り出し、checkout外の`${XDG_RUNTIME_DIR:-/tmp}/<project>.deploy.lock`をロックに使う（XDG_RUNTIME_DIRはユーザー専用0700なので、他ユーザーによるsymlink設置ができない）。
+- [x] 手動バックアップ手順が`stop`をロック外で実行し、バックアップスクリプト自体もロックに参加していなかった。`backup-production.sh`を同じロックへ参加させ（デプロイから呼ばれた場合はマーカーで再入可）、`deploy-production.sh backup`モードで停止・取得・再起動をロック内にまとめた。手順書も3コマンドからこの1コマンドへ変更した。
+- [x] 絶対パス化の理由がbind mount回避のまま残っていた記述を、実装（呼び出し元cwd基準）へ同期した。
+- [x] 停止拒否のエラー文言に`migrate`を追加した。
+- [x] `.gitignore`の`backups/`が全階層に効き、`tests/fixtures/backups/`まで無視していた。`/backups/`へアンカーした。
+
+テストの追加:
+
+- [x] 別cwdから相対パスで呼び、出力先が**呼び出し元のcwd配下**になること。従来はリポジトリルートから呼んでいたため、`$invocation_dir`を`$PWD`へ戻しても通っていた。実際に戻して落ちることを確認済み。
+- [x] `migrate`単独での拒否。フィルタから`migrate`を外すと落ちることを確認済み。
+- [x] 排他的`mkdir`を単独で検証するケース。ロックが効く環境では敗者がロックで止まるため、それぞれ別のロックファイルを与えてmkdir側だけを分離した。ロックとmkdirの二重防御が個別に検証される。
+
 判断の記録（4次）:
 
 - 実VPSでのCaddy/Cloudflare経由のクライアントIP置換確認だけは、環境依存のためローカルで代替できない。partitionロジック自体はテストで固定済み。

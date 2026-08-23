@@ -91,6 +91,16 @@ exit 0
 STUB
 chmod +x "$work/bin/docker"
 
+# The backup takes the shared production lock, which needs flock. Git Bash on Windows does not ship
+# it, and these cases are about artifact validation rather than mutual exclusion - the real lock is
+# exercised in verify-deployment-guards.sh, which skips where flock is missing.
+if ! command -v flock > /dev/null 2>&1; then
+  printf '#!/usr/bin/env bash
+exit 0
+' > "$work/bin/flock"
+  chmod +x "$work/bin/flock"
+fi
+
 # A world where everything is healthy; each case then breaks one thing.
 new_state() {
   local state="$repo_root/$work/state-$1"
@@ -109,8 +119,11 @@ new_state() {
 
 run_backup() {
   local state="$1" output="$2"
+  # A lock inside the work directory, so these runs cannot collide with a real deployment on the
+  # same host. Cases that need two independent locks override it.
   PATH="$repo_root/$work/bin:$PATH" \
   DOCKER_STUB_STATE="$state" \
+  PRODUCTION_LOCK_DIR="${PRODUCTION_LOCK_DIR:-$repo_root/$work/lock}" \
   ENV_FILE=.env.production.example \
     bash scripts/backup-production.sh "$output" 2>&1
 }
@@ -194,6 +207,33 @@ else
   failures=$((failures + 1))
 fi
 
+# Called from somewhere other than the repository root. The case above runs from the repository
+# root, where resolving against $PWD after the script's own cd would look identical - so it would
+# pass on the very bug it exists to catch.
+elsewhere="$repo_root/$work/elsewhere"
+mkdir -p "$elsewhere"
+# The output lands under $elsewhere, which is inside the work directory the trap removes. An
+# earlier version of the neighbouring case wrote into the repository root and left it there.
+state="$(new_state relative-elsewhere)"
+if (cd "$elsewhere" && PATH="$repo_root/$work/bin:$PATH" DOCKER_STUB_STATE="$state"       ENV_FILE=.env.production.example bash "$repo_root/scripts/backup-production.sh"       "from-caller-cwd" > "$repo_root/$work/out" 2>&1); then
+  reported="$(sed -nE 's|^Backing up [^ ]+ to (.*)$|\1|p' "$work/out" | head -1)"
+  if [[ "$reported" != "$elsewhere/from-caller-cwd" ]]; then
+    echo "FAIL: a relative path was not resolved against the caller's directory." >&2
+    echo "      expected: $elsewhere/from-caller-cwd" >&2
+    echo "      actual:   $reported" >&2
+    failures=$((failures + 1))
+  else
+    echo "ok: a relative output directory resolves against the caller's working directory."
+  fi
+  # Removed wherever it actually landed, not where it was supposed to. When this case is used to
+  # prove a regression is caught, the backup goes somewhere else - and left the repository dirty.
+  [[ -n "$reported" && "$reported" != "$repo_root" ]] && rm -rf "$reported"
+else
+  echo "FAIL: the backup failed when called from another directory." >&2
+  sed 's/^/      /' "$work/out" >&2
+  failures=$((failures + 1))
+fi
+
 
 # --- refusals ------------------------------------------------------------------------------------
 
@@ -201,6 +241,13 @@ state="$(new_state running)"
 printf 'api\nworker\n' > "$state/running"
 expect_refusal "the application still running" \
   "still running" "$state" "$repo_root/$work/out-running"
+
+# migrate on its own. Without this case the filter could drop migrate and every other check would
+# still pass, while a dump taken during a migration would capture a half-changed schema.
+state="$(new_state migrating)"
+printf 'migrate
+' > "$state/running"
+expect_refusal "a migration in flight"   "still running: migrate" "$state" "$repo_root/$work/out-migrating"
 
 state="$(new_state existing)"
 mkdir -p "$work/out-existing"
@@ -290,13 +337,43 @@ elif [[ "$status_a" -ne 0 && "$status_b" -ne 0 ]]; then
 else
   loser="$work/concurrent-a"
   [[ "$status_a" -eq 0 ]] && loser="$work/concurrent-b"
-  if ! grep -qF "already exists or could not be created" "$loser"; then
-    echo "FAIL: the losing concurrent backup did not fail on the exclusive mkdir." >&2
+  # Two defences, and which fires depends on the environment: with a real flock the lock stops the
+  # loser first, with the stub it reaches the exclusive mkdir. Either is a refusal; the mkdir is
+  # isolated on its own below.
+  if grep -qF "another operation is already working on" "$loser"; then
+    echo "ok: only one of two concurrent backups runs; the other is refused by the lock."
+  elif grep -qF "already exists or could not be created" "$loser"; then
+    echo "ok: only one of two concurrent backups claims the output directory."
+  else
+    echo "FAIL: the losing concurrent backup was refused, but not by the lock or the mkdir." >&2
     sed 's/^/      /' "$loser" >&2
     failures=$((failures + 1))
-  else
-    echo "ok: only one of two concurrent backups claims the output directory; the other is refused."
   fi
+
+# The exclusive mkdir on its own, with the lock taken out of the picture by giving each run its own
+# lock file. It is the second line of defence: if the lock is ever bypassed, two runs must still
+# not write over each other's artifacts.
+state_c="$(new_state mkdir-race)"
+state_d="$(new_state mkdir-race-b)"
+shared_output2="$repo_root/$work/out-mkdir-race"
+PRODUCTION_LOCK_DIR="$repo_root/$work/lock-a" run_backup "$state_c" "$shared_output2" > "$work/mkdir-a" 2>&1 & c=$!
+PRODUCTION_LOCK_DIR="$repo_root/$work/lock-b" run_backup "$state_d" "$shared_output2" > "$work/mkdir-b" 2>&1 & d=$!
+wait "$c" && status_c=0 || status_c=$?
+wait "$d" && status_d=0 || status_d=$?
+if [[ "$status_c" -eq 0 && "$status_d" -eq 0 ]]; then
+  echo "FAIL: two backups holding different locks both claimed the same output directory." >&2
+  failures=$((failures + 1))
+else
+  mkdir_loser="$work/mkdir-a"
+  [[ "$status_c" -eq 0 ]] && mkdir_loser="$work/mkdir-b"
+  if ! grep -qF "already exists or could not be created" "$mkdir_loser"; then
+    echo "FAIL: the losing backup did not fail on the exclusive mkdir." >&2
+    sed 's/^/      /' "$mkdir_loser" >&2
+    failures=$((failures + 1))
+  else
+    echo "ok: the exclusive mkdir refuses a second backup even without the lock."
+  fi
+fi
 fi
 
 # The dump holds the whole database and the key archive holds unencrypted Data Protection keys.

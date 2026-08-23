@@ -29,6 +29,12 @@ ENV_FILE="${ENV_FILE:-.env.production}"
 # `name:` in compose.production.yaml, and would send this at another stack's database.
 COMPOSE=(docker compose --project-name "$PROJECT_NAME" --env-file "$ENV_FILE" -f compose.yaml -f compose.production.yaml)
 
+# The same lock the deployment takes. Run on its own this stops a backup from interleaving with a
+# deployment; run from deploy-production.sh the marker makes it a no-op rather than a deadlock.
+# shellcheck source=scripts/lib/production-lock.sh
+source scripts/lib/production-lock.sh
+acquire_production_lock "$PROJECT_NAME" || exit 1
+
 # The image used as a tar and pg_restore host. Pinned from the lock file so this uses an image whose
 # vulnerabilities were reviewed, rather than pulling a fresh one.
 tar_image() {
@@ -66,8 +72,8 @@ fi
 running="$(grep -E '^(web|api|worker|migrate)$' <<< "$running" || true)"
 if [[ -n "$running" ]]; then
   echo "ERROR: these services are still running: $(tr '\n' ' ' <<< "$running")" >&2
-  echo "       Stop web, api and worker first, or the dump and the storage archive will describe" >&2
-  echo "       different points in time." >&2
+  echo "       Stop web, api, worker and any running migrate first, or the dump and the storage" >&2
+  echo "       archive will describe different points in time." >&2
   exit 1
 fi
 
