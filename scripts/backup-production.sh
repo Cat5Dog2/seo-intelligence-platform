@@ -3,10 +3,15 @@
 #
 #   bash scripts/backup-production.sh [output directory]
 #
-# Called by scripts/deploy-production.sh while the application is stopped and before migrations
-# run, and usable on its own for an ad-hoc backup. The three artifacts belong to the same point in
-# time, so they are taken together: restoring a database without its storage, or without the Data
-# Protection keys, leaves an application that starts but cannot read its own artifacts or cookies.
+# Internal. Use `bash scripts/deploy-production.sh backup` for an ad-hoc backup: this script assumes
+# the application is already stopped and does not start it again, so running it directly leaves the
+# stack down. deploy-production.sh handles the stop and the restart, including when the backup
+# fails.
+#
+# It is called by deploy-production.sh while the application is stopped and before migrations run.
+# The three artifacts belong to the same point in time, so they are taken together: restoring a
+# database without its storage, or without the Data Protection keys, leaves an application that
+# starts but cannot read its own artifacts or cookies.
 #
 # Every artifact is read back in full after it is written. A backup that cannot be restored is
 # worse than no backup, because it is only discovered to be worthless at the moment it is needed.

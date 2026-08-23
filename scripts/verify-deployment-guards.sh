@@ -17,7 +17,7 @@ cd "$(dirname "$0")/.."
 # other's fixtures. Kept under artifacts/ rather than /tmp because the verifier hands the lock path
 # to Python, and on Git Bash for Windows that is the Windows build, which cannot open an MSYS path.
 work="artifacts/guard-test-$$-${RANDOM}"
-mkdir -p "$work/bin"
+mkdir -p "$work/bin" "$work/lock"
 
 # The deployment requires flock so two runs cannot overlap. Git Bash on Windows does not ship it,
 # and the ordering tests below are about what runs in what order, not about locking - so they get a
@@ -103,7 +103,7 @@ expect_trace() {
   # the expectation and running the script. The name is not what this asserts on; its position is.
   # The exit status has to be the script's, not grep's, so the output is captured first.
   local raw
-  raw="$(PATH="$PWD/$work/bin:$PATH" ENV_FILE=.env.production.example bash "$script" "$mode" 2>&1)" || status=$?
+  raw="$(PATH="$PWD/$work/bin:$PATH" PRODUCTION_LOCK_DIR="$PWD/$work/lock" ENV_FILE=.env.production.example bash "$script" "$mode" 2>&1)" || status=$?
   actual="$(grep '^TRACE ' <<< "$raw" | sed -e 's/^TRACE //' || true)"
 
   if [[ "$status" -ne 0 ]]; then
@@ -147,6 +147,30 @@ compose up -d --wait --force-recreate api worker web
 compose ps
 compose logs --tail 200 web api worker"
 
+expect_trace "an ad-hoc backup stops, backs up and starts again"   "$traceable" backup   "compose stop web api worker
+backup
+compose up -d --wait api worker web
+compose ps"
+
+# A failed backup must not leave the application down. Nothing has changed at that point - no
+# migration has run - so the previous version has to come back up.
+backup_fails="$work/deploy-backup-fails"
+make_traceable scripts/deploy-production.sh "$backup_fails"
+sed -i 's|^    echo TRACE backup$|    echo TRACE backup; return 4|' "$backup_fails"
+
+backup_output="$(PATH="$PWD/$work/bin:$PATH" PRODUCTION_LOCK_DIR="$PWD/$work/lock" ENV_FILE=.env.production.example   bash "$backup_fails" backup 2>&1)" && backup_status=0 || backup_status=$?
+
+if [[ "$backup_status" -eq 0 ]]; then
+  echo "FAIL: the backup mode reported success even though the backup failed." >&2
+  failures=$((failures + 1))
+elif ! grep -qF "compose up -d --wait api worker web" <<< "$backup_output"; then
+  echo "FAIL: a failed ad-hoc backup left the application stopped." >&2
+  sed 's/^/      /' <<< "$backup_output" >&2
+  failures=$((failures + 1))
+else
+  echo "ok: a failed ad-hoc backup restarts the services it stopped."
+fi
+
 # A deployment script whose procedures never call build_and_scan. The commands are still present in
 # the function body, so a source-level check passes; the trace shows they never run.
 awk '!/^    build_and_scan$/' scripts/deploy-production.sh > "$work/deploy-uncalled-source"
@@ -189,7 +213,7 @@ expect_failure "the first-deploy procedure no longer invoking the deployment scr
 stub="$work/deploy-abort"
 sed   -e 's|^COMPOSE=(docker compose .*|COMPOSE=(echo COMPOSE-RAN)|'   -e 's|^  bash scripts/scan-container-images.sh app$|  echo SCAN-RAN; return 3|'   -e 's|^cd "$(dirname "$0")/\.\."$|cd "$(dirname "$0")/../.."|'   scripts/deploy-production.sh > "$stub"
 
-abort_output="$(PATH="$PWD/$work/bin:$PATH" ENV_FILE=.env.production.example bash "$stub" initial 2>&1)" && abort_status=0 || abort_status=$?
+abort_output="$(PATH="$PWD/$work/bin:$PATH" PRODUCTION_LOCK_DIR="$PWD/$work/lock" ENV_FILE=.env.production.example bash "$stub" initial 2>&1)" && abort_status=0 || abort_status=$?
 
 if [[ "$abort_status" -eq 0 ]]; then
   echo "FAIL: the deployment script completed even though the image scan failed." >&2
@@ -218,10 +242,10 @@ else
   # Hold the first deployment inside the locked region long enough for the second to try.
   sed -i 's|^    echo TRACE backup$|    echo TRACE backup; sleep 5|' "$slow"
 
-  ENV_FILE=.env.production.example bash "$slow" update > "$work/lock-first" 2>&1 &
+  PRODUCTION_LOCK_DIR="$PWD/$work/lock" ENV_FILE=.env.production.example bash "$slow" update > "$work/lock-first" 2>&1 &
   first=$!
   sleep 2
-  ENV_FILE=.env.production.example bash "$slow" update > "$work/lock-second" 2>&1 && second_status=0 || second_status=$?
+  PRODUCTION_LOCK_DIR="$PWD/$work/lock" ENV_FILE=.env.production.example bash "$slow" update > "$work/lock-second" 2>&1 && second_status=0 || second_status=$?
   wait "$first" && first_status=0 || first_status=$?
 
   if [[ "$first_status" -ne 0 ]]; then

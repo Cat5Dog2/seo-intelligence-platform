@@ -215,7 +215,7 @@ mkdir -p "$elsewhere"
 # The output lands under $elsewhere, which is inside the work directory the trap removes. An
 # earlier version of the neighbouring case wrote into the repository root and left it there.
 state="$(new_state relative-elsewhere)"
-if (cd "$elsewhere" && PATH="$repo_root/$work/bin:$PATH" DOCKER_STUB_STATE="$state"       ENV_FILE=.env.production.example bash "$repo_root/scripts/backup-production.sh"       "from-caller-cwd" > "$repo_root/$work/out" 2>&1); then
+if (cd "$elsewhere" && PATH="$repo_root/$work/bin:$PATH" DOCKER_STUB_STATE="$state" PRODUCTION_LOCK_DIR="$repo_root/$work/lock"       ENV_FILE=.env.production.example bash "$repo_root/scripts/backup-production.sh"       "from-caller-cwd" > "$repo_root/$work/out" 2>&1); then
   reported="$(sed -nE 's|^Backing up [^ ]+ to (.*)$|\1|p' "$work/out" | head -1)"
   if [[ "$reported" != "$elsewhere/from-caller-cwd" ]]; then
     echo "FAIL: a relative path was not resolved against the caller's directory." >&2
@@ -225,9 +225,14 @@ if (cd "$elsewhere" && PATH="$repo_root/$work/bin:$PATH" DOCKER_STUB_STATE="$sta
   else
     echo "ok: a relative output directory resolves against the caller's working directory."
   fi
-  # Removed wherever it actually landed, not where it was supposed to. When this case is used to
-  # prove a regression is caught, the backup goes somewhere else - and left the repository dirty.
-  [[ -n "$reported" && "$reported" != "$repo_root" ]] && rm -rf "$reported"
+  # Nothing is deleted by path here. An earlier version removed whatever the script reported, which
+  # meant a path-handling regression could send `rm -rf` anywhere the reported string pointed - the
+  # cleanup for "it wrote somewhere unexpected" was itself an unconditional delete of somewhere
+  # unexpected. The correct path is inside $work and the trap removes it; anything else is named so
+  # it can be dealt with deliberately.
+  if [[ -n "$reported" && "$reported" != "$repo_root/$work/"* ]]; then
+    echo "note: the backup wrote outside the test work directory and was left in place: $reported" >&2
+  fi
 else
   echo "FAIL: the backup failed when called from another directory." >&2
   sed 's/^/      /' "$work/out" >&2
@@ -403,6 +408,21 @@ fi
 state="$(new_state empty-storage)"
 printf 'drwxr-xr-x 0/0 0 2026-08-22 00:00 ./\n' > "$state/listing-seo-storage.tar.gz"
 expect_success "an empty storage volume is accepted" "$state" "$repo_root/$work/out-empty-storage"
+
+# The marker alone must not be enough. Anyone able to set an environment variable could otherwise
+# skip the lock entirely, which is the thing the lock exists to prevent.
+state="$(new_state forged-marker)"
+forged="$(PRODUCTION_LOCK_HELD=seo-intelligence-prod   PATH="$repo_root/$work/bin:$PATH"   DOCKER_STUB_STATE="$state"   PRODUCTION_LOCK_DIR="$repo_root/$work/lock"   ENV_FILE=.env.production.example   bash scripts/backup-production.sh "$repo_root/$work/out-forged" 2>&1)" && forged_status=0 || forged_status=$?
+if [[ "$forged_status" -eq 0 ]]; then
+  echo "FAIL: a forged PRODUCTION_LOCK_HELD was accepted as holding the lock." >&2
+  failures=$((failures + 1))
+elif ! grep -qF "no inherited lock backs it" <<< "$forged"; then
+  echo "FAIL: a forged PRODUCTION_LOCK_HELD was rejected, but not as a forged marker." >&2
+  sed 's/^/      /' <<< "$forged" >&2
+  failures=$((failures + 1))
+else
+  echo "ok: a forged lock marker is rejected."
+fi
 
 if [[ "$failures" -ne 0 ]]; then
   echo "$failures backup check(s) failed." >&2

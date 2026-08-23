@@ -3,6 +3,7 @@
 #
 #   bash scripts/deploy-production.sh initial
 #   bash scripts/deploy-production.sh update
+#   bash scripts/deploy-production.sh backup
 #
 # The ordering here is the control, not a convention: `set -euo pipefail` means a failing
 # vulnerability scan aborts before anything starts. Pasting the same commands into a shell one by
@@ -91,10 +92,27 @@ case "$mode" in
   backup)
     # Stopping and starting again is part of the backup, so it belongs inside the lock rather than
     # being three commands an operator runs by hand around an unlocked script.
+    #
+    # The restart is a trap, not the next line: `set -e` would otherwise leave the application down
+    # if the backup failed. Nothing has changed at that point - no migration has run - so the right
+    # answer is to bring the previous version back up and report the failure. This is the opposite
+    # of the update path, where a failure must leave the stack stopped rather than restart old code
+    # against a database a migration may already have touched.
+    restart_after_backup() {
+      local status=$?
+      if [[ "$status" -ne 0 ]]; then
+        echo "The backup failed; restarting the services it stopped." >&2
+        "${COMPOSE[@]}" up -d --wait api worker web || true
+      fi
+      return "$status"
+    }
+    trap restart_after_backup EXIT
+
     "${COMPOSE[@]}" stop web api worker
     bash scripts/backup-production.sh
     "${COMPOSE[@]}" up -d --wait api worker web
     "${COMPOSE[@]}" ps
+    trap - EXIT
     ;;
 esac
 
