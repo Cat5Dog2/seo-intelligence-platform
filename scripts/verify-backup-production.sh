@@ -17,7 +17,10 @@ cd "$(dirname "$0")/.."
 repo_root="$PWD"
 
 work="artifacts/backup-test-$$-${RANDOM}"
-mkdir -p "$work/bin"
+# The lock directory must exist and be owner-only: the library validates it rather than creating
+# it, because a shared one has to be provisioned deliberately.
+mkdir -p "$work/bin" "$work/lock" "$work/lock-a" "$work/lock-b"
+chmod 700 "$work/lock" "$work/lock-a" "$work/lock-b"
 trap 'rm -rf "$work"' EXIT
 
 failures=0
@@ -134,7 +137,6 @@ expect_success() {
     echo "ok: $description"
   else
     echo "FAIL: $description" >&2
-    sed 's/^/      /' "$work/out" >&2
     failures=$((failures + 1))
   fi
 }
@@ -210,35 +212,31 @@ fi
 # Called from somewhere other than the repository root. The case above runs from the repository
 # root, where resolving against $PWD after the script's own cd would look identical - so it would
 # pass on the very bug it exists to catch.
+#
+# The relative path is chosen so that both the correct answer (the caller's directory) and the
+# buggy one (the repository root) land inside $work, which the trap removes. Proving a regression
+# is caught must not leave artifacts in the repository.
 elsewhere="$repo_root/$work/elsewhere"
 mkdir -p "$elsewhere"
-# The output lands under $elsewhere, which is inside the work directory the trap removes. An
-# earlier version of the neighbouring case wrote into the repository root and left it there.
 state="$(new_state relative-elsewhere)"
-if (cd "$elsewhere" && PATH="$repo_root/$work/bin:$PATH" DOCKER_STUB_STATE="$state" PRODUCTION_LOCK_DIR="$repo_root/$work/lock"       ENV_FILE=.env.production.example bash "$repo_root/scripts/backup-production.sh"       "from-caller-cwd" > "$repo_root/$work/out" 2>&1); then
+relative_target="$work/from-caller-cwd"
+mkdir -p "$elsewhere/$(dirname "$relative_target")"
+if (cd "$elsewhere" && PATH="$repo_root/$work/bin:$PATH" DOCKER_STUB_STATE="$state" PRODUCTION_LOCK_DIR="$repo_root/$work/lock"       ENV_FILE=.env.production.example bash "$repo_root/scripts/backup-production.sh"       "$relative_target" > "$repo_root/$work/out" 2>&1); then
   reported="$(sed -nE 's|^Backing up [^ ]+ to (.*)$|\1|p' "$work/out" | head -1)"
-  if [[ "$reported" != "$elsewhere/from-caller-cwd" ]]; then
+  if [[ "$reported" != "$elsewhere/$relative_target" ]]; then
     echo "FAIL: a relative path was not resolved against the caller's directory." >&2
-    echo "      expected: $elsewhere/from-caller-cwd" >&2
+    echo "      expected: $elsewhere/$relative_target" >&2
     echo "      actual:   $reported" >&2
+    sed 's/^/      /' "$work/out" >&2
     failures=$((failures + 1))
   else
     echo "ok: a relative output directory resolves against the caller's working directory."
-  fi
-  # Nothing is deleted by path here. An earlier version removed whatever the script reported, which
-  # meant a path-handling regression could send `rm -rf` anywhere the reported string pointed - the
-  # cleanup for "it wrote somewhere unexpected" was itself an unconditional delete of somewhere
-  # unexpected. The correct path is inside $work and the trap removes it; anything else is named so
-  # it can be dealt with deliberately.
-  if [[ -n "$reported" && "$reported" != "$repo_root/$work/"* ]]; then
-    echo "note: the backup wrote outside the test work directory and was left in place: $reported" >&2
   fi
 else
   echo "FAIL: the backup failed when called from another directory." >&2
   sed 's/^/      /' "$work/out" >&2
   failures=$((failures + 1))
 fi
-
 
 # --- refusals ------------------------------------------------------------------------------------
 

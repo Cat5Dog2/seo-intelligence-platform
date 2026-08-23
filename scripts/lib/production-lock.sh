@@ -11,26 +11,46 @@
 #
 # Scope and its limit: the lock excludes concurrent operations by the same Unix user. Deploy as one
 # dedicated user. If more than one user must deploy, point PRODUCTION_LOCK_DIR at a directory they
-# all own, created in advance with restrictive permissions - do not let it fall back to a
-# world-writable location, where another user could hold or pre-create the lock file.
+# all own; it is rejected if it is world-writable.
 
-# Chosen deliberately rather than defaulted into /tmp. /tmp is world-writable, so another user could
-# hold the lock or plant the file, and a lock that anyone can hold is not a lock.
+# Where the lock may live. Chosen deliberately rather than defaulted into /tmp: a lock any user can
+# hold or pre-create is not a lock, so no safe location means no deployment.
+production_lock_dir_is_safe() {
+  local dir="$1" resolved owner mode
+
+  resolved="$(readlink -f "$dir" 2>/dev/null)" || return 1
+  [[ -d "$resolved" && -w "$resolved" ]] || return 1
+
+  # stat's format flags differ on BSD; this runs on the Linux VPS and in Linux CI.
+  owner="$(stat -c '%u' "$resolved" 2>/dev/null)" || return 1
+  [[ "$owner" == "$(id -u)" ]] || return 1
+
+  # World-writable rules out /tmp and anything like it, including an XDG_RUNTIME_DIR pointed there.
+  mode="$(stat -c '%a' "$resolved" 2>/dev/null)" || return 1
+  (( 8#$mode & 0002 )) && return 1
+
+  return 0
+}
+
 production_lock_path() {
   local project="$1" dir="${PRODUCTION_LOCK_DIR:-}"
 
-  if [[ -z "$dir" ]]; then
-    # Per-user and mode 0700, so no other user can interfere.
-    if [[ -n "${XDG_RUNTIME_DIR:-}" && -d "${XDG_RUNTIME_DIR}" && -w "${XDG_RUNTIME_DIR}" ]]; then
-      dir="$XDG_RUNTIME_DIR"
-    elif [[ -d /var/lock && -w /var/lock ]]; then
-      dir="/var/lock"
-    else
-      echo "ERROR: no safe place to put the deployment lock." >&2
-      echo "       XDG_RUNTIME_DIR is unset or not writable and /var/lock is not writable." >&2
-      echo "       Set PRODUCTION_LOCK_DIR to a directory only the deploying user can write to." >&2
+  if [[ -n "$dir" ]]; then
+    if ! production_lock_dir_is_safe "$dir"; then
+      echo "ERROR: PRODUCTION_LOCK_DIR ($dir) is not a directory this user owns and can write to," >&2
+      echo "       or it is world-writable. A lock another user can hold or pre-create is not a lock." >&2
       return 1
     fi
+  elif production_lock_dir_is_safe "${XDG_RUNTIME_DIR:-}"; then
+    dir="$XDG_RUNTIME_DIR"
+  elif production_lock_dir_is_safe /var/lock; then
+    dir="/var/lock"
+  else
+    echo "ERROR: no safe place to put the deployment lock." >&2
+    echo "       XDG_RUNTIME_DIR and /var/lock are unusable: they must be directories this user" >&2
+    echo "       owns, can write to, and that are not world-writable." >&2
+    echo "       Set PRODUCTION_LOCK_DIR to such a directory." >&2
+    return 1
   fi
 
   printf '%s/%s.deploy.lock' "$dir" "$project"
@@ -39,7 +59,13 @@ production_lock_path() {
 # Re-entrancy is verified, not merely declared. deploy-production.sh holds the lock and then calls
 # backup-production.sh, which must not deadlock - but an exported marker on its own would let
 # anyone skip the lock by setting an environment variable, which is exactly what the lock exists to
-# make impossible. The inherited descriptor has to still point at the lock file and still hold it.
+# make impossible.
+#
+# The check locks the inherited descriptor itself. Re-locking a descriptor this process already
+# holds succeeds; a descriptor merely opened on the same path does not, because the real holder's
+# lock is in the way. Re-opening the path and testing that instead would only prove that somebody
+# holds the lock - which is equally true when the holder is a different process, and that is the
+# forgery this has to reject.
 production_lock_is_inherited() {
   local project="$1" lock_path="$2"
 
@@ -47,18 +73,12 @@ production_lock_is_inherited() {
   [[ -n "${PRODUCTION_LOCK_FD:-}" ]] || return 1
   [[ "${PRODUCTION_LOCK_PATH:-}" == "$lock_path" ]] || return 1
 
-  # The descriptor must be open and still refer to the same file. Without /proc this cannot be
-  # checked, so the claim is not accepted and the lock is taken normally instead.
+  # The descriptor must still be open on the same file.
   local fd_target="/proc/$$/fd/${PRODUCTION_LOCK_FD}"
   [[ -e "$fd_target" ]] || return 1
   [[ "$(readlink -f "$fd_target" 2>/dev/null)" == "$(readlink -f "$lock_path" 2>/dev/null)" ]] || return 1
 
-  # And it must actually be locked. A fresh non-blocking attempt on a second descriptor succeeds
-  # only if nobody holds it, so success here means the marker was describing a lock that is not
-  # there.
-  if flock --nonblock --exclusive "$lock_path" true 2>/dev/null; then
-    return 1
-  fi
+  flock --nonblock --exclusive "${PRODUCTION_LOCK_FD}" 2>/dev/null || return 1
 
   return 0
 }
@@ -84,11 +104,16 @@ acquire_production_lock() {
     return 1
   fi
 
-  mkdir -p "$(dirname "$lock_path")"
-
+  # The lock file is only ever a lock, but it names the project and sits in a shared directory when
+  # one is configured, so it is created owner-only rather than at the caller's umask.
+  local previous_umask
+  previous_umask="$(umask)"
+  umask 077
   # The descriptor is deliberately left open for the life of the process: the lock is released when
   # the process exits, including on a kill, so a crashed run leaves nothing to clean up.
   exec {production_lock_fd}> "$lock_path"
+  umask "$previous_umask"
+
   if ! flock --nonblock "$production_lock_fd"; then
     echo "ERROR: another operation is already working on ${project} (${lock_path} is held)." >&2
     echo "       Wait for it to finish. Two at once would dump the database during the other's" >&2

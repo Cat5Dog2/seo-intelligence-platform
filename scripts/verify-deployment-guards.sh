@@ -18,6 +18,7 @@ cd "$(dirname "$0")/.."
 # to Python, and on Git Bash for Windows that is the Windows build, which cannot open an MSYS path.
 work="artifacts/guard-test-$$-${RANDOM}"
 mkdir -p "$work/bin" "$work/lock"
+chmod 700 "$work/lock"
 
 # The deployment requires flock so two runs cannot overlap. Git Bash on Windows does not ship it,
 # and the ordering tests below are about what runs in what order, not about locking - so they get a

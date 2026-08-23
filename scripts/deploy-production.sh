@@ -98,18 +98,23 @@ case "$mode" in
     # answer is to bring the previous version back up and report the failure. This is the opposite
     # of the update path, where a failure must leave the stack stopped rather than restart old code
     # against a database a migration may already have touched.
-    restart_after_backup() {
+    backup_taken=false
+    restart_after_failed_backup() {
       local status=$?
-      if [[ "$status" -ne 0 ]]; then
+      # Only when the backup itself failed. A failure in the restart or in `ps` afterwards is a
+      # different problem, and reporting it as a backup failure - then running `up` again - would
+      # send the operator looking in the wrong place.
+      if [[ "$status" -ne 0 && "$backup_taken" != "true" ]]; then
         echo "The backup failed; restarting the services it stopped." >&2
         "${COMPOSE[@]}" up -d --wait api worker web || true
       fi
       return "$status"
     }
-    trap restart_after_backup EXIT
+    trap restart_after_failed_backup EXIT
 
     "${COMPOSE[@]}" stop web api worker
     bash scripts/backup-production.sh
+    backup_taken=true
     "${COMPOSE[@]}" up -d --wait api worker web
     "${COMPOSE[@]}" ps
     trap - EXIT
