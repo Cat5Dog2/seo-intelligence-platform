@@ -188,7 +188,9 @@ bash scripts/verify-production-lock.sh
 bash scripts/verify-production-restore.sh
 ```
 
-隔離Compose projectを2つ作り、片方に実データと実成果物を作ってから`scripts/backup-production.sh`でバックアップし、もう片方の空Volumeへ復元して、同じ成果物がAPI経由でバイト一致で読めることまで確認する。実イメージのbuildと2スタックの起動を伴うため毎PRのCIには入れず、`operations_runbook.md`の四半期ごとの復元検証と、バックアップ手順を変更したときに実行する。実`flock`が要るのでLinuxで実行する（Windowsではskipする）。イメージをbuild済みの場合は`RESTORE_REHEARSAL_SKIP_BUILD=true`を付ける。
+隔離Compose projectを2つ作り、片方に実データと実成果物を作ってから`scripts/backup-production.sh`でバックアップし、もう片方の空Volumeへ復元して、Migration履歴が不変であること、同じ成果物がAPI経由でバイト一致で読めること、復元先のWorkerが新しいエクスポートを完走できること、本番imageタグが変化していないことまで確認する（一覧は`docker_deployment.md` 5.2）。実イメージのbuildと2スタックの起動を伴うため毎PRのCIには入れず、`operations_runbook.md`の四半期ごとの復元検証と、バックアップ手順を変更したときに実行する。
+
+実`flock`が要るのでLinuxで実行する。実行できない環境では**exit 2で失敗する**。skipをexit 0にしないのは、四半期検証を自動化したときに「検証できなかった」が成功として記録されるのを避けるためである。対話的に見送る場合だけ`RESTORE_REHEARSAL_ALLOW_SKIP=true`を指定する。イメージをbuild済みの場合は`RESTORE_REHEARSAL_SKIP_BUILD=true`を付ける（使用したimage IDが出力されるので、現在のcheckoutと一致するか確認する）。
 
 GitHub Actionsと同じスクリプトで確認する場合は以下を使う。
 

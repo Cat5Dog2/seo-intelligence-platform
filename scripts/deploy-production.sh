@@ -83,7 +83,11 @@ case "$mode" in
     # Stopped before the backup and the migration so no old Worker overwrites job state, no old API
     # registers jobs in the previous format, and the backup is a consistent point in time.
     "${COMPOSE[@]}" stop web api worker
-    bash scripts/backup-production.sh
+    # Passed explicitly so a BACKUP_PROJECT_NAME left in the environment by a restore rehearsal
+    # cannot redirect this. Inherited, it would send the backup at another stack, and the child
+    # would then fail to re-enter the lock this script is holding - after the application is
+    # already stopped, and just before the migration.
+    BACKUP_PROJECT_NAME="$PROJECT_NAME" bash scripts/backup-production.sh
     "${COMPOSE[@]}" --profile tools run --rm migrate
     "${COMPOSE[@]}" up -d --wait --force-recreate api worker web
     "${COMPOSE[@]}" ps
@@ -113,7 +117,8 @@ case "$mode" in
     trap restart_after_failed_backup EXIT
 
     "${COMPOSE[@]}" stop web api worker
-    bash scripts/backup-production.sh
+    # Pinned for the same reason as the update path above.
+    BACKUP_PROJECT_NAME="$PROJECT_NAME" bash scripts/backup-production.sh
     backup_taken=true
     "${COMPOSE[@]}" up -d --wait api worker web
     "${COMPOSE[@]}" ps

@@ -90,10 +90,20 @@ expect_failure "a digest that does not match the rendered image" \
 # Compose, the scanner and the backup are stubbed, so the assertions are about control flow rather
 # than about building images or dumping a database.
 make_traceable() {
-  local source="$1" destination="$2"
+  local source="$1" destination="$2" backup_command="${3:-echo TRACE backup}"
   sed     -e 's|^COMPOSE=(docker compose .*|COMPOSE=(echo TRACE compose)|'     -e 's|^  bash scripts/scan-container-images.sh app$|  echo TRACE scan|'     -e 's|^cd "$(dirname "$0")/\.\."$|cd "$(dirname "$0")/../.."|'     "$source" > "$destination"
   # The backup is its own script and shells out to docker; stubbed so the trace stays about order.
-  sed -i 's|^    bash scripts/backup-production.sh$|    echo TRACE backup|' "$destination"
+  # Only the command is replaced, never the whole line: the deployment sets the backup's target on
+  # that line, and a stub that overwrote it would leave a test about what the backup is given
+  # measuring what this function wrote instead.
+  sed -i "s|bash scripts/backup-production.sh\$|${backup_command}|" "$destination"
+  # A stub that never replaced anything would leave the real backup running against a real Docker
+  # and turn every trace case into a slow, confusing failure. Fail here instead, where the reason
+  # is obvious: the line in deploy-production.sh was edited and this pattern was not.
+  if grep -q 'bash scripts/backup-production.sh' "$destination"; then
+    echo "FAIL: the backup call in $source no longer matches the stub pattern." >&2
+    failures=$((failures + 1))
+  fi
 }
 
 expect_trace() {
@@ -157,7 +167,7 @@ compose ps"
 # migration has run - so the previous version has to come back up.
 backup_fails="$work/deploy-backup-fails"
 make_traceable scripts/deploy-production.sh "$backup_fails"
-sed -i 's|^    echo TRACE backup$|    echo TRACE backup; return 4|' "$backup_fails"
+sed -i 's|echo TRACE backup$|echo TRACE backup; return 4|' "$backup_fails"
 
 backup_output="$(PATH="$PWD/$work/bin:$PATH" PRODUCTION_LOCK_DIR="$PWD/$work/lock" ENV_FILE=.env.production.example   bash "$backup_fails" backup 2>&1)" && backup_status=0 || backup_status=$?
 
@@ -170,6 +180,28 @@ elif ! grep -qF "compose up -d --wait api worker web" <<< "$backup_output"; then
   failures=$((failures + 1))
 else
   echo "ok: a failed ad-hoc backup restarts the services it stopped."
+fi
+
+# BACKUP_PROJECT_NAME exists for the restore rehearsal. Left behind in a shell, an inherited value
+# would point the deployment's own backup at another stack - after the application is stopped and
+# just before the migration. The stub is a separate process, so it reports the value the backup
+# would really have been given rather than the one this test set.
+cat > "$work/backup-target-stub.sh" <<'STUB'
+#!/usr/bin/env bash
+printf 'TRACE backup-target=%s\n' "${BACKUP_PROJECT_NAME:-unset}"
+STUB
+
+backup_target="$work/deploy-backup-target"
+make_traceable scripts/deploy-production.sh "$backup_target" 'bash "$BACKUP_TARGET_STUB"'
+
+target_output="$(PATH="$PWD/$work/bin:$PATH" PRODUCTION_LOCK_DIR="$PWD/$work/lock" ENV_FILE=.env.production.example   BACKUP_TARGET_STUB="$PWD/$work/backup-target-stub.sh" BACKUP_PROJECT_NAME=not-the-production-stack   bash "$backup_target" backup 2>&1)" || true
+
+if ! grep -qF "TRACE backup-target=seo-intelligence-prod" <<< "$target_output"; then
+  echo "FAIL: an inherited BACKUP_PROJECT_NAME redirected the deployment's backup." >&2
+  grep '^TRACE ' <<< "$target_output" | sed 's/^/      /' >&2
+  failures=$((failures + 1))
+else
+  echo "ok: the deployment pins its own backup to the production stack."
 fi
 
 # A deployment script whose procedures never call build_and_scan. The commands are still present in

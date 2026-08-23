@@ -1652,6 +1652,23 @@ CRLF起因のバグ（検証中に発覚）:
 - [x] `backup-production.sh`に`BACKUP_PROJECT_NAME`を追加した。リハーサルが隔離スタックを対象にするための明示的な指定で、`COMPOSE_PROJECT_NAME`は従来どおり効かない。dumpとVolume名が同じprojectを指すことをテストで固定した（両方に退行注入で確認済み）。
 - [x] 実イメージのbuildと2スタック起動を伴うため毎PRのCIには入れず、四半期ごとの復元検証とバックアップ手順変更時に実行する運用にした。`operations_runbook.md`と`docker_deployment.md` 5.2、`test_plan.md`へ反映した。
 
+18次レビューによる追加是正:
+
+- [x] **High**: 復元リハーサルが本番imageタグを上書きしていた。`compose.yaml`は`seo-intelligence-api`等の固定タグを`image:`で明示しており、Compose project名を変えてもこのタグは分離されない。リハーサルのbuildが本番タグを差し替え、その後の`deploy-production.sh backup`の`up`で、未スキャンimageから本番コンテナが再作成され得る状態だった。リハーサル専用タグを与えるoverrideを生成し、終了時にタグを削除する。開始前後で本番4タグのimage IDが不変であることをリハーサル自身が検証する。
+- [x] ロックテスト8件目が、正しいfail-closed結果を失敗扱いしていた。Debianの`/var/lock`は`/run/lock`への1777シンボリックリンクなので拒否され、`XDG_RUNTIME_DIR=/tmp`も拒否されるため安全な置き場所がなくなり`NONE`になる。これは設計どおりの動作である。判定を「`/tmp`に置かれないこと」へ変更し、あわせて「安全なディレクトリが与えられれば実際に使われること」を別ケースで固定した（fallbackが死にコードでないことの確認）。Debian非root（GitHub Actionsと同じ形）で9件通過を確認済み。
+- [x] `BACKUP_PROJECT_NAME`が本番デプロイへ継承され得た。継承されると、親は本番のロック、子は別projectのロックを要求するため再入に失敗し、`update`ではアプリを停止したまま止まる。`deploy-production.sh`の2箇所で明示的に`BACKUP_PROJECT_NAME="$PROJECT_NAME"`を渡す。
+- [x] Migrationがno-opだったことを検証していなかった。`migrate`は未適用Migrationを適用しても成功するため、driftを隠していた。復元前後で`__EFMigrationsHistory`の件数を比較し、増えていないことを検証する。
+- [x] Docker/`flock`不在時にexit 0で終了していた。四半期検証を自動化した場合、「検証未実施」が成功として記録される。既定でexit 2とし、`RESTORE_REHEARSAL_ALLOW_SKIP=true`のときだけskipを許す。
+- [x] 複数ユーザーでのデプロイ運用は、ロックディレクトリの所有者一致要求とロックファイル600により成立しない。手順書とライブラリの記述を「単一デプロイユーザーは要件」に改め、`PRODUCTION_LOCK_DIR`の位置づけを「既定の置き場所が使えないホストとリハーサル用」に修正した。
+- [x] ロックテストのホルダー起動待ちが固定`sleep 1`だった。負荷の高いCIでは、ロックを保持する前にケースが走って別の理由で通る。ホルダーがflock取得後にreadyファイルを作り、それを待つ方式へ変更した。
+
+テストの追加:
+
+- [x] `COMPOSE_PROJECT_NAME`ではなく`BACKUP_PROJECT_NAME`が継承された場合でも、本番デプロイのバックアップ射先が`seo-intelligence-prod`に固定されること。stubを別プロセスにして「バックアップが実際に受け取る値」を観測する。ピン留めを外すと落ちることを確認済み。
+- [x] 復元先で新しいエクスポートを実行し、Workerが完走・保存できること。復元後のWorkerが「起動する」だけでないことの確認。
+- [x] `RESTORE_REHEARSAL_SKIP_BUILD=true`のとき、使用するimage IDと作成日時を出力する。古いimageで通っても気づけるようにするため。
+- [x] リハーサル開始前後で本番imageタグが不変であること。build経路（実build）とSKIP_BUILD経路の両方で確認済み。
+
 判断の記録（4次）:
 
 - 実VPSでのCaddy/Cloudflare経由のクライアントIP置換確認だけは、環境依存のためローカルで代替できない。partitionロジック自体はテストで固定済み。

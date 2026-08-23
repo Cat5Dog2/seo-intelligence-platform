@@ -64,16 +64,30 @@ acquire_production_lock "$1" > /dev/null 2>&1 || { echo PARENT_FAILED; exit 0; }
 bash "$2" "$1"
 PARENT
 
+# Both of the next two need another process to be holding the lock while the case runs. The holder
+# is started as a direct background child and announces itself by touching a ready file once flock
+# has returned; the case waits for that file rather than for a fixed interval. A fixed wait can
+# expire before the holder has the lock on a loaded CI runner, and the case would then pass for the
+# wrong reason - nothing was holding anything, so of course the acquisition was refused... or not.
+cat > "$work/forge.sh" <<'FORGE'
+#!/usr/bin/env bash
 # Holds the lock in another process, then presents an unlocked descriptor on the same path together
 # with the three environment variables. This is the forgery an implementation that re-opens the
 # path and tests that instead would accept: the path really is locked - by someone else.
-cat > "$work/forge.sh" <<'FORGE'
-#!/usr/bin/env bash
-lock_path="$2"
+lock_path="$2" ready="$2.ready"
+rm -f "$ready"
 : > "$lock_path"
-flock "$lock_path" sleep 20 &
+( flock 9 && touch "$ready" && sleep 20 ) 9> "$lock_path" &
 holder=$!
-sleep 1
+for _ in $(seq 1 100); do
+  [[ -e "$ready" ]] && break
+  sleep 0.1
+done
+if [[ ! -e "$ready" ]]; then
+  kill "$holder" 2>/dev/null || true
+  echo HOLDER_FAILED
+  exit 0
+fi
 exec {forged}> "$lock_path"
 PRODUCTION_LOCK_HELD="$1" PRODUCTION_LOCK_FD="$forged" PRODUCTION_LOCK_PATH="$lock_path" \
   bash "$3" "$1" > "$4" 2>/dev/null
@@ -82,11 +96,20 @@ FORGE
 
 cat > "$work/second-holder.sh" <<'SECOND'
 #!/usr/bin/env bash
-lock_path="$2"
+lock_path="$2" ready="$2.ready"
+rm -f "$ready"
 : > "$lock_path"
-flock "$lock_path" sleep 20 &
+( flock 9 && touch "$ready" && sleep 20 ) 9> "$lock_path" &
 holder=$!
-sleep 1
+for _ in $(seq 1 100); do
+  [[ -e "$ready" ]] && break
+  sleep 0.1
+done
+if [[ ! -e "$ready" ]]; then
+  kill "$holder" 2>/dev/null || true
+  echo HOLDER_FAILED
+  exit 0
+fi
 bash "$3" "$1" > "$4" 2>/dev/null
 kill "$holder" 2>/dev/null || true
 SECOND
@@ -101,6 +124,12 @@ case "$chosen" in
   *) echo NOT_IN_TMP ;;
 esac
 WHERE
+
+cat > "$work/path.sh" <<'PATHOF'
+#!/usr/bin/env bash
+source scripts/lib/production-lock.sh
+production_lock_path "$1" 2>/dev/null || echo NONE
+PATHOF
 
 # --- acquiring ---------------------------------------------------------------------------------
 
@@ -135,10 +164,26 @@ chmod 777 "$world_writable"
 check "a world-writable PRODUCTION_LOCK_DIR is rejected" REFUSED \
   "$(PRODUCTION_LOCK_DIR="$world_writable" bash "$work/acquire.sh" "$project")"
 
-# /tmp exists and is writable, so a check that only tests -d and -w would take it. The lock must
-# never be placed there; falling back to another safe directory is fine.
-check "XDG_RUNTIME_DIR pointed at /tmp is not used for the lock" NOT_IN_TMP \
-  "$(env -u PRODUCTION_LOCK_DIR XDG_RUNTIME_DIR=/tmp bash "$work/where.sh" "$project")"
+# /tmp exists and is writable, so a check that only tests -d and -w would take it. What must never
+# happen is the lock landing there. Refusing outright is an equally correct outcome and on some
+# hosts the only one available: Debian's /var/lock is a 1777 symlink to /run/lock, so with
+# XDG_RUNTIME_DIR unusable there is no safe directory left and fail-closed is the designed answer.
+# Demanding a directory here would fail the test on exactly the hosts the refusal protects.
+chosen="$(env -u PRODUCTION_LOCK_DIR XDG_RUNTIME_DIR=/tmp bash "$work/where.sh" "$project")"
+if [[ "$chosen" == "IN_TMP" ]]; then
+  echo "FAIL: the lock was placed in /tmp." >&2
+  failures=$((failures + 1))
+else
+  echo "ok: /tmp is not used for the lock (resolved to: $chosen)."
+fi
+
+# The other half of the same behaviour: refusing everything would also satisfy the check above, so
+# a directory that *is* safe has to be accepted, or the fallback would be dead code.
+safe_runtime="$repo_root/$work/runtime"
+mkdir -p "$safe_runtime"
+chmod 700 "$safe_runtime"
+check "a safe XDG_RUNTIME_DIR is used" "$safe_runtime/$project.deploy.lock" \
+  "$(env -u PRODUCTION_LOCK_DIR XDG_RUNTIME_DIR="$safe_runtime" bash "$work/path.sh" "$project")"
 
 if [[ "$failures" -ne 0 ]]; then
   echo "$failures lock check(s) failed." >&2

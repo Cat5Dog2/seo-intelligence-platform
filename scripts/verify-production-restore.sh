@@ -28,16 +28,29 @@ export MSYS_NO_PATHCONV=1
 cd "$(dirname "$0")/.."
 repo_root="$PWD"
 
+# Skipping exits non-zero unless the caller asked for it. This is the quarterly restore check: an
+# automated run that cannot run it has not verified anything, and recording that as a success is
+# how a backup goes years without anyone noticing it never restored. Pass
+# RESTORE_REHEARSAL_ALLOW_SKIP=true for an interactive run on a machine that cannot host it.
+unavailable() {
+  echo "$1" >&2
+  if [[ "${RESTORE_REHEARSAL_ALLOW_SKIP:-false}" == "true" ]]; then
+    echo "skipped: RESTORE_REHEARSAL_ALLOW_SKIP is set." >&2
+    exit 0
+  fi
+  echo "       The restore has NOT been verified. Run it on Linux with a Docker daemon, or set" >&2
+  echo "       RESTORE_REHEARSAL_ALLOW_SKIP=true to accept an unverified run." >&2
+  exit 2
+}
+
 if ! command -v docker > /dev/null 2>&1 || ! docker info > /dev/null 2>&1; then
-  echo "skip: the restore rehearsal needs a reachable Docker daemon."
-  exit 0
+  unavailable "The restore rehearsal needs a reachable Docker daemon."
 fi
 
 # The backup it calls takes the production lock, which needs a real flock. Git Bash has none, so
 # the rehearsal runs on Linux - the VPS, CI, or a Linux container with the daemon socket.
 if ! command -v flock > /dev/null 2>&1; then
-  echo "skip: the restore rehearsal needs flock (this is $(uname -s)); run it on Linux."
-  exit 0
+  unavailable "The restore rehearsal needs flock (this is $(uname -s)); run it on Linux."
 fi
 
 # The generated env files hold a password and a service key. They are short-lived, but they are
@@ -59,21 +72,49 @@ app_env="$work/.env.app"
 
 keys_path="/app/.data/data-protection-keys"
 
+# compose.yaml names the application images explicitly - seo-intelligence-api and the rest - and an
+# explicit `image:` is NOT namespaced by the Compose project. Without this override the rehearsal
+# would build over the very tags production runs from, and the next `deploy-production.sh backup`
+# would recreate the production containers on an image nobody scanned. The override gives the
+# rehearsal its own tags, shared between its two projects and removed afterwards.
+PRODUCTION_IMAGES=(seo-intelligence-api seo-intelligence-web seo-intelligence-worker seo-intelligence-migrate)
+REHEARSAL_IMAGES=()
+for production_image in "${PRODUCTION_IMAGES[@]}"; do
+  REHEARSAL_IMAGES+=("seo-restore-rehearsal-${production_image#seo-intelligence-}:${suffix}")
+done
+
+rehearsal_override="$work/compose.rehearsal.yaml"
+
 src_compose() {
   docker compose --project-name "$src_project" --env-file "$src_env" \
-    -f compose.yaml -f compose.production.yaml "$@"
+    -f compose.yaml -f compose.production.yaml -f "$rehearsal_override" "$@"
 }
 
 dst_compose() {
   docker compose --project-name "$dst_project" --env-file "$dst_env" \
-    -f compose.yaml -f compose.production.yaml "$@"
+    -f compose.yaml -f compose.production.yaml -f "$rehearsal_override" "$@"
 }
+
+# Recorded before anything runs so the end of the rehearsal can prove the production tags were not
+# touched. A tag that does not exist yet is recorded as absent, which is equally a thing that must
+# not change: the rehearsal must not create it either.
+production_image_state() {
+  local image state
+  for image in "${PRODUCTION_IMAGES[@]}"; do
+    state="$(docker image inspect --format '{{.Id}}' "$image" 2>/dev/null || echo absent)"
+    printf '%s %s\n' "$image" "$state"
+  done
+}
+production_images_before="$(production_image_state)"
 
 cleanup() {
   local status=$?
   src_compose down --volumes --remove-orphans > /dev/null 2>&1 || true
   dst_compose down --volumes --remove-orphans > /dev/null 2>&1 || true
   docker network rm "$src_network" "$dst_network" > /dev/null 2>&1 || true
+  # Only the rehearsal's own tags. When they were tagged from the production images this removes
+  # the tag and leaves the image, which is still referenced by the production tag.
+  docker image rm "${REHEARSAL_IMAGES[@]}" > /dev/null 2>&1 || true
   rm -rf "$work"
   return "$status"
 }
@@ -98,14 +139,16 @@ random_hex() {
 
 # --- an isolated production-shaped stack ---------------------------------------------------------
 
+postgres_db="seo_restore_rehearsal"
+postgres_user="seo_restore"
 postgres_password="$(random_hex)"
 service_key="$(random_hex)"
 
 write_env() {
   local target="$1" network="$2"
   sed -e "s|^APP_ENV_FILE=.*|APP_ENV_FILE=${app_env}|" \
-      -e "s|^POSTGRES_DB=.*|POSTGRES_DB=seo_restore_rehearsal|" \
-      -e "s|^POSTGRES_USER=.*|POSTGRES_USER=seo_restore|" \
+      -e "s|^POSTGRES_DB=.*|POSTGRES_DB=${postgres_db}|" \
+      -e "s|^POSTGRES_USER=.*|POSTGRES_USER=${postgres_user}|" \
       -e "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=${postgres_password}|" \
       -e "s|^CADDY_NETWORK=.*|CADDY_NETWORK=${network}|" \
       -e "s|^API_SERVICE_KEY=.*|API_SERVICE_KEY=${service_key}|" \
@@ -118,14 +161,40 @@ cp .env.production.app.example "$app_env"
 write_env "$src_env" "$src_network"
 write_env "$dst_env" "$dst_network"
 
+cat > "$rehearsal_override" <<OVERRIDE
+# Generated by scripts/verify-production-restore.sh. Keeps the rehearsal off the production tags.
+services:
+  api:
+    image: ${REHEARSAL_IMAGES[0]}
+  web:
+    image: ${REHEARSAL_IMAGES[1]}
+  worker:
+    image: ${REHEARSAL_IMAGES[2]}
+  migrate:
+    image: ${REHEARSAL_IMAGES[3]}
+OVERRIDE
+
 # `caddy` is an external network in the production overlay: on the VPS the reverse proxy owns it.
 docker network create "$src_network" > /dev/null
 docker network create "$dst_network" > /dev/null
 
 if [[ "${RESTORE_REHEARSAL_SKIP_BUILD:-false}" == "true" ]]; then
-  echo "Using the already-built production images."
+  # Tagging does not modify the source image, so reusing them this way still leaves the production
+  # tags alone. Which image is being exercised is printed: a rehearsal that passed on an image
+  # built from some other commit has not verified this checkout, and would otherwise look the same.
+  echo "Reusing already-built images under rehearsal tags:"
+  for index in "${!PRODUCTION_IMAGES[@]}"; do
+    source_image="${PRODUCTION_IMAGES[$index]}"
+    docker image inspect "$source_image" > /dev/null 2>&1 \
+      || fail "RESTORE_REHEARSAL_SKIP_BUILD is set but ${source_image} does not exist. Build first."
+    docker image tag "$source_image" "${REHEARSAL_IMAGES[$index]}"
+    printf '  %s %s created %s\n' "$source_image" \
+      "$(docker image inspect --format '{{.Id}}' "$source_image" | cut -c1-19)" \
+      "$(docker image inspect --format '{{.Created}}' "$source_image")"
+  done
+  echo "  These were not built by this run; confirm they match the current checkout."
 else
-  echo "Building the production images..."
+  echo "Building the application images under rehearsal tags..."
   src_compose build api web worker migrate > /dev/null
 fi
 
@@ -144,7 +213,7 @@ api_curl() {
   # --fail-with-body rather than --fail: when the API refuses something the envelope says why, and
   # a rehearsal reporting only "curl exited 22" would send the reader looking in the wrong place.
   docker compose --project-name "$project" --env-file "$env_file" \
-    -f compose.yaml -f compose.production.yaml \
+    -f compose.yaml -f compose.production.yaml -f "$rehearsal_override" \
     exec -T api curl --silent --show-error --fail-with-body \
     --header "X-Service-Key: ${service_key}" "$@"
 }
@@ -192,46 +261,57 @@ project_json="$(src_api \
 project_id="$(first_guid projectId <<< "$project_json")"
 [[ -n "$project_id" ]] || fail "the rehearsal project was not created: $project_json"
 
-job_json="$(src_api \
-  --header 'Content-Type: application/json' \
-  --data '{"exportType":"keyword_metrics","format":"csv"}' \
-  "http://localhost:8080/api/projects/${project_id}/exports/csv")"
-job_id="$(first_guid jobId <<< "$job_json")"
-[[ -n "$job_id" ]] || fail "the export job was not accepted: $job_json"
+# Runs a real export end to end and echoes the export id: the API accepts it, the Worker picks it
+# up, and the file lands in storage. Used on the source stack to produce something worth backing
+# up, and again on the restored stack, where it is the only thing that shows the Worker can still
+# do its job against restored state rather than merely start.
+run_export() {
+  local project="$1" env_file="$2"
+  local job_json job_id job export_id="" details
 
-export_id=""
-for _ in $(seq 1 60); do
-  job="$(src_api "http://localhost:8080/api/jobs/${job_id}")"
-  case "$job" in
-    *'"failed_fatal"'*|*'"failed_retryable"'*|*'"canceled"'*)
-      fail "the export job did not succeed: $job"
-      ;;
-  esac
-  export_id="$(first_guid resourceId <<< "$job")"
-  if [[ -n "$export_id" ]]; then
-    break
-  fi
-  sleep 2
-done
-[[ -n "$export_id" ]] || fail "the export job produced no artifact within two minutes."
+  job_json="$(api_call "$project" "$env_file" \
+    --header 'Content-Type: application/json' \
+    --data '{"exportType":"keyword_metrics","format":"csv"}' \
+    "http://localhost:8080/api/projects/${project_id}/exports/csv")"
+  job_id="$(first_guid jobId <<< "$job_json")"
+  [[ -n "$job_id" ]] || fail "the export job was not accepted: $job_json"
 
-# The job names the export as soon as the row exists, which is before the file has been written.
-# The export's own status is what says the artifact is there; fetching earlier answers 409.
-export_ready=false
-for _ in $(seq 1 60); do
-  export_details="$(src_api "http://localhost:8080/api/projects/${project_id}/exports/${export_id}")"
-  case "$export_details" in
-    *'"status":"succeeded"'*)
-      export_ready=true
+  for _ in $(seq 1 60); do
+    job="$(api_call "$project" "$env_file" "http://localhost:8080/api/jobs/${job_id}")"
+    case "$job" in
+      *'"failed_fatal"'*|*'"failed_retryable"'*|*'"canceled"'*)
+        fail "the export job did not succeed: $job"
+        ;;
+    esac
+    export_id="$(first_guid resourceId <<< "$job")"
+    if [[ -n "$export_id" ]]; then
       break
-      ;;
-    *'"status":"failed'*)
-      fail "the export did not succeed: $export_details"
-      ;;
-  esac
-  sleep 2
-done
-[[ "$export_ready" == "true" ]] || fail "the export did not complete within two minutes."
+    fi
+    sleep 2
+  done
+  [[ -n "$export_id" ]] || fail "the export job produced no artifact within two minutes."
+
+  # The job names the export as soon as the row exists, which is before the file has been written.
+  # The export's own status is what says the artifact is there; fetching earlier answers 409.
+  for _ in $(seq 1 60); do
+    details="$(api_call "$project" "$env_file" \
+      "http://localhost:8080/api/projects/${project_id}/exports/${export_id}")"
+    case "$details" in
+      *'"status":"succeeded"'*)
+        printf '%s' "$export_id"
+        return 0
+        ;;
+      *'"status":"failed'*)
+        fail "the export did not succeed: $details"
+        ;;
+    esac
+    sleep 2
+  done
+
+  fail "the export did not complete within two minutes."
+}
+
+export_id="$(run_export "$src_project" "$src_env")"
 
 fetch_artifact "$src_project" "$src_env" \
   "http://localhost:8080/api/projects/${project_id}/exports/${export_id}/content" \
@@ -275,9 +355,24 @@ dst_compose exec -T postgres sh -c \
   'pg_restore --no-owner --no-privileges --exit-on-error --username "$POSTGRES_USER" --dbname "$POSTGRES_DB"' \
   < "${backup_dir}/postgres.dump"
 
-# The restored schema is already at the backup's version, so this has to be a no-op. If it is not,
-# the dump and the code have drifted apart and the restore is not usable as-is.
+# The restored schema is already at the backup's version, so this has to be a no-op. `migrate`
+# exits 0 either way - applying a pending migration is a success as far as it is concerned - so the
+# history table is counted on both sides. A dump that needs migrating is a dump that has drifted
+# from the code, and restoring it would silently change the schema during a recovery.
+migration_count() {
+  dst_compose exec -T postgres psql -tAq -U "$postgres_user" -d "$postgres_db" \
+    -c 'select count(*) from "__EFMigrationsHistory"' | tr -d '[:space:]'
+}
+
+migrations_before="$(migration_count)"
+[[ "$migrations_before" =~ ^[0-9]+$ && "$migrations_before" -gt 0 ]] \
+  || fail "the restored database has no migration history (got '${migrations_before}')."
+
 dst_compose --profile tools run --rm migrate > /dev/null
+
+migrations_after="$(migration_count)"
+[[ "$migrations_after" == "$migrations_before" ]] \
+  || fail "the restore needed ${migrations_after} migrations where the dump had ${migrations_before}; the dump and the code have drifted."
 
 dst_compose up -d --wait --wait-timeout 180 api worker web > /dev/null
 
@@ -304,5 +399,25 @@ restored_keys_hash="$(dst_compose exec -T web sh -c "cat ${keys_path}/key-*.xml"
 [[ "$restored_keys_hash" == "$keys_hash" ]] \
   || fail "the Data Protection keys were not restored; existing sessions would be rejected."
 
+# Reading an old artifact only shows the restored state can be read. A recovered deployment has to
+# be able to work: this queues a new export on the restored stack and waits for the Worker to
+# finish it, which exercises Hangfire's restored tables, the database and the storage volume.
+new_export_id="$(run_export "$dst_project" "$dst_env")"
+fetch_artifact "$dst_project" "$dst_env" \
+  "http://localhost:8080/api/projects/${project_id}/exports/${new_export_id}/content" \
+  "$work/artifact-new.bin"
+[[ -s "$work/artifact-new.bin" ]] \
+  || fail "the restored Worker produced an empty artifact."
+
+# The rehearsal builds under its own tags; this is what proves it. A rehearsal that quietly rebuilt
+# seo-intelligence-api would leave production running an image nobody scanned.
+production_images_after="$(production_image_state)"
+if [[ "$production_images_after" != "$production_images_before" ]]; then
+  echo "FAIL: the rehearsal changed the production image tags." >&2
+  diff <(printf '%s\n' "$production_images_before") <(printf '%s\n' "$production_images_after") >&2 || true
+  exit 1
+fi
+
 echo "Restore rehearsal succeeded: the database, the stored artifact and the Data Protection keys"
-echo "came back together, and the artifact reads byte-for-byte through the API."
+echo "came back together, the artifact reads byte-for-byte through the API, the restored Worker"
+echo "completed a new export, and the production image tags are unchanged."

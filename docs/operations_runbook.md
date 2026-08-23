@@ -118,7 +118,7 @@ OpenTelemetry Meter名は `SeoIntelligence`。MVPで記録する運用メトリ�
 | Storage | ローデータ、レポート、CSV/Excelを冗長化。 |
 | Web Data Protection keys | `web-data-protection` Volumeを保持し、Web再作成時も継続利用する。 |
 | Secret | Key Vault等でバージョン管理。実値はRunbookに書かない。 |
-| 復元検証 | 四半期ごと、およびバックアップ手順を変更したときに`bash scripts/verify-production-restore.sh`を実行する。隔離Compose projectへ実際に復元し、成果物がAPI経由でバイト一致で読めることまで確認する（`docs/docker_deployment.md` 5.2）。 |
+| 復元検証 | 四半期ごと、およびバックアップ手順を変更したときに`bash scripts/verify-production-restore.sh`を実行する。隔離Compose projectへ実際に復元し、成果物がAPI経由でバイト一致で読めること、復元先のWorkerが新しいジョブを完走できることまで確認する（`docs/docker_deployment.md` 5.2）。Linux専用で、実行できない環境では**exit 2**になる。この失敗を「環境の都合」として無視しないこと。無視した時点で、復元検証は実施されていない。 |
 
 復元時は、DB、Storage、Secret参照、アプリ設定の整合性を確認する。ローデータ本体を保持期間で削除済みの場合でも、DB上のハッシュ、ステータス、クレジット、契約スコープは監査用に残す。
 

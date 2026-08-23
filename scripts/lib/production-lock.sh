@@ -9,9 +9,17 @@
 # still stop containers and migrate the same project at the same time - the project is what is
 # shared, not the working copy.
 #
-# Scope and its limit: the lock excludes concurrent operations by the same Unix user. Deploy as one
-# dedicated user. If more than one user must deploy, point PRODUCTION_LOCK_DIR at a directory they
-# all own; it is rejected if it is world-writable.
+# Scope and its limit: the lock excludes concurrent operations by the same Unix user, and only by
+# that user. Deploying as one dedicated user is a requirement, not a recommendation - the lock
+# directory must be owned by the caller and the lock file is created 0600, so a second deploy user
+# could neither share the directory nor open the file. Two users deploying would not be serialised
+# by this; they would each be refused or each proceed, depending on which of the two failures came
+# first. Supporting that would mean a group-owned directory and a group-writable lock file, which
+# is a different design and is not what this is.
+#
+# PRODUCTION_LOCK_DIR overrides where the lock lives. It exists for hosts where neither default is
+# usable - Debian's /var/lock is a 1777 symlink to /run/lock, which is rejected - and for the
+# restore rehearsal, which locks its own isolated stack.
 
 # Where the lock may live. Chosen deliberately rather than defaulted into /tmp: a lock any user can
 # hold or pre-create is not a lock, so no safe location means no deployment.
