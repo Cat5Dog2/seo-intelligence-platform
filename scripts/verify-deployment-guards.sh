@@ -91,12 +91,12 @@ expect_failure "a digest that does not match the rendered image" \
 # than about building images or dumping a database.
 make_traceable() {
   local source="$1" destination="$2" backup_command="${3:-echo TRACE backup}"
-  sed     -e 's|^COMPOSE=(docker compose .*|COMPOSE=(echo TRACE compose)|'     -e 's|^  APP_SCAN_MANIFEST=.* bash scripts/scan-container-images.sh app$|  echo TRACE scan|'     -e 's|^  pin_scanned_images$|  echo TRACE pin|'     -e 's|^    assert_running_images .*|    echo TRACE verify|'     -e 's|^cd "$(dirname "$0")/\.\."$|cd "$(dirname "$0")/../.."|'     "$source" > "$destination"
+  sed     -e 's|^COMPOSE=(docker compose .*|COMPOSE=(echo TRACE compose)|'     -e 's|^  APP_SCAN_MANIFEST=.* bash scripts/scan-container-images.sh app$|  echo TRACE scan|'     -e 's|^  pin_scanned_images$|  echo TRACE pin|'     -e 's|^    pin_running_images api worker web$|    echo TRACE pin-running|'     -e 's|^\([[:space:]]*\)assert_running_images .*$|\1echo TRACE verify|'     -e 's|^cd "$(dirname "$0")/\.\."$|cd "$(dirname "$0")/../.."|'     "$source" > "$destination"
 
   # Same reasoning as the backup stub below: a pattern that stopped matching would leave the real
   # scan and the real image verification running against a real Docker, and every trace case would
   # fail slowly for the wrong reason.
-  for pattern in 'scripts/scan-container-images.sh app' 'pin_scanned_images$' 'assert_running_images '; do
+  for pattern in 'scripts/scan-container-images.sh app' 'pin_scanned_images$' '^[[:space:]]*pin_running_images ' '^[[:space:]]*assert_running_images '; do
     if grep -qE "$pattern" "$destination"; then
       echo "FAIL: '$pattern' in $source no longer matches the stub pattern." >&2
       failures=$((failures + 1))
@@ -172,10 +172,47 @@ verify
 compose ps
 compose logs --tail 200 web api worker"
 
-expect_trace "an ad-hoc backup stops, backs up and starts again"   "$traceable" backup   "compose stop web api worker
+expect_trace "an ad-hoc backup restarts the image IDs that were running before it stopped"   "$traceable" backup   "pin-running
+compose stop web api worker
 backup
 compose up -d --wait api worker web
+verify
 compose ps"
+
+# The image variables are part of the Compose model, so pinning only after the build is too late:
+# inherited values would make Compose place the new build under other tags while the scanner keeps
+# reading the four production tags. The deployment has to choose the build targets before its first
+# Compose call.
+cat > "$work/build-image-stub.sh" <<'STUB'
+#!/usr/bin/env bash
+if [[ "${1:-}" == "build" ]]; then
+  printf 'TRACE build-images=%s|%s|%s|%s\n' \
+    "${API_IMAGE:-unset}" "${WEB_IMAGE:-unset}" "${WORKER_IMAGE:-unset}" "${MIGRATE_IMAGE:-unset}"
+else
+  printf 'TRACE compose %s\n' "$*"
+fi
+STUB
+chmod +x "$work/build-image-stub.sh"
+
+build_targets="$work/deploy-build-targets"
+make_traceable scripts/deploy-production.sh "$build_targets"
+sed -i 's|^COMPOSE=(echo TRACE compose)$|COMPOSE=(bash "$BUILD_IMAGE_STUB")|' "$build_targets"
+
+build_target_output="$(
+  PATH="$PWD/$work/bin:$PATH" PRODUCTION_LOCK_DIR="$PWD/$work/lock" \
+    ENV_FILE=.env.production.example BUILD_IMAGE_STUB="$PWD/$work/build-image-stub.sh" \
+    API_IMAGE=inherited-api WEB_IMAGE=inherited-web WORKER_IMAGE=inherited-worker \
+    MIGRATE_IMAGE=inherited-migrate bash "$build_targets" initial 2>&1
+)" || true
+
+expected_build_targets='TRACE build-images=seo-intelligence-api|seo-intelligence-web|seo-intelligence-worker|seo-intelligence-migrate'
+if ! grep -qF "$expected_build_targets" <<< "$build_target_output"; then
+  echo "FAIL: inherited image variables changed the targets produced by the build." >&2
+  grep '^TRACE ' <<< "$build_target_output" | sed 's/^/      /' >&2
+  failures=$((failures + 1))
+else
+  echo "ok: the deployment fixes all four build targets before Compose runs."
+fi
 
 # A failed backup must not leave the application down. Nothing has changed at that point - no
 # migration has run - so the previous version has to come back up.
@@ -194,6 +231,78 @@ elif ! grep -qF "compose up -d --wait api worker web" <<< "$backup_output"; then
 else
   echo "ok: a failed ad-hoc backup restarts the services it stopped."
 fi
+
+# Backup does not scan, so it must preserve the exact images that were running before stop. This
+# exercises the real pinning and post-start verification functions at the Docker process boundary;
+# the trace test above only proves that calls exist in the right order.
+mkdir -p "$work/backup-image-bin"
+cat > "$work/backup-image-bin/docker" <<'DOCKER'
+#!/usr/bin/env bash
+set -euo pipefail
+case "${1:-} ${2:-} ${3:-} ${4:-}" in
+  "inspect --format {{.Image}} container-api") printf 'sha256:%064d\n' 1 ;;
+  "inspect --format {{.Image}} container-web") printf 'sha256:%064d\n' 2 ;;
+  "inspect --format {{.Image}} container-worker") printf 'sha256:%064d\n' 3 ;;
+  *) echo "unexpected docker invocation: $*" >&2; exit 91 ;;
+esac
+DOCKER
+chmod +x "$work/backup-image-bin/docker"
+
+cat > "$work/backup-image-compose.sh" <<'COMPOSE'
+#!/usr/bin/env bash
+set -euo pipefail
+case "$*" in
+  "ps --quiet api") printf '%s\n' container-api ;;
+  "ps --quiet web") printf '%s\n' container-web ;;
+  "ps --quiet worker") printf '%s\n' container-worker ;;
+  "stop web api worker") printf 'TRACE stopped\n' ;;
+  "up -d --wait api worker web")
+    printf 'TRACE restart-images=%s|%s|%s\n' "$API_IMAGE" "$WEB_IMAGE" "$WORKER_IMAGE"
+    ;;
+  "ps") printf 'TRACE status\n' ;;
+  *) echo "unexpected compose invocation: $*" >&2; exit 92 ;;
+esac
+COMPOSE
+chmod +x "$work/backup-image-compose.sh"
+
+cat > "$work/backup-result.sh" <<'BACKUP'
+#!/usr/bin/env bash
+exit "${BACKUP_RESULT:-0}"
+BACKUP
+chmod +x "$work/backup-result.sh"
+
+backup_images="$work/deploy-backup-images"
+sed \
+  -e 's|^COMPOSE=(docker compose .*|COMPOSE=(bash "$BACKUP_IMAGE_COMPOSE")|' \
+  -e 's|bash scripts/backup-production.sh$|bash "$BACKUP_RESULT_STUB"|' \
+  -e 's|^cd "$(dirname "$0")/\.\."$|cd "$(dirname "$0")/../.."|' \
+  scripts/deploy-production.sh > "$backup_images"
+
+expected_restart="TRACE restart-images=sha256:$(printf '%064d' 1)|sha256:$(printf '%064d' 2)|sha256:$(printf '%064d' 3)"
+for backup_result in 0 4; do
+  backup_image_status=0
+  backup_image_output="$(
+    PATH="$PWD/$work/backup-image-bin:$PWD/$work/bin:$PATH" \
+      PRODUCTION_LOCK_DIR="$PWD/$work/lock" ENV_FILE=.env.production.example \
+      BACKUP_IMAGE_COMPOSE="$PWD/$work/backup-image-compose.sh" \
+      BACKUP_RESULT_STUB="$PWD/$work/backup-result.sh" BACKUP_RESULT="$backup_result" \
+      API_IMAGE=inherited-api WEB_IMAGE=inherited-web WORKER_IMAGE=inherited-worker \
+      bash "$backup_images" backup 2>&1
+  )" || backup_image_status=$?
+
+  if [[ "$backup_result" -eq 0 && "$backup_image_status" -ne 0 ]] ||
+     [[ "$backup_result" -ne 0 && "$backup_image_status" -eq 0 ]]; then
+    echo "FAIL: backup result $backup_result produced exit $backup_image_status." >&2
+    sed 's/^/      /' <<< "$backup_image_output" >&2
+    failures=$((failures + 1))
+  elif ! grep -qF "$expected_restart" <<< "$backup_image_output"; then
+    echo "FAIL: backup result $backup_result did not restart the image IDs captured before stop." >&2
+    sed 's/^/      /' <<< "$backup_image_output" >&2
+    failures=$((failures + 1))
+  else
+    echo "ok: backup result $backup_result restarts the image IDs captured before stop."
+  fi
+done
 
 # BACKUP_PROJECT_NAME exists for the restore rehearsal. Left behind in a shell, an inherited value
 # would point the deployment's own backup at another stack - after the application is stopped and
@@ -416,7 +525,12 @@ expect_manifest_refusal() {
 
   local output status=0
   output="$(PATH="$PWD/$work/bin:$PATH" PRODUCTION_LOCK_DIR="$PWD/$work/lock" \
-    ENV_FILE=.env.production.example MANIFEST_PATH="$manifest" bash "$stub" initial 2>&1)" || status=$?
+    ENV_FILE=.env.production.example MANIFEST_PATH="$manifest" \
+    API_IMAGE="sha256:$(printf '1%.0s' {1..64})" \
+    WEB_IMAGE="sha256:$(printf '2%.0s' {1..64})" \
+    WORKER_IMAGE="sha256:$(printf '3%.0s' {1..64})" \
+    MIGRATE_IMAGE="sha256:$(printf '4%.0s' {1..64})" \
+    bash "$stub" initial 2>&1)" || status=$?
 
   if [[ "$status" -eq 0 ]]; then
     echo "FAIL: $description was accepted." >&2
@@ -445,6 +559,62 @@ expect_manifest_refusal "a manifest naming a tag instead of an image ID" \
 expect_manifest_refusal "a manifest missing one of the four images" \
   "has no scanned image for" \
   'printf "seo-intelligence-api\\tsha256:%064d\\n" 1 > "$MANIFEST_PATH"'
+
+expect_manifest_refusal "a manifest naming the same image twice" \
+  "more than once" \
+  'printf "seo-intelligence-api\\tsha256:%064d\\nseo-intelligence-api\\tsha256:%064d\\nseo-intelligence-web\\tsha256:%064d\\nseo-intelligence-worker\\tsha256:%064d\\nseo-intelligence-migrate\\tsha256:%064d\\n" 1 2 3 4 5 > "$MANIFEST_PATH"'
+
+# A post-start check is only a safety control if it removes an image it cannot verify. Reporting an
+# error while leaving api/web/worker online would turn a failed deployment into an unbounded period
+# serving the artifact the check rejected.
+mkdir -p "$work/mismatch-bin"
+cat > "$work/mismatch-bin/docker" <<'DOCKER'
+#!/usr/bin/env bash
+if [[ "${1:-}" == "inspect" ]]; then
+  printf 'sha256:%064d\n' 9
+  exit 0
+fi
+echo "unexpected docker command: $*" >&2
+exit 1
+DOCKER
+chmod +x "$work/mismatch-bin/docker"
+
+cat > "$work/write-valid-manifest.sh" <<'MANIFEST'
+#!/usr/bin/env bash
+printf 'seo-intelligence-api\tsha256:%064d\n' 1 > "$MANIFEST_PATH"
+printf 'seo-intelligence-web\tsha256:%064d\n' 2 >> "$MANIFEST_PATH"
+printf 'seo-intelligence-worker\tsha256:%064d\n' 3 >> "$MANIFEST_PATH"
+printf 'seo-intelligence-migrate\tsha256:%064d\n' 4 >> "$MANIFEST_PATH"
+MANIFEST
+chmod +x "$work/write-valid-manifest.sh"
+
+mismatch_deploy="$work/deploy-running-mismatch"
+mismatch_manifest="$PWD/$work/mismatch-manifest.tsv"
+sed \
+  -e 's|^COMPOSE=(docker compose .*|COMPOSE=(echo TRACE compose)|' \
+  -e 's|^  APP_SCAN_MANIFEST=.* bash scripts/scan-container-images.sh app$|  bash "$MANIFEST_WRITER"|' \
+  -e 's|^SCAN_MANIFEST=.*|SCAN_MANIFEST="'"$mismatch_manifest"'"|' \
+  -e 's|^cd "$(dirname "$0")/\.\."$|cd "$(dirname "$0")/../.."|' \
+  scripts/deploy-production.sh > "$mismatch_deploy"
+
+mismatch_status=0
+mismatch_output="$(
+  PATH="$PWD/$work/mismatch-bin:$PWD/$work/bin:$PATH" \
+    PRODUCTION_LOCK_DIR="$PWD/$work/lock" ENV_FILE=.env.production.example \
+    MANIFEST_PATH="$mismatch_manifest" MANIFEST_WRITER="$PWD/$work/write-valid-manifest.sh" \
+    bash "$mismatch_deploy" initial 2>&1
+)" || mismatch_status=$?
+
+if [[ "$mismatch_status" -eq 0 ]]; then
+  echo "FAIL: a running image mismatch was accepted." >&2
+  failures=$((failures + 1))
+elif ! grep -qF "TRACE compose stop web api worker" <<< "$mismatch_output"; then
+  echo "FAIL: a running image mismatch left the application services online." >&2
+  sed 's/^/      /' <<< "$mismatch_output" >&2
+  failures=$((failures + 1))
+else
+  echo "ok: a running image mismatch stops all application services."
+fi
 
 if [[ "$failures" -ne 0 ]]; then
   echo "$failures guard(s) did not catch their case." >&2
