@@ -122,17 +122,24 @@ bash scripts/deploy-production.sh initial
 
 | 順 | 内容 | 理由 |
 | --- | --- | --- |
-| 1 | `config --quiet` | Compose定義の検証。 |
-| 2 | `build api web worker migrate` | **サービス名を明示する**。`migrate`は`tools` profile配下にあり、省略するとbuild対象から外れる。初回はmigrate imageが存在せず、更新時は前リリースのbundleでMigrationを実行してしまう。 |
-| 3 | `scan-container-images.sh app` | **buildの後・起動の前**。前ならば前リリースのimageを、後ならば既に稼働中のimageを検査することになる。 |
-| 4 | `up -d postgres redis` | 依存サービスの起動。 |
-| 5 | `--profile tools run --rm migrate` | Migration適用。 |
-| 6 | `up -d --wait api worker web` | アプリ起動とhealthy待ち。 |
-| 7 | `ps` | 状態確認。 |
+| 1 | build先を固定タグへ設定 | `API_IMAGE`等の継承値を無視し、Composeがbuildする4つの名前とスキャナが解決する名前を一致させる。 |
+| 2 | `config --quiet` | Compose定義の検証。 |
+| 3 | `build api web worker migrate` | **サービス名を明示する**。`migrate`は`tools` profile配下にあり、省略するとbuild対象から外れる。初回はmigrate imageが存在せず、更新時は前リリースのbundleでMigrationを実行してしまう。 |
+| 4 | `scan-container-images.sh app` | **buildの後・起動の前**。前ならば前リリースのimageを、後ならば既に稼働中のimageを検査することになる。合格した4つのimage IDを`artifacts/scanned-images.tsv`へ記録する。 |
+| 5 | manifestの読み込みとexport | 4サービスが正確に1件ずつ記録されていることを確認し、image IDを`API_IMAGE`等へ設定する。manifestが無い・IDでない・欠落・重複なら**起動前に停止**する。 |
+| 6 | `up -d postgres redis` | 依存サービスの起動。 |
+| 7 | `--profile tools run --rm migrate` | Migration適用。 |
+| 8 | `up -d --wait api worker web` | アプリ起動とhealthy待ち。 |
+| 9 | 起動中コンテナの`.Image`照合 | 起動したimage IDが手順4で合格したものと一致することを確認する。取得不能または不一致ならweb/api/workerをすべて停止する。 |
+| 10 | `ps` | 状態確認。 |
 
 この順序は`scripts/verify-production-compose.sh`が検証し、`scripts/verify-deployment-guards.sh`が「検証自体が機能しなくなっていないこと」を検証する。
 
-CIも同じスキャンを行うが、VPSは同じコミットから再buildするため、CIが検査したimageと本番が起動するimageは同一とは限らない（`mcr.microsoft.com/dotnet/*`のタグ、`apt-get`、NuGet restoreはいずれも可変である）。**本番で実際に動くimageを保証できるのは手順3の実行だけ**である。より強い保証が必要なら、CIでbuild・スキャンしたimageをregistryへpushし、本番はそのdigestを`pull`して`up --no-build`する構成へ移行する。現構成はregistryを前提にしていない。
+`compose.yaml`の`api` / `web` / `worker` / `migrate`は`${API_IMAGE:-seo-intelligence-api}`のように変数で書く。スクリプトは最初のCompose呼び出しより前に4変数を固定タグへ設定し、手順5でそれらを合格したimage IDへ置き換える。したがって環境に残った値はbuild先にも起動imageにも使われない（Composeでは`--env-file`よりexportされた変数が優先される。`--project-name`を明示するのと同じ理由である）。手で`docker compose`を実行した場合は既定値のタグへ落ちるので、従来と同じ挙動になる。
+
+**タグではなくimage IDで起動する理由。** buildと`up`の間にタグが差し替わると、スキャンを通した成果物とは別のimageが起動する。手順9の照合だけでは、起動してしまった後にしか気づけない。`migrate`は本番DBへ書き込む唯一のコンポーネントなので、その差は「一瞬動いた」では済まない。
+
+CIも同じスキャンを行うが、VPSは同じコミットから再buildするため、CIが検査したimageと本番が起動するimageは同一とは限らない（`mcr.microsoft.com/dotnet/*`のタグ、`apt-get`、NuGet restoreはいずれも可変である）。**本番で実際に動くimageを保証できるのは手順4の実行だけ**である。より強い保証が必要なら、CIでbuild・スキャンしたimageをregistryへpushし、本番はそのdigestを`pull`して`up --no-build`する構成へ移行する。現構成はregistryを前提にしていない。
 
 MigrationはAPI起動時に自動適用しない。`migrate`はEF migration bundleを実行するone-shotコンテナで、適用完了後に終了する。API `/readyz`は未適用Migrationを検知してunhealthyを返すため、`migrate`を飛ばした場合はapiのhealthcheckが成功せず`up --wait`が失敗する。手順としてもMigration→起動の順序を守る。
 
@@ -267,6 +274,8 @@ bash scripts/deploy-production.sh backup
 同居VPSでは `/srv/wwt-seo-infra/scripts/seo backup` を使う。
 
 停止・取得・再起動をスクリプトにまとめてあるのは、この3つが**デプロイと同じロックの中**で行われる必要があるためである。手動で3コマンドを打つと、その間にデプロイが走ればMigration中のdumpや、進行中デプロイのサービス停止が起こり得る。ロックはCompose project名で決まるcheckout外のパスに置くので、別のcloneやworktreeから実行しても排他される。
+
+`backup`はbuildとスキャンを行わないため、停止前に稼働中のweb/api/workerコンテナからimage IDを取得し、その3つを再起動用のCompose変数へ設定する。3サービスのいずれかが見つからない、image IDを取得できない、またはID形式でない場合は、まだ何も停止していない時点で拒否する。これにより、親shellのimage変数や停止中に差し替えられたタグから別imageを起動しない。バックアップ成功時と失敗時の復旧の双方で起動後の`.Image`を照合し、確認不能または不一致ならweb/api/workerをすべて停止して成功扱いにしない。
 
 **デプロイは単一のUnixユーザーで行うこと。これは推奨ではなく要件である。** ロックディレクトリは実行ユーザーの所有であることを要求し、ロックファイルは0600で作成するため、2人目のデプロイユーザーはディレクトリを共有することもファイルを開くこともできない。2人が同時にデプロイしても直列化されず、どちらかが拒否されるか、どちらも進むかのいずれかになる。複数ユーザー運用を成立させるにはgroup所有・group書き込み可の設計が必要で、現在の実装はそうなっていない。
 
