@@ -5,6 +5,12 @@ on:
     branches:
       - main
   pull_request:
+  # Advisories are published against images this repository does not change. Without a clock,
+  # a new one is only discovered by the next push - the runtime gate went from clean to nine
+  # findings with no commit in between, and nothing said so.
+  schedule:
+    - cron: "0 18 * * *"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -113,6 +119,13 @@ jobs:
         env:
           TRIVY_CACHE_DIR: ${{ runner.temp }}/trivy-cache
         run: bash scripts/scan-container-images.sh runtime
+
+      # Not a gate: these have no fix, so failing on them would only mean turning the gate off.
+      # Reported so the judgement happens at all.
+      - name: Report unfixed findings in runtime images
+        env:
+          TRIVY_CACHE_DIR: ${{ runner.temp }}/trivy-cache
+        run: bash scripts/scan-container-images.sh unfixed
 
       # MinIO is an opt-in development profile that no production Compose file starts, so its
       # findings are reported without gating.

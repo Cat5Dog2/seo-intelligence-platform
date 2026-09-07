@@ -1148,6 +1148,136 @@ ISSUE-MVP-00X の続きから再開してください。
 - [x] `smoke-local.ps1`のpg_isreadyをコンテナ内`$POSTGRES_USER`/`$POSTGRES_DB`参照へ修正。
 - [x] VPS手順を`docker_deployment.md`へ一本化し、README/runbookは参照化（`chmod 600`のdrift解消）。
 
+### ISSUE-OPS-003 同居VPSのデプロイ手順を wwt-seo-infra のラッパー前提へ同期する
+
+参照ドキュメント: `docs/docker_deployment.md`, `docs/operations_runbook.md`
+
+背景:
+
+- `web-writing.cloud` と `seo-intelligence.cloud` を同じVPSで動かす構成になり、共通Caddyの所有とデプロイ対象リビジョンの決定は `wwt-seo-infra` へ移った。同リポジトリの `scripts/seo` だけが、チェックアウトの完全SHA一致、未追跡ファイルを含むclean検査、`CADDY_NETWORK` の固定を行う。
+- `docs/docker_deployment.md` は `bash scripts/deploy-production.sh initial` の直接実行を案内している。同居構成でそのまま実行すると、親shellや `.env.production` に別のネットワーク名があった場合に**Caddyとアプリが別ネットワークへ繋がったままデプロイが成功し、全リクエストが502になる**。
+- 手順の二重化は既に一度事故になっている。デプロイ順序の記述がアプリリポジトリと手順書で食い違い、修正が必要になった。
+
+目的:
+
+- [ ] 同居VPSでの正本手順を `wwt-seo-infra/docs/vps-deploy.md` とし、SEOリポジトリの記述をそれと矛盾させない。
+
+範囲:
+
+- [ ] `docs/docker_deployment.md` に、同居VPSでは `wwt-seo-infra/scripts/seo` を使うこと、`scripts/deploy-production.sh` の直接実行は単独構成向けであることを明記する。
+- [ ] 手順そのものを複製しない。infra側の該当セクションへの参照に留める。
+- [ ] `docs/operations_runbook.md` の障害対応で、同居構成のときに参照すべきinfra側entrypointを示す。
+
+受入条件:
+
+- [ ] `docs/docker_deployment.md` を読んだ運用者が、同居VPSで `deploy-production.sh` を直接実行しない。
+- [ ] SEOリポジトリ内にinfra側の手順のコピーが増えていない。
+
+検証:
+
+- [ ] 記述の突き合わせ（`wwt-seo-infra/docs/vps-deploy.md` STEP 9 と矛盾しないこと）
+
+補足:
+
+- 共通Caddyの設定・ビルド・起動はinfraが持つ。SEO側でCaddyを重複して直す必要はない。
+
+### ISSUE-OPS-004 同居VPS向けにComposeサービスのリソース上限を設定する
+
+参照ドキュメント: `docs/docker_deployment.md`, `docs/operations_runbook.md`
+
+背景:
+
+- `compose.yaml` と `compose.production.yaml` のどのサービスにも CPU・メモリ・PID の上限が無い（`mem_limit` / `cpus` / `pids_limit` / `deploy.resources` いずれも未設定）。
+- 同じVPSで web-writing-tool も動く。片方のアプリの暴走がホスト全体のメモリを奪うと、もう片方まで巻き込む。共通Caddyが落ちれば2ドメインとも停止する。
+
+目的:
+
+- [ ] 片方のスタックの異常が、もう片方と共通Caddyを巻き込まないようにする。
+
+範囲:
+
+- [ ] postgres、redis、api、worker、web の各サービスへメモリ・CPU・PID上限を設定する。
+- [ ] 値は推測でなく、通常運用時の実測を根拠にする。設定した根拠を `operations_runbook.md` へ残す。
+
+受入条件:
+
+- [ ] 各サービスに上限が設定され、通常運用で上限に当たらないことを実測で確認している。
+- [ ] 上限の根拠（測定値と余裕の取り方）がドキュメントに残っている。
+
+検証:
+
+- [ ] `docker stats` による実測（設定前後）
+- [ ] `bash scripts/container-smoke.sh`
+
+補足:
+
+- 実測が要るため、初回デプロイ後に着手する。締めすぎるとOOM killで可用性を落とすので、測らずに値を入れない。
+
+### ISSUE-OPS-005 ビルドしたimage IDでスキャンと起動を同一成果物へ固定する
+
+参照ドキュメント: `docs/docker_deployment.md`, `docs/ci-cd-design.md`
+
+背景:
+
+- `scripts/deploy-production.sh` は build -> scan -> up の順序を守っているが、3工程がそれぞれタグを再解決する。`compose.yaml` の自前ビルドは `image: seo-intelligence-api` のようなリテラル名で、`${API_IMAGE:-...}` のような変数展開は無い。したがって環境変数で別イメージへ差し替える経路は無く、web-writing-tool で問題になった形の露出は存在しない。
+- 残るのは、同一実行内の build と up の間にローカルで `docker tag` を差し替えた場合だけである。窓は狭いが、「スキャンした成果物が起動した」ことをスクリプトが確認していない状態ではある。
+- サードパーティイメージは digest 固定済みで、`scripts/verify-production-compose.sh` が `image-digests.lock` と突き合わせている。この Issue の対象は自前ビルドの4イメージに限る。
+
+目的:
+
+- [ ] スキャンを通した image ID と、実際に起動した image ID が一致することを機械的に確認する。
+
+範囲:
+
+- [ ] build 直後に `docker image inspect --format '{{.Id}}'` で4イメージの image ID を記録する。
+- [ ] scan と migration と起動へ同じ image ID を渡す。
+- [ ] `up` の後に起動中コンテナの `.Image` を記録と突き合わせ、不一致なら失敗させる。
+- [ ] manifest はゲート通過時のみ書き、スキャン開始前に消す。
+
+受入条件:
+
+- [ ] スキャン後にタグを差し替えても、`up` が拒否されるか照合で失敗する。
+- [ ] manifest 不在では起動できない。
+
+検証:
+
+- [ ] 回帰テスト（タグ差し替えの変異で失敗すること）
+- [ ] `bash scripts/container-smoke.sh`
+
+補足:
+
+- web-writing-tool の `scripts/production-compose.ps1` が同じ問題への実装例。ただしSEOはPowerShellを使っていないので、方式を借りて bash で実装する。
+
+### ISSUE-OPS-006 Dependabotを有効化し、GitHub ActionsをSHA固定する
+
+参照ドキュメント: `docs/ci-cd-design.md`
+
+背景:
+
+- Dependabot alerts が無効で、NuGetおよびAction依存の既知脆弱性が自動で上がってこない。
+- `.github/workflows/ci.yaml` の Action 参照が `actions/checkout@v6`、`actions/setup-dotnet@v4`、`docker/setup-buildx-action@v3`、`docker/bake-action@v6` と可動タグである。同じ組織の `wwt-seo-infra` は checkout をcommit SHAで固定しており、標準が食い違っている。
+- Actionのタグは作者が付け替えられる。CIはSecretと本番デプロイ判断に触れるので、固定しない理由が無い。
+
+目的:
+
+- [ ] 依存の既知脆弱性を自動で検知し、CIが実行するコードを固定する。
+
+範囲:
+
+- [ ] Dependabot alerts と security updates を有効化する。
+- [ ] `.github/workflows/*.yaml` の `uses:` をすべてcommit SHA固定にし、バージョンをコメントで併記する。
+- [ ] Dependabot の `github-actions` エコシステム更新を設定し、SHA固定を維持したまま更新できるようにする。
+
+受入条件:
+
+- [ ] すべての `uses:` が40文字のcommit SHAを指している。
+- [ ] Dependabot alerts が有効で、`github-actions` と `nuget` の更新PRが作られる。
+
+検証:
+
+- [ ] `grep -nE 'uses: .*@[0-9a-f]{40}' .github/workflows/*.yaml` が全 `uses:` 行に一致する
+- [ ] CI が成功する
+
 ## 横断セキュリティ
 
 ### ISSUE-SEC-001 単一管理者ログインとAPIサービス認証を実装する
@@ -1740,6 +1870,167 @@ CI失敗の是正:
 判断の記録（2次）:
 
 - `*_downloaded` は**取得の開始**（Storage読み取り成功＋呼び出し元への引き渡し）を意味する。読み取り失敗時は記録しないが、引き渡し後の転送中断・クライアント切断は検知しない。転送完了の保証には使えないことを `api_design.md` に明記した。
+
+### ISSUE-SEC-002 runtimeイメージの未トリアージCVEを判断し、定期スキャンで再発を検知する
+
+参照ドキュメント: `docs/operations_runbook.md` 7.3節, `docs/ci-cd-design.md`
+
+背景:
+
+- `bash scripts/scan-container-images.sh runtime` は現在 **exit 1** で、`postgres:16-alpine` に9件の未受理findingがある（実測）。
+
+  ```
+  HIGH CVE-2026-14456  (libcrypto3)
+  HIGH CVE-2026-14456  (libssl3)
+  HIGH CVE-2026-53612  (libuuid)
+  HIGH CVE-2026-53613  (libuuid)
+  HIGH CVE-2026-53614  (libuuid)
+  HIGH CVE-2026-76642  (libuuid)
+  HIGH CVE-2026-78408  (libuuid)
+  HIGH CVE-2026-78409  (libuuid)
+  HIGH CVE-2026-78410  (libuuid)
+  ```
+
+- libuuid の7件は web-writing-tool が `security/trivy/postgres.trivyignore.yaml` で既にトリアージ済みの util-linux と同じ組である。同じイメージを使いながら、片方だけ判断が記録されていない。
+- `.github/workflows/ci.yaml` は `on: push (main), pull_request` だけで `schedule:` も `workflow_dispatch:` も無い。mainの最後のCI成功は2026-08-23で、それ以降に公開されたアドバイザリを検知する機会が無かった。**CIは緑に見えているが、次にpushした時点で落ちる。**
+- デプロイ経路は `scan-container-images.sh app` なので、この9件はVPSデプロイを止めない。止めないまま判断が記録されない状態が続くのが問題である。
+- `scan_to_json` は `--ignore-unfixed` を使う。ゲート方針としては妥当だが、修正版が出ていないCVEはレポートにも出ないため、到達可能性の判断が残らない。
+
+目的:
+
+- [ ] runtimeイメージのHIGH/CRITICALすべてについて、受理か対処かの判断を記録する。
+- [ ] 新しいアドバイザリを、次のpushを待たずに検知する。
+
+範囲:
+
+- [ ] 9件を個別に評価し、受理するものを `RUNTIME_ACCEPTED` へ image/CVE/target/package の4フィールドで追加する。
+- [ ] 判断の根拠を `docs/operations_runbook.md` 7.3節へ書く。CVE-2026-14456 は OpenSSL の QUIC サーバー利用時に限られ、PostgreSQL 16 は QUIC を持たず、この構成では `ssl off` かつ 5432 を公開しない。libuuid の7件は util-linux のアドバイザリが同梱サブパッケージすべてに付くもので、到達する実行ファイルがイメージ内に存在しないことを確認したうえで受理する。
+- [ ] `.github/workflows/ci.yaml` へ `schedule:`（日次）と `workflow_dispatch:` を追加する。
+- [ ] 未修正CVEを可視化する報告工程を分ける。ゲートは `--ignore-unfixed` のままでよいが、修正版の無いCVEも一覧できるようにする。
+
+受入条件:
+
+- [ ] `bash scripts/scan-container-images.sh runtime` が exit 0 になる。
+- [ ] 受理した各CVEについて、なぜ到達しないかが `operations_runbook.md` 7.3節にある。
+- [ ] 定期実行が設定され、手動実行もできる。
+- [ ] 受理は image/CVE/target/package の完全一致で、別イメージや別バイナリへ広がらない。
+
+検証:
+
+- [ ] `bash scripts/scan-container-images.sh runtime`
+- [ ] `bash scripts/scan-container-images.sh app`
+- [ ] scheduled run の1回目が成功する
+
+補足:
+
+- 受理には期限の考え方が要る。web-writing-tool 側は 2026-10-27 を期限にしている。同じ日付で揃えるかは、上流の修正見込みを見て決める。
+
+### ISSUE-SEC-003 Trivyスキャナの隔離とリソース制限を強化する
+
+参照ドキュメント: `docs/ci-cd-design.md`, `docs/operations_runbook.md`
+
+背景:
+
+- 良い点として、`scan_to_json` は `docker save` した tar を渡し、Dockerソケットを渡さず、スキャン時は `--network none` で、スキャナイメージ自体も digest 固定されている。以下はその上での不足である。
+- DB更新（network有）とスキャン（network無）が同じ `CACHE_DIR` を共有する。ネットワークを持つ工程が書いたものを、持たない工程が読む。
+- 作業ディレクトリが `scratch="artifacts/trivy-scan"` の固定で、tar も `image.tar` の固定名。同時に2つ走ると互いのファイルを壊す。
+- Trivyコンテナに `--cap-drop`、`--pids-limit`、`--memory`、`--cpus` が無い。同居VPSで走らせる可能性がある以上、上限が要る。
+- Docker引数の安全性を固定する専用テストが無い。将来 `--network none` やソケット非注入が外れても検知できない。
+
+目的:
+
+- [ ] スキャナが本番と同居しても、他のスタックへ影響しないようにする。
+- [ ] 隔離の条件を、コメントではなくテストで固定する。
+
+範囲:
+
+- [ ] DB更新用とスキャン用でcacheを分ける。
+- [ ] 作業ディレクトリを `mktemp -d` にし、tar名を実行ごとに一意にする。
+- [ ] Trivyコンテナへ capability、PID、CPU、メモリの上限を付ける。
+- [ ] fake docker を使った回帰テストで、`--network none`、ソケット非注入、上限の付与を固定する。
+
+受入条件:
+
+- [ ] 2つのスキャンを同時に走らせても互いを壊さない。
+- [ ] 隔離条件のいずれかを外すと、テストが落ちる。
+
+検証:
+
+- [ ] 新規テストの変異確認（各条件を1つずつ外して落ちること）
+- [ ] `bash scripts/scan-container-images.sh app`
+
+補足:
+
+- web-writing-tool の `scripts/scan-image.ps1` が同じ問題を解いた実装例。設計を借りるのであって、コードを複製しない。
+
+### ISSUE-SEC-004 Forwarded Headers の信頼範囲を共通Caddyのネットワークへ限定する
+
+参照ドキュメント: `docs/docker_deployment.md`, `docs/operations_runbook.md`
+
+背景:
+
+- `compose.production.yaml` の api と web に `ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"` があるだけで、`KnownProxies` / `KnownNetworks` の設定はコードにもComposeにも無い（実測）。この経路は既知プロキシ/ネットワークの一覧を空にするため、`X-Forwarded-For` をどの接続元からでも信頼する。
+- 現在の実害は限定的である。api/web はホストへポート公開しておらず、到達できるのは共通Caddyのネットワーク上のCaddyだけである。つまり**ネットワーク分離だけが唯一の防御**になっている。
+- `ApiRateLimitingExtensions.ResolveClientPartitionKey` はレート制限の分割キーに `RemoteIpAddress` を使う。ヘッダを偽装できる接続元が1つでも増えると、レート制限が回避できるか、他利用者の枠を枯渇させられる。
+
+目的:
+
+- [ ] `X-Forwarded-For` を、共通Caddyが居るネットワークからの接続だけで信頼する。
+
+範囲:
+
+- [ ] `ForwardedHeadersOptions` を明示的に構成し、`KnownNetworks` に共通Caddyのネットワークsubnetを設定する。
+- [ ] subnetを固定値にするため、`wwt-seo-infra` 側で `seo-intelligence-caddy` ネットワークのsubnetを固定する。両リポジトリで同じ値を参照する形にし、二重管理にしない。
+- [ ] 信頼するsubnetの外から `X-Forwarded-For` を送っても `RemoteIpAddress` が置き換わらないことをテストで固定する。
+
+受入条件:
+
+- [ ] 信頼範囲外からのForwardedヘッダが無視される。
+- [ ] Caddy経由の正常系では、これまでどおりクライアントIPで分割される。
+
+検証:
+
+- [ ] 統合テスト（信頼範囲内/外の両方）
+- [ ] `bash scripts/container-smoke.sh`
+
+補足:
+
+- infra側のsubnet固定とセットで進める。片方だけ変えると、Caddyがネットワークへ参加できないか、信頼範囲が空振りする。
+
+### ISSUE-SEC-005 実装と食い違うREADMEのセキュリティ記述を訂正する
+
+参照ドキュメント: `README.md`, `docs/docker_deployment.md`
+
+背景:
+
+- `README.md:148` が「認証・認可は未実装です（Phase 4スコープ）。API/Webは無認証で動作するため、信頼できるネットワーク内でのみ運用してください。」と書いている。`README.md:97` も「アプリ内認証が未実装のため」と繰り返す。
+- 実際には ISSUE-SEC-001 で実装済みである。`ApplicationUser : IdentityUser`、`IdentityDataSeeder`（管理者が1人も居ないと起動を拒否）、`AddAuthentication` / `AddAuthorization`、`compose.production.yaml` の `AdminSeed__Email` / `AdminSeed__Password` がある。
+- **運用者はネットワーク露出の判断をREADMEから行う。** 実装済みの認証を「未実装」と読ませるのは、判断の前提を誤らせる。
+- `README.md:144` は「現在の `exit-code: "0"` 設定では検出結果はレポートのみで、CIを失敗させません」と書いているが、`scan-container-images.sh` は受理外findingがあれば exit 1 を返す（実測）。ゲートとして機能しているのに、していないと書いてある。
+
+目的:
+
+- [ ] READMEのセキュリティ記述を実装に一致させる。
+
+範囲:
+
+- [ ] `README.md:97` と `README.md:148` の認証未実装の記述を、実装済みの単一管理者Identityと、それが何を守り何を守らないかの記述へ置き換える。
+- [ ] `README.md:144` のTrivy記述を、`app` と `runtime` をゲートし `dev` は報告のみ、という実際の挙動へ直す。
+- [ ] 同種の記述が他のドキュメントに無いか確認する。
+
+受入条件:
+
+- [ ] READMEに、実装されていない認証を「未実装」と書いた箇所が無い。
+- [ ] Trivyの記述が、実際のexit codeの挙動と一致する。
+
+検証:
+
+- [ ] `bash scripts/scan-container-images.sh app`（exit 0）と `runtime`（ISSUE-SEC-002 完了後に exit 0）で記述と挙動を突き合わせる
+- [ ] 認証の記述と `IdentityDataSeeder` の実装を突き合わせる
+
+補足:
+
+- ISSUE-SEC-002 で `runtime` の挙動が変わるので、Trivyの記述はその後に確定させる。認証の記述の訂正は先に単独で行える。
 
 ## Phase 4
 
