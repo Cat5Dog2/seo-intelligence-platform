@@ -1160,22 +1160,22 @@ ISSUE-MVP-00X の続きから再開してください。
 
 目的:
 
-- [ ] 同居VPSでの正本手順を `wwt-seo-infra/docs/vps-deploy.md` とし、SEOリポジトリの記述をそれと矛盾させない。
+- [x] 同居VPSでの正本手順を `wwt-seo-infra/docs/vps-deploy.md` とし、SEOリポジトリの記述をそれと矛盾させない。
 
 範囲:
 
-- [ ] `docs/docker_deployment.md` に、同居VPSでは `wwt-seo-infra/scripts/seo` を使うこと、`scripts/deploy-production.sh` の直接実行は単独構成向けであることを明記する。
-- [ ] 手順そのものを複製しない。infra側の該当セクションへの参照に留める。
-- [ ] `docs/operations_runbook.md` の障害対応で、同居構成のときに参照すべきinfra側entrypointを示す。
+- [x] `docs/docker_deployment.md` に、同居VPSでは `wwt-seo-infra/scripts/seo` を使うこと、`scripts/deploy-production.sh` の直接実行は単独構成向けであることを明記する。
+- [x] 手順そのものを複製しない。infra側の該当セクションへの参照に留める。
+- [x] `docs/operations_runbook.md` の障害対応で、同居構成のときに参照すべきinfra側entrypointを示す。
 
 受入条件:
 
-- [ ] `docs/docker_deployment.md` を読んだ運用者が、同居VPSで `deploy-production.sh` を直接実行しない。
-- [ ] SEOリポジトリ内にinfra側の手順のコピーが増えていない。
+- [x] `docs/docker_deployment.md` を読んだ運用者が、同居VPSで `deploy-production.sh` を直接実行しない。
+- [x] SEOリポジトリ内にinfra側の手順のコピーが増えていない。
 
 検証:
 
-- [ ] 記述の突き合わせ（`wwt-seo-infra/docs/vps-deploy.md` STEP 9 と矛盾しないこと）
+- [x] 記述の突き合わせ（`wwt-seo-infra/docs/vps-deploy.md` STEP 9 と矛盾しないこと）
 
 補足:
 
@@ -1225,24 +1225,24 @@ ISSUE-MVP-00X の続きから再開してください。
 
 目的:
 
-- [ ] スキャンを通した image ID と、実際に起動した image ID が一致することを機械的に確認する。
+- [x] スキャンを通した image ID と、実際に起動した image ID が一致することを機械的に確認する。
 
 範囲:
 
-- [ ] build 直後に `docker image inspect --format '{{.Id}}'` で4イメージの image ID を記録する。
-- [ ] scan と migration と起動へ同じ image ID を渡す。
-- [ ] `up` の後に起動中コンテナの `.Image` を記録と突き合わせ、不一致なら失敗させる。
-- [ ] manifest はゲート通過時のみ書き、スキャン開始前に消す。
+- [x] build 直後に `docker image inspect --format '{{.Id}}'` で4イメージの image ID を記録する。
+- [x] scan と migration と起動へ同じ image ID を渡す。
+- [x] `up` の後に起動中コンテナの `.Image` を記録と突き合わせ、不一致なら失敗させる。
+- [x] manifest はゲート通過時のみ書き、スキャン開始前に消す。
 
 受入条件:
 
-- [ ] スキャン後にタグを差し替えても、`up` が拒否されるか照合で失敗する。
-- [ ] manifest 不在では起動できない。
+- [x] スキャン後にタグを差し替えても、`up` が拒否されるか照合で失敗する。
+- [x] manifest 不在では起動できない。
 
 検証:
 
-- [ ] 回帰テスト（タグ差し替えの変異で失敗すること）
-- [ ] `bash scripts/container-smoke.sh`
+- [x] 回帰テスト（タグ差し替えの変異で失敗すること）
+- [x] `bash scripts/container-smoke.sh`
 
 補足:
 
@@ -1260,23 +1260,23 @@ ISSUE-MVP-00X の続きから再開してください。
 
 目的:
 
-- [ ] 依存の既知脆弱性を自動で検知し、CIが実行するコードを固定する。
+- [x] 依存の既知脆弱性を自動で検知し、CIが実行するコードを固定する。
 
 範囲:
 
-- [ ] Dependabot alerts と security updates を有効化する。
-- [ ] `.github/workflows/*.yaml` の `uses:` をすべてcommit SHA固定にし、バージョンをコメントで併記する。
-- [ ] Dependabot の `github-actions` エコシステム更新を設定し、SHA固定を維持したまま更新できるようにする。
+- [x] Dependabot alerts と security updates を有効化する。
+- [x] `.github/workflows/*.yaml` の `uses:` をすべてcommit SHA固定にし、バージョンをコメントで併記する。
+- [x] Dependabot の `github-actions` エコシステム更新を設定し、SHA固定を維持したまま更新できるようにする。
 
 受入条件:
 
-- [ ] すべての `uses:` が40文字のcommit SHAを指している。
-- [ ] Dependabot alerts が有効で、`github-actions` と `nuget` の更新PRが作られる。
+- [x] すべての `uses:` が40文字のcommit SHAを指している。
+- [x] Dependabot alerts が有効で、`github-actions` と `nuget` の更新PRが作られる。
 
 検証:
 
-- [ ] `grep -nE 'uses: .*@[0-9a-f]{40}' .github/workflows/*.yaml` が全 `uses:` 行に一致する
-- [ ] CI が成功する
+- [x] `grep -nE 'uses: .*@[0-9a-f]{40}' .github/workflows/*.yaml` が全 `uses:` 行に一致する
+- [x] CI が成功する
 
 ### ISSUE-OPS-007 ビルドがレイヤ外の状態に依存していた
 
@@ -1940,27 +1940,27 @@ CI失敗の是正:
 
 目的:
 
-- [ ] runtimeイメージのHIGH/CRITICALすべてについて、受理か対処かの判断を記録する。
-- [ ] 新しいアドバイザリを、次のpushを待たずに検知する。
+- [x] runtimeイメージのHIGH/CRITICALすべてについて、受理か対処かの判断を記録する。
+- [x] 新しいアドバイザリを、次のpushを待たずに検知する。
 
 範囲:
 
-- [ ] 9件を個別に評価し、受理するものを `RUNTIME_ACCEPTED` へ image/CVE/target/package の4フィールドで追加する。
-- [ ] 判断の根拠を `docs/operations_runbook.md` 7.3節へ書く。CVE-2026-14456 は OpenSSL の QUIC サーバー利用時に限られ、PostgreSQL 16 は QUIC を持たず、この構成では `ssl off` かつ 5432 を公開しない。libuuid の7件は util-linux のアドバイザリが同梱サブパッケージすべてに付くもので、到達する実行ファイルがイメージ内に存在しないことを確認したうえで受理する。
-- [ ] `.github/workflows/ci.yaml` へ `schedule:`（日次）と `workflow_dispatch:` を追加する。
-- [ ] 未修正CVEを可視化する報告工程を分ける。ゲートは `--ignore-unfixed` のままでよいが、修正版の無いCVEも一覧できるようにする。
+- [x] 9件を個別に評価し、受理するものを `RUNTIME_ACCEPTED` へ image/CVE/target/package の4フィールドで追加する。
+- [x] 判断の根拠を `docs/operations_runbook.md` 7.3節へ書く。CVE-2026-14456 は OpenSSL の QUIC サーバー利用時に限られ、PostgreSQL 16 は QUIC を持たず、この構成では `ssl off` かつ 5432 を公開しない。libuuid の7件は util-linux のアドバイザリが同梱サブパッケージすべてに付くもので、到達する実行ファイルがイメージ内に存在しないことを確認したうえで受理する。
+- [x] `.github/workflows/ci.yaml` へ `schedule:`（日次）と `workflow_dispatch:` を追加する。
+- [x] 未修正CVEを可視化する報告工程を分ける。ゲートは `--ignore-unfixed` のままでよいが、修正版の無いCVEも一覧できるようにする。
 
 受入条件:
 
-- [ ] `bash scripts/scan-container-images.sh runtime` が exit 0 になる。
-- [ ] 受理した各CVEについて、なぜ到達しないかが `operations_runbook.md` 7.3節にある。
-- [ ] 定期実行が設定され、手動実行もできる。
-- [ ] 受理は image/CVE/target/package の完全一致で、別イメージや別バイナリへ広がらない。
+- [x] `bash scripts/scan-container-images.sh runtime` が exit 0 になる。
+- [x] 受理した各CVEについて、なぜ到達しないかが `operations_runbook.md` 7.3節にある。
+- [x] 定期実行が設定され、手動実行もできる。
+- [x] 受理は image/CVE/target/package の完全一致で、別イメージや別バイナリへ広がらない。
 
 検証:
 
-- [ ] `bash scripts/scan-container-images.sh runtime`
-- [ ] `bash scripts/scan-container-images.sh app`
+- [x] `bash scripts/scan-container-images.sh runtime`
+- [x] `bash scripts/scan-container-images.sh app`
 - [ ] scheduled run の1回目が成功する
 
 補足:
@@ -1981,25 +1981,25 @@ CI失敗の是正:
 
 目的:
 
-- [ ] スキャナが本番と同居しても、他のスタックへ影響しないようにする。
-- [ ] 隔離の条件を、コメントではなくテストで固定する。
+- [x] スキャナが本番と同居しても、他のスタックへ影響しないようにする。
+- [x] 隔離の条件を、コメントではなくテストで固定する。
 
 範囲:
 
-- [ ] DB更新用とスキャン用でcacheを分ける。
-- [ ] 作業ディレクトリを `mktemp -d` にし、tar名を実行ごとに一意にする。
-- [ ] Trivyコンテナへ capability、PID、CPU、メモリの上限を付ける。
-- [ ] fake docker を使った回帰テストで、`--network none`、ソケット非注入、上限の付与を固定する。
+- [x] DB更新用とスキャン用でcacheを分ける。
+- [x] 作業ディレクトリを `mktemp -d` にし、tar名を実行ごとに一意にする。
+- [x] Trivyコンテナへ capability、PID、CPU、メモリの上限を付ける。
+- [x] fake docker を使った回帰テストで、`--network none`、ソケット非注入、上限の付与を固定する。
 
 受入条件:
 
-- [ ] 2つのスキャンを同時に走らせても互いを壊さない。
-- [ ] 隔離条件のいずれかを外すと、テストが落ちる。
+- [x] 2つのスキャンを同時に走らせても互いを壊さない。
+- [x] 隔離条件のいずれかを外すと、テストが落ちる。
 
 検証:
 
-- [ ] 新規テストの変異確認（各条件を1つずつ外して落ちること）
-- [ ] `bash scripts/scan-container-images.sh app`
+- [x] 新規テストの変異確認（各条件を1つずつ外して落ちること）
+- [x] `bash scripts/scan-container-images.sh app`
 
 補足:
 
@@ -2017,23 +2017,23 @@ CI失敗の是正:
 
 目的:
 
-- [ ] `X-Forwarded-For` を、共通Caddyが居るネットワークからの接続だけで信頼する。
+- [x] `X-Forwarded-For` を、共通Caddyが居るネットワークからの接続だけで信頼する。
 
 範囲:
 
-- [ ] `ForwardedHeadersOptions` を明示的に構成し、`KnownNetworks` に共通Caddyのネットワークsubnetを設定する。
-- [ ] subnetを固定値にするため、`wwt-seo-infra` 側で `seo-intelligence-caddy` ネットワークのsubnetを固定する。両リポジトリで同じ値を参照する形にし、二重管理にしない。
-- [ ] 信頼するsubnetの外から `X-Forwarded-For` を送っても `RemoteIpAddress` が置き換わらないことをテストで固定する。
+- [x] `ForwardedHeadersOptions` を明示的に構成し、`KnownNetworks` に共通Caddyのネットワークsubnetを設定する。
+- [x] subnetを固定値にするため、`wwt-seo-infra` 側で `seo-intelligence-caddy` ネットワークのsubnetを固定する。両リポジトリで同じ値を参照する形にし、二重管理にしない。
+- [x] 信頼するsubnetの外から `X-Forwarded-For` を送っても `RemoteIpAddress` が置き換わらないことをテストで固定する。
 
 受入条件:
 
-- [ ] 信頼範囲外からのForwardedヘッダが無視される。
-- [ ] Caddy経由の正常系では、これまでどおりクライアントIPで分割される。
+- [x] 信頼範囲外からのForwardedヘッダが無視される。
+- [x] Caddy経由の正常系では、これまでどおりクライアントIPで分割される。
 
 検証:
 
-- [ ] 統合テスト（信頼範囲内/外の両方）
-- [ ] `bash scripts/container-smoke.sh`
+- [x] 統合テスト（信頼範囲内/外の両方）
+- [x] `bash scripts/container-smoke.sh`
 
 補足:
 
@@ -2052,23 +2052,23 @@ CI失敗の是正:
 
 目的:
 
-- [ ] READMEのセキュリティ記述を実装に一致させる。
+- [x] READMEのセキュリティ記述を実装に一致させる。
 
 範囲:
 
-- [ ] `README.md:97` と `README.md:148` の認証未実装の記述を、実装済みの単一管理者Identityと、それが何を守り何を守らないかの記述へ置き換える。
-- [ ] `README.md:144` のTrivy記述を、`app` と `runtime` をゲートし `dev` は報告のみ、という実際の挙動へ直す。
-- [ ] 同種の記述が他のドキュメントに無いか確認する。
+- [x] `README.md:97` と `README.md:148` の認証未実装の記述を、実装済みの単一管理者Identityと、それが何を守り何を守らないかの記述へ置き換える。
+- [x] `README.md:144` のTrivy記述を、`app` と `runtime` をゲートし `dev` は報告のみ、という実際の挙動へ直す。
+- [x] 同種の記述が他のドキュメントに無いか確認する。
 
 受入条件:
 
-- [ ] READMEに、実装されていない認証を「未実装」と書いた箇所が無い。
-- [ ] Trivyの記述が、実際のexit codeの挙動と一致する。
+- [x] READMEに、実装されていない認証を「未実装」と書いた箇所が無い。
+- [x] Trivyの記述が、実際のexit codeの挙動と一致する。
 
 検証:
 
-- [ ] `bash scripts/scan-container-images.sh app`（exit 0）と `runtime`（ISSUE-SEC-002 完了後に exit 0）で記述と挙動を突き合わせる
-- [ ] 認証の記述と `IdentityDataSeeder` の実装を突き合わせる
+- [x] `bash scripts/scan-container-images.sh app`（exit 0）と `runtime`（ISSUE-SEC-002 完了後に exit 0）で記述と挙動を突き合わせる
+- [x] 認証の記述と `IdentityDataSeeder` の実装を突き合わせる
 
 補足:
 
