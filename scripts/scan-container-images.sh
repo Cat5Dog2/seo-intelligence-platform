@@ -124,7 +124,7 @@ mkdir -p "$CACHE_DIR"
 
 # Kept inside the repository rather than under /tmp: on Git Bash for Windows the Python that
 # evaluates the report is the Windows build, which cannot open an MSYS /tmp path.
-scratch="artifacts/trivy-scan"
+scratch="artifacts/trivy-scan-$$-${RANDOM}"
 mkdir -p "$scratch"
 trap 'rm -rf "$scratch"' EXIT
 
@@ -164,16 +164,41 @@ assert_reviewed_digest() {
 ignore_unfixed=(--ignore-unfixed)
 
 scan_to_json() {
-  local image="$1" output="$2" tar="$scratch/image.tar"
+  local image="$1" output="$2"
+
+  # A directory per scan, so two runs cannot overwrite each other's export. The path *inside* the
+  # container stays /scan/image.tar on purpose: the acceptance target recorded in
+  # docs/operations_runbook.md section 7.3 contains it, and a unique name in there would silently
+  # invalidate every OS-package acceptance.
+  local dir
+  dir="$(mktemp -d "$scratch/scan.XXXXXX")"
 
   # Exported first so the scanner never touches the Docker daemon.
-  docker save "$image" -o "$tar"
+  docker save "$image" -o "$dir/image.tar"
+
+  # The scanner is third-party code reading an artifact that is about to run in production, on a
+  # host it shares with both production stacks. It gets no network, no capabilities, no writable
+  # filesystem, and a bounded share of the machine.
+  #
+  # The vulnerability database is mounted read-only. Only the download step below has network, and
+  # it is the only step that writes there, so one scan cannot poison the database another reads.
+  # Trivy still needs somewhere writable for its own scan cache: --cache-backend memory keeps that
+  # inside the container instead of in the shared directory.
   docker run --rm \
     --network none \
-    --volume "$CACHE_DIR:/root/.cache/trivy" \
-    --volume "$PWD/$scratch:/scan" \
+    --read-only \
+    --cap-drop ALL \
+    --security-opt no-new-privileges \
+    --memory 2g \
+    --memory-swap 2g \
+    --cpus 2 \
+    --pids-limit 256 \
+    --tmpfs /tmp:rw,noexec,nosuid,nodev,size=1g \
+    --volume "$CACHE_DIR:/root/.cache/trivy:ro" \
+    --volume "$(cd "$dir" && pwd):/scan:ro" \
     "$TRIVY_IMAGE" image \
-    --input "/scan/$(basename "$tar")" \
+    --input /scan/image.tar \
+    --cache-backend memory \
     --scanners vuln \
     "${ignore_unfixed[@]}" \
     --pkg-types os,library \
@@ -181,7 +206,7 @@ scan_to_json() {
     --skip-db-update \
     --quiet \
     --format json > "$output"
-  rm -f "$tar"
+  rm -rf "$dir"
 }
 
 # Prints the findings that are not accepted, and exits non-zero when there are any.
@@ -236,8 +261,17 @@ sys.exit(1)
 PY
 }
 
-# One database refresh for the whole run, so the per-image scans need no network.
+# One database refresh for the whole run, so the per-image scans need no network. This is the only
+# step that is given network access and the only one that writes to the cache; every scan above
+# mounts the same directory read-only.
 docker run --rm \
+  --read-only \
+  --cap-drop ALL \
+  --security-opt no-new-privileges \
+  --memory 2g \
+  --memory-swap 2g \
+  --pids-limit 256 \
+  --tmpfs /tmp:rw,noexec,nosuid,nodev,size=512m \
   --volume "$CACHE_DIR:/root/.cache/trivy" \
   "$TRIVY_IMAGE" image --download-db-only > /dev/null
 
