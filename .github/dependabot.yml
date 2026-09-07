@@ -1,0 +1,52 @@
+# Dependency updates.
+#
+# Actions are referenced by commit SHA, not by tag, because a tag is a pointer its author can move
+# and CI has access to Secrets and to the production deployment decision. Dependabot understands
+# SHA pins and rewrites both the SHA and the version comment, so pinning does not mean going stale.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore"
+
+  - package-ecosystem: nuget
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore"
+    groups:
+      # One PR per family rather than per package. These version together, and a partial bump of a
+      # Microsoft.Extensions.* or Npgsql set is a build failure rather than a review.
+      microsoft-extensions:
+        patterns:
+          - "Microsoft.Extensions.*"
+      aspnetcore:
+        patterns:
+          - "Microsoft.AspNetCore.*"
+      efcore:
+        patterns:
+          - "Microsoft.EntityFrameworkCore.*"
+          - "Npgsql*"
+      testing:
+        patterns:
+          - "xunit*"
+          - "Microsoft.NET.Test.Sdk"
+          - "Testcontainers*"
+          - "Microsoft.Playwright*"
+
+  # The base images the application is built from. compose.yaml pins postgres and redis by digest
+  # and image-digests.lock is their single source of truth, so those are updated deliberately
+  # through docs/operations_runbook.md 7.3 rather than automatically.
+  - package-ecosystem: docker
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore"
