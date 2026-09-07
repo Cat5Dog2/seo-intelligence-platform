@@ -94,7 +94,7 @@ docker compose ps
 
 ## VPSデプロイ（暫定・個人利用）
 
-VPSでは `compose.yaml` に [`compose.production.yaml`](compose.production.yaml) をoverlayとして重ねます。DB、Redis、APIはホストへポート公開せず、Web/APIだけを共通Caddyの専用external networkへ接続します。アプリ内認証が未実装のため、これは外部認証ゲートで保護する単一利用者向けの暫定構成です。
+VPSでは `compose.yaml` に [`compose.production.yaml`](compose.production.yaml) をoverlayとして重ねます。DB、Redis、APIはホストへポート公開せず、Web/APIだけを共通Caddyの専用external networkへ接続します。Webは単一管理者のCookie認証、APIはサービスキー認証で保護します（ISSUE-SEC-001で実装済み）。想定利用者が1名である点は変わりません。
 
 初回デプロイ、更新、バックアップ、Caddy設定を含む手順の正本は [`docs/docker_deployment.md`](docs/docker_deployment.md) を参照してください。`.env.production`の`POSTGRES_PASSWORD`を必ず設定し、Gitへ追加しないでください。
 
@@ -141,11 +141,12 @@ BrowserE2EはAPI/Webと依存サービスが起動した状態で実行します
 3. `scripts/migration-dry-run.sh` でEF Coreの冪等Migration SQLを生成します。
 4. 開発用/VPS用Composeの構文を検証し、Web/API/Worker/Migration imageをGitHub Actionsレイヤーキャッシュ付きでbuildして、`scripts/container-smoke.sh`で隔離Compose project上のMigration、HTTP、非root、Storage共有、Data Protection keys永続化をスモーク確認します。同スクリプトはローカルでも `bash scripts/container-smoke.sh` で実行できます。
 5. `scripts/smoke-local.ps1` で依存サービス、Migration、API/Worker/Web、Health/Readiness、マスタ同期、CSV出力までを確認します。BrowserE2Eはリポジトリ変数 `RUN_BROWSER_E2E=true` の場合だけ追加実行します。
-6. PostgreSQL、Redis、MinIO、MinIO Clientの利用イメージをTrivyでスキャンし、未修正脆弱性を除くHIGH/CRITICALを表示します。現在の `exit-code: "0"` 設定では検出結果はレポートのみで、CIを失敗させません。
+6. `scripts/scan-container-images.sh` がイメージをTrivyでスキャンします。自前ビルドの4イメージ（`app`）と、本番で動くPostgreSQL / Redis（`runtime`）は**ゲート対象**で、受容済みリストに無い修正可能なHIGH/CRITICALが出ればCIを失敗させます。MinIO系（`dev`）と、修正版の存在しない脆弱性（`unfixed`）は報告のみです。受容の記録は `docs/operations_runbook.md` 7.3節。
 
 ## セキュリティと運用上の前提
 
-- 認証・認可は未実装です（Phase 4スコープ）。API/Webは無認証で動作するため、信頼できるネットワーク内でのみ運用してください。
+- 単一管理者のCookie認証とAPIサービスキー認証を実装済みです（ISSUE-SEC-001）。管理者が1人も存在せず `AdminSeed` も未設定の場合、`web` は**意図的に起動へ失敗**します（誰もログインできない状態でhealthyになるのを防ぐため）。
+- 複数利用者、ロール、テナント分離はPhase 4スコープです。現時点の認可は管理者1名を前提にしています。
 - APIキー、Webhook URL、OAuthトークン等の実値はDB、レスポンス、ログ、監査ログへ出しません。
 - DBには `key_ref`、`webhook_secret_ref`、`auth_ref` 等の参照を保存します。
 - Secret Storeの既定実装（`SecretStore:Provider=Configuration`）はプロセス内の設定へ保存します。API経由で登録した秘密値はプロセス再起動で失われ、ジョブを実行する別プロセスのWorkerとは共有されません。実運用では環境変数またはUser SecretsでAPIとWorkerの両方へ同じSecret参照名の値を配布してください。
