@@ -4,6 +4,7 @@
 #   bash scripts/scan-container-images.sh app     # api / web / worker / migrate (must exist locally)
 #   bash scripts/scan-container-images.sh runtime # postgres / redis (pulled)
 #   bash scripts/scan-container-images.sh dev     # minio / mc, reported only
+#   bash scripts/scan-container-images.sh unfixed # postgres / redis including unfixed, reported only
 #
 # Application images are ours to rebuild, so any fixable HIGH or CRITICAL fails.
 #
@@ -67,6 +68,18 @@ RUNTIME_ACCEPTED=(
   "postgres:16-alpine	CVE-2026-56859	usr/local/bin/gosu	stdlib"
   "postgres:16-alpine	CVE-2026-56860	usr/local/bin/gosu	stdlib"
   "postgres:16-alpine	CVE-2026-56862	usr/local/bin/gosu	stdlib"
+
+  # OS packages. The target carries the Alpine version, so a base image bump stops these
+  # from matching and the gate asks for the judgement again rather than carrying it over.
+  "postgres:16-alpine	CVE-2026-14456	/scan/image.tar (alpine 3.24.1)	libcrypto3"
+  "postgres:16-alpine	CVE-2026-14456	/scan/image.tar (alpine 3.24.1)	libssl3"
+  "postgres:16-alpine	CVE-2026-53612	/scan/image.tar (alpine 3.24.1)	libuuid"
+  "postgres:16-alpine	CVE-2026-53613	/scan/image.tar (alpine 3.24.1)	libuuid"
+  "postgres:16-alpine	CVE-2026-53614	/scan/image.tar (alpine 3.24.1)	libuuid"
+  "postgres:16-alpine	CVE-2026-76642	/scan/image.tar (alpine 3.24.1)	libuuid"
+  "postgres:16-alpine	CVE-2026-78408	/scan/image.tar (alpine 3.24.1)	libuuid"
+  "postgres:16-alpine	CVE-2026-78409	/scan/image.tar (alpine 3.24.1)	libuuid"
+  "postgres:16-alpine	CVE-2026-78410	/scan/image.tar (alpine 3.24.1)	libuuid"
 )
 
 # Digests the acceptances above were judged against, read from the lock file that compose.yaml and
@@ -144,6 +157,12 @@ assert_reviewed_digest() {
   fi
 }
 
+# Findings without a fix are excluded from the gate: there is nothing to do about them in this
+# repository, and failing on them would mean disabling the gate. They are not excluded from
+# view - the "unfixed" mode clears this so they can be read and judged. A finding nobody ever
+# sees is a finding nobody judged.
+ignore_unfixed=(--ignore-unfixed)
+
 scan_to_json() {
   local image="$1" output="$2" tar="$scratch/image.tar"
 
@@ -156,7 +175,7 @@ scan_to_json() {
     "$TRIVY_IMAGE" image \
     --input "/scan/$(basename "$tar")" \
     --scanners vuln \
-    --ignore-unfixed \
+    "${ignore_unfixed[@]}" \
     --pkg-types os,library \
     --severity HIGH,CRITICAL \
     --skip-db-update \
@@ -249,8 +268,18 @@ case "$mode" in
       report "$image" "$scratch/report.json" || true
     done
     ;;
+  unfixed)
+    # Reported, never gated. The same acceptances are applied so the output is the difference
+    # between what is judged and what is merely unfixable, rather than a wall of known findings.
+    ignore_unfixed=()
+    for image in "${RUNTIME_IMAGES[@]}"; do
+      docker pull --quiet "$image" > /dev/null
+      scan_to_json "$image" "$scratch/report.json"
+      report "$image" "$scratch/report.json" "${RUNTIME_ACCEPTED[@]}" || true
+    done
+    ;;
   *)
-    echo "ERROR: unknown mode '$mode'. Use app, runtime, or dev." >&2
+    echo "ERROR: unknown mode '$mode'. Use app, runtime, dev, or unfixed." >&2
     exit 1
     ;;
 esac
