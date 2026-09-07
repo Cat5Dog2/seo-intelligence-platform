@@ -38,6 +38,7 @@ builder.Services.AddSingleton(SeoIntelligenceDiagnostics.ActivitySource);
 builder.Services.AddSingleton(SeoIntelligenceDiagnostics.Meter);
 builder.Services.Configure<SeoIntelligenceApiOptions>(builder.Configuration.GetSection(SeoIntelligenceApiOptions.SectionName));
 builder.Services.AddScoped<ProjectSelectionState>();
+builder.Services.AddTrustedProxyForwardedHeaders(builder.Configuration, builder.Environment);
 builder.Services.AddSeoIntelligenceWebAuthentication(builder.Configuration, builder.Environment);
 var dataProtectionKeysPath = builder.Configuration["DataProtection:KeysPath"];
 if (string.IsNullOrWhiteSpace(dataProtectionKeysPath))
@@ -68,6 +69,10 @@ builder.Services
         tags: ["live", "ready"]);
 
 var app = builder.Build();
+
+// First: everything after this reads RemoteIpAddress and Scheme. HSTS and HTTPS redirection
+// would otherwise see http behind a TLS-terminating proxy and redirect in a loop.
+app.UseForwardedHeaders();
 
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())

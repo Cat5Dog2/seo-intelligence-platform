@@ -97,9 +97,11 @@ public static class ApiRateLimitingExtensions
     /// <para>
     /// Behind Caddy the forwarded-headers middleware has already replaced
     /// <c>RemoteIpAddress</c> with the caller's address, so this partitions per client rather than
-    /// per proxy. If that middleware were ever disabled, every request would share the proxy's
-    /// address and one caller could exhaust the window for everyone - so the deployment note in
-    /// docs/docker_deployment.md keeps <c>ASPNETCORE_FORWARDEDHEADERS_ENABLED</c> on.
+    /// per proxy. <see cref="TrustedProxyExtensions"/> configures it, and both ways of getting it
+    /// wrong break this key. With the middleware off, every request shares the proxy's address and
+    /// one caller exhausts the window for everyone; with the trusted range unbounded, any caller
+    /// sets <c>X-Forwarded-For</c> and picks their own partition. Production refuses to start
+    /// without a trusted range for that reason.
     /// </para>
     /// <para>
     /// Requests with no remote address share a single partition. That is deliberate: an unknown

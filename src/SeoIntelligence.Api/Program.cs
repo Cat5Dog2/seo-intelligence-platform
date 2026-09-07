@@ -28,6 +28,7 @@ builder.Logging.Configure(options =>
 builder.Services.AddSingleton(SeoIntelligenceDiagnostics.ActivitySource);
 builder.Services.AddSingleton(SeoIntelligenceDiagnostics.Meter);
 builder.Services.AddSeoIntelligenceInfrastructure(builder.Configuration);
+builder.Services.AddTrustedProxyForwardedHeaders(builder.Configuration, builder.Environment);
 builder.Services.AddApiServiceKeyAuthentication(builder.Configuration);
 builder.Services.AddApiRateLimiting();
 builder.Services
@@ -42,6 +43,10 @@ builder.Services
 
 var app = builder.Build();
 
+// First: everything after this reads RemoteIpAddress and Scheme. UseHttpsRedirection would
+// otherwise see http behind a TLS-terminating proxy and redirect in a loop, and the rate
+// limiter would partition every caller under Caddy's address.
+app.UseForwardedHeaders();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseHttpsRedirection();
