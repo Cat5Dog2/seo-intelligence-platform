@@ -39,6 +39,11 @@ public sealed class TrustedProxyForwardedHeadersTests
         var environment = new StubHostEnvironment(environmentName);
         var services = new ServiceCollection();
 
+        // Registers IOptions<> itself. Without a Configure call there is nothing to register it,
+        // and resolving the options would throw instead of returning the defaults - which is
+        // exactly the case this file needs to inspect.
+        services.AddOptions();
+
         configure(services, configuration, environment);
 
         return services.BuildServiceProvider().GetRequiredService<IOptions<ForwardedHeadersOptions>>().Value;
@@ -130,13 +135,32 @@ public sealed class TrustedProxyForwardedHeadersTests
     [Theory]
     [MemberData(nameof(Hosts))]
     [Trait("Category", "Integration")]
-    public void TrustsNothingOutsideProductionWhenUnset(string host)
+    public void LeavesTheMiddlewareDisabledOutsideProductionWhenUnset(string host)
     {
-        // Reached directly in development, so there is no proxy to trust and no setting to miss.
+        // An earlier version of this test asserted that both known lists were empty and called that
+        // "trusts nothing". It is the opposite: ASP.NET Core skips the known-address check when
+        // both lists are empty, so an enabled middleware with empty lists accepts the headers from
+        // every source. ForwardedHeadersBehaviourTests demonstrates it against the real middleware.
+        //
+        // What makes it safe is that no header is processed at all.
         var options = ResolveForHost(host, subnet: null, Environments.Development);
 
-        Assert.Empty(options.KnownIPNetworks);
-        Assert.Empty(options.KnownProxies);
+        Assert.Equal(ForwardedHeaders.None, options.ForwardedHeaders);
+    }
+
+    [Theory]
+    [InlineData("api", "0.0.0.0/0")]
+    [InlineData("api", "::/0")]
+    [InlineData("web", "0.0.0.0/0")]
+    [InlineData("web", "::/0")]
+    [Trait("Category", "Integration")]
+    public void RefusesASubnetCoveringEveryAddress(string host, string subnet)
+    {
+        // Parseable, and exactly as permissive as the setting this replaced.
+        var error = Assert.Throws<InvalidOperationException>(
+            () => ResolveForHost(host, subnet, Environments.Production));
+
+        Assert.Contains("every address", error.Message, StringComparison.Ordinal);
     }
 
     [Fact]

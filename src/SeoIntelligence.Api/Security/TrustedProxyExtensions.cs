@@ -33,6 +33,16 @@ public static class TrustedProxyExtensions
     {
         var trustedNetwork = ResolveTrustedNetwork(configuration, environment);
 
+        if (trustedNetwork is not { } network)
+        {
+            // Nothing is configured outside Production, and the options are deliberately left
+            // alone. Enabling the middleware with empty KnownProxies and KnownIPNetworks does not
+            // mean "trust nobody": ASP.NET Core skips the known-address check when both lists are
+            // empty, so every source is trusted. Verified by running the middleware, in
+            // ForwardedHeadersBehaviourTests. The default ForwardedHeaders.None makes it a no-op.
+            return services;
+        }
+
         services.Configure<ForwardedHeadersOptions>(options =>
         {
             // Only what Caddy sets. XForwardedHost is not accepted: the host is what
@@ -45,14 +55,12 @@ public static class TrustedProxyExtensions
             options.ForwardLimit = 1;
 
             // Cleared rather than added to. The defaults trust the loopback address, which is not
-            // where Caddy is, and leaving them would widen the range this exists to narrow.
+            // where Caddy is, and leaving them would widen the range this exists to narrow. The
+            // list is never left empty: see the early return above for why that is not "trust
+            // nobody".
             options.KnownProxies.Clear();
             options.KnownIPNetworks.Clear();
-
-            if (trustedNetwork is { } network)
-            {
-                options.KnownIPNetworks.Add(network);
-            }
+            options.KnownIPNetworks.Add(network);
         });
 
         return services;
@@ -65,7 +73,8 @@ public static class TrustedProxyExtensions
         if (string.IsNullOrWhiteSpace(configured))
         {
             // Outside Production the application is reached directly and there is no proxy to
-            // trust, so an empty list is the correct answer rather than a missing setting.
+            // trust. The caller leaves the middleware unconfigured entirely rather than configuring
+            // it with an empty list, which would trust everyone.
             if (!environment.IsProduction())
             {
                 return null;
@@ -83,9 +92,17 @@ public static class TrustedProxyExtensions
         {
             throw new InvalidOperationException(
                 $"{SubnetConfigurationKey} is '{configured}', which is not a CIDR range such as "
-                + "10.89.0.0/28. A value that cannot be parsed would otherwise leave the trusted "
-                + "list empty, which reads as 'nothing is trusted' and silently turns every client "
-                + "address into Caddy's.");
+                + "10.89.0.0/28. Continuing without a trusted range would enable the middleware "
+                + "with an empty list, which ASP.NET Core reads as 'check nothing' and accepts the "
+                + "headers from every source.");
+        }
+
+        if (parsed.PrefixLength == 0)
+        {
+            throw new InvalidOperationException(
+                $"{SubnetConfigurationKey} is '{configured}', which covers every address. That is "
+                + "the same as trusting every caller, which is what naming a proxy network exists "
+                + "to avoid.");
         }
 
         return parsed;

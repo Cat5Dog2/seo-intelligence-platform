@@ -20,6 +20,11 @@ cd "$(dirname "$0")/.."
 # check is what happens when the optional variables are absent, so AdminSeed is not set.
 export POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-compose-validation-only}"
 export API_SERVICE_KEY="${API_SERVICE_KEY:-compose-validation-only}"
+
+# .env.production.example leaves this blank on purpose: wwt-seo-infra owns the real value and a
+# CIDR written into this repository would be a second copy that drifts. Rendering the Compose files
+# still needs something that parses, so one is supplied here and nowhere else.
+export CADDY_NETWORK_SUBNET="${CADDY_NETWORK_SUBNET:-10.89.0.0/28}"
 unset ADMIN_SEED_EMAIL ADMIN_SEED_PASSWORD || true
 
 # Point the app env_file at the committed example so the rendering actually contains the
@@ -229,7 +234,9 @@ PY
 # known-proxy and known-network lists, so leaving it beside an explicit range would quietly restore
 # "trust every source". Checked against the rendered output, not the source, so a value reaching
 # the container through any file or variable is caught.
-rendered_environment="$(POSTGRES_PASSWORD=verify API_SERVICE_KEY=verify   docker compose --env-file .env.production.example -f compose.yaml -f compose.production.yaml config --format json)"
+# The subnet is supplied here rather than in .env.production.example: infra owns the real value,
+# and a CIDR written into this repository is a second copy that drifts. This one only has to parse.
+rendered_environment="$(docker compose --env-file .env.production.example -f compose.yaml -f compose.production.yaml config --format json)"
 
 if printf '%s' "$rendered_environment" | grep -q 'ASPNETCORE_FORWARDEDHEADERS_ENABLED'; then
   echo "ERROR: the rendered production Compose still sets ASPNETCORE_FORWARDEDHEADERS_ENABLED." >&2
