@@ -48,6 +48,9 @@ jobs:
         env:
           POSTGRES_PASSWORD: compose-validation-only
           API_SERVICE_KEY: compose-validation-only
+          # Only has to parse. The real value comes from wwt-seo-infra at deploy time, which is why
+          # .env.production.example leaves it blank rather than carrying a second copy.
+          CADDY_NETWORK_SUBNET: 10.89.0.0/28
         run: |
           docker compose config --quiet
           docker compose --env-file .env.production.example -f compose.yaml -f compose.production.yaml config --quiet
