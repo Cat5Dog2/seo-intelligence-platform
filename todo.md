@@ -1320,6 +1320,44 @@ ISSUE-MVP-00X の続きから再開してください。
 - 代償はcsproj変更時の再ダウンロードである。`cache-from` により、csprojが変わらない限り `restore` レイヤは再利用される。
 - 速度を優先してcache mountへ戻す場合は、後段の `--no-restore` / `--no-build` を外して各ステージが自分でrestoreする形にしないと、同じ失敗が戻る。
 
+### ISSUE-OPS-008 パッケージ版を集中管理し、依存更新が版を分裂させないようにする
+
+参照ドキュメント: `docs/ci-cd-design.md`
+
+背景:
+
+- `Microsoft.EntityFrameworkCore` は、どのcsprojからも直接参照されていない。版は推移解決に委ねられており、プロジェクトごとに別の値へ落ち着き得る。
+- `Microsoft.EntityFrameworkCore.Design` は `<PrivateAssets>all</PrivateAssets>` を持つため下流へ流れない。したがってDesignだけが上がると、`SeoIntelligence.Infrastructure` は新しいEF Coreでコンパイルされ、`SeoIntelligence.Web` と `ContractTests` は `Microsoft.AspNetCore.Identity.EntityFrameworkCore` 経由の古い版を参照したまま残る。
+- 実測（2026-09-07）: Dependabot #113 を単独で適用すると `CS1705` が2件（Web、ContractTests）出る。#112 を先に適用してから #113 を重ねると 0 warning / 0 error になる。**マージ順に依存して壊れる状態である。**
+- `Directory.Packages.props` も `Directory.Build.props` も存在せず、版は5つのcsprojへ散っている。
+
+目的:
+
+- [ ] 単一パッケージの更新が、プロジェクト間で参照版を分裂させないようにする。
+
+範囲:
+
+- [ ] `Directory.Packages.props` を追加し、`ManagePackageVersionsCentrally` を有効にする。
+- [ ] 各csprojの `PackageReference` から `Version` を外す。`PrivateAssets` と `IncludeAssets` はcsprojに残す（集中管理するのは版だけである）。
+- [ ] 推移解決に委ねていた `Microsoft.EntityFrameworkCore` を `PackageVersion` として明示する。
+- [ ] Dependabot が `Directory.Packages.props` を更新できることを、実際の更新PRで確認する。
+
+受入条件:
+
+- [ ] EF Core関連のうち1つだけを上げても `CS1705` にならない。
+- [ ] 同一パッケージの版が2箇所以上に書かれていない。
+
+検証:
+
+- [ ] `dotnet build SeoIntelligence.sln -c Release`（0 warning / 0 error）
+- [ ] `bash scripts/test.sh`
+- [ ] 変異確認: `Microsoft.EntityFrameworkCore.Design` だけを上げる変更が、CPM導入前は `CS1705` で失敗し、導入後は成功する
+
+補足:
+
+- 当面の回避策は「関連PRをまとめる、または依存が流れる側から順にマージする」である。ただし順序を人が覚えている必要があり、間違えるとCIが原因の分かりにくい形で落ちる。
+- Central Package Management は .NET SDK 標準の機能で、追加パッケージを必要としない。
+
 ## 横断セキュリティ
 
 ### ISSUE-SEC-001 単一管理者ログインとAPIサービス認証を実装する
