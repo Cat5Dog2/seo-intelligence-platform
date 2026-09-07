@@ -96,6 +96,24 @@ assert_every "the scanned artifact is mounted at the recorded path" "--input /sc
 assert_every "the scanner gets no network" "--network none"
 assert_every "the scanner gets no writable root filesystem" "--read-only"
 assert_every "the scanner gets no capabilities" "--cap-drop ALL"
+
+# The scans read the database and write nothing to it, so they need no capability back. Only the
+# download step does, and only DAC_OVERRIDE - see the comment on it in scan-container-images.sh.
+if grep '^run .*--input /scan/image.tar' "$log" | grep -q -- '--cap-add'; then
+  fail "a scan was given a capability back"
+else
+  pass "no capability is added back for a scan"
+fi
+
+refresh="$(grep -- '--download-db-only' "$log" || true)"
+if ! printf '%s' "$refresh" | grep -q -- '--cap-drop ALL'; then
+  fail "the database refresh does not drop capabilities"
+elif [ "$(printf '%s' "$refresh" | grep -oE '\--cap-add [A-Z_]+' | sort -u | wc -l)" -ne 1 ] ||
+     ! printf '%s' "$refresh" | grep -q -- '--cap-add DAC_OVERRIDE'; then
+  fail "the database refresh adds a capability other than DAC_OVERRIDE"
+else
+  pass "the database refresh keeps DAC_OVERRIDE and nothing else"
+fi
 assert_every "the scanner cannot gain privileges" "--security-opt no-new-privileges"
 assert_every "the scanner has a memory limit" "--memory 2g"
 assert_every "the scanner has a process limit" "--pids-limit 256"

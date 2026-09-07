@@ -264,14 +264,20 @@ PY
 # One database refresh for the whole run, so the per-image scans need no network. This is the only
 # step that is given network access and the only one that writes to the cache; every scan above
 # mounts the same directory read-only.
+# DAC_OVERRIDE is the one capability this step keeps. The cache directory is created on the host by
+# whatever user runs this - uid 1001 on a GitHub runner - and Trivy runs as root inside the
+# container. Root only writes into a directory owned by someone else by virtue of DAC_OVERRIDE, so
+# dropping every capability makes the download fail with "mkdir /root/.cache/trivy/db: permission
+# denied". The scans below need no such thing: they mount the same directory read-only.
 docker run --rm \
   --read-only \
   --cap-drop ALL \
+  --cap-add DAC_OVERRIDE \
   --security-opt no-new-privileges \
   --memory 2g \
   --memory-swap 2g \
   --pids-limit 256 \
-  --tmpfs /tmp:rw,noexec,nosuid,nodev,size=512m \
+  --tmpfs /tmp:rw,nosuid,nodev,size=2g \
   --volume "$CACHE_DIR:/root/.cache/trivy" \
   "$TRIVY_IMAGE" image --download-db-only > /dev/null
 
