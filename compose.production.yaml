@@ -30,7 +30,12 @@ services:
   api:
     environment:
       <<: *production-environment
-      ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
+      # Replaces ASPNETCORE_FORWARDEDHEADERS_ENABLED, which enables the middleware by clearing
+      # the known-proxy and known-network lists - every source trusted. The value is the shared
+      # Caddy network's subnet, owned by wwt-seo-infra and exported by its scripts/seo wrapper
+      # after checking it against the real Docker IPAM. Required: an unset trusted range in
+      # Production is the same as trusting every caller, so the application refuses to start.
+      TrustedProxy__Subnet: ${CADDY_NETWORK_SUBNET:?Deploy through wwt-seo-infra scripts/seo, which sets this from deployments/production.yaml}
     networks:
       backend:
       egress:
@@ -48,7 +53,12 @@ services:
   web:
     environment:
       <<: *production-environment
-      ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
+      # Replaces ASPNETCORE_FORWARDEDHEADERS_ENABLED, which enables the middleware by clearing
+      # the known-proxy and known-network lists - every source trusted. The value is the shared
+      # Caddy network's subnet, owned by wwt-seo-infra and exported by its scripts/seo wrapper
+      # after checking it against the real Docker IPAM. Required: an unset trusted range in
+      # Production is the same as trusting every caller, so the application refuses to start.
+      TrustedProxy__Subnet: ${CADDY_NETWORK_SUBNET:?Deploy through wwt-seo-infra scripts/seo, which sets this from deployments/production.yaml}
       # Needed only on the first deploy, and deliberately optional afterwards so the
       # credentials can be cleared once an Admin exists. The Web host already fails to
       # start when no Admin exists and these are empty, so requiring them here would add

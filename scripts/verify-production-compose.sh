@@ -223,3 +223,32 @@ print(
     "keeps backend-only secrets out of web, and still delivers them to api and worker."
 )
 PY
+
+# Forwarded headers: the trusted range must be explicit, and the switch that trusted everything
+# must be gone. ASPNETCORE_FORWARDEDHEADERS_ENABLED enables the middleware by clearing the
+# known-proxy and known-network lists, so leaving it beside an explicit range would quietly restore
+# "trust every source". Checked against the rendered output, not the source, so a value reaching
+# the container through any file or variable is caught.
+rendered_environment="$(POSTGRES_PASSWORD=verify API_SERVICE_KEY=verify   docker compose --env-file .env.production.example -f compose.yaml -f compose.production.yaml config --format json)"
+
+if printf '%s' "$rendered_environment" | grep -q 'ASPNETCORE_FORWARDEDHEADERS_ENABLED'; then
+  echo "ERROR: the rendered production Compose still sets ASPNETCORE_FORWARDEDHEADERS_ENABLED." >&2
+  echo "       It enables the forwarded-headers middleware by trusting every source, which is what" >&2
+  echo "       TrustedProxy__Subnet replaced. See docs/operations_runbook.md." >&2
+  exit 1
+fi
+
+for service in api web; do
+  if ! printf '%s' "$rendered_environment" | "$python_bin" -c "
+import json, sys
+service = sys.argv[1]
+config = json.load(sys.stdin)
+value = (config['services'][service]['environment'] or {}).get('TrustedProxy__Subnet')
+sys.exit(0 if value else 1)
+" "$service"; then
+    echo "ERROR: $service has no TrustedProxy__Subnet, so it would trust no proxy and report Caddy's address as every client's." >&2
+    exit 1
+  fi
+done
+
+echo "Forwarded headers are scoped to an explicit subnet for api and web."
