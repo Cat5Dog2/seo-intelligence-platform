@@ -82,13 +82,91 @@ case "$SOURCE_REVISION" in
     ;;
 esac
 
+# Which image ID each application image resolved to when it was scanned. compose.yaml names these
+# four by variable so exactly those IDs start, rather than whatever the tags point at by then.
+SCAN_MANIFEST="artifacts/scanned-images.tsv"
+
 # Both paths run these first, in this order.
 build_and_scan() {
   "${COMPOSE[@]}" config --quiet
   "${COMPOSE[@]}" build api web worker migrate
   # Scans what this host just built. The images CI scanned are not these images: the VPS rebuilds
   # from source, and the .NET base images, apt and NuGet restore are all mutable.
-  bash scripts/scan-container-images.sh app
+  #
+  # The scanner writes the manifest only when every image passes, and clears it first, so a failed
+  # scan leaves nothing for the pinning below to read.
+  APP_SCAN_MANIFEST="$SCAN_MANIFEST" bash scripts/scan-container-images.sh app
+  pin_scanned_images
+}
+
+# Exported here rather than trusted from the environment. Compose lets an exported variable win
+# over --env-file, so setting them unconditionally is what stops an inherited value choosing the
+# image - the same reason --project-name is passed explicitly above.
+pin_scanned_images() {
+  if [[ ! -s "$SCAN_MANIFEST" ]]; then
+    echo "ERROR: $SCAN_MANIFEST is missing or empty, so there is no record of what passed the scan." >&2
+    echo "       It is written only when every application image passes. Re-run the scan." >&2
+    exit 1
+  fi
+
+  local image id
+  while IFS=$'\t' read -r image id; do
+    [[ -n "$image" ]] || continue
+    if [[ ! "$id" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+      echo "ERROR: $SCAN_MANIFEST records '$id' for $image, which is not an image ID." >&2
+      exit 1
+    fi
+
+    case "$image" in
+      seo-intelligence-api) export API_IMAGE="$id" ;;
+      seo-intelligence-web) export WEB_IMAGE="$id" ;;
+      seo-intelligence-worker) export WORKER_IMAGE="$id" ;;
+      seo-intelligence-migrate) export MIGRATE_IMAGE="$id" ;;
+      *)
+        echo "ERROR: $SCAN_MANIFEST names an unexpected image '$image'." >&2
+        exit 1
+        ;;
+    esac
+  done < "$SCAN_MANIFEST"
+
+  local missing=()
+  [[ -n "${API_IMAGE:-}" ]] || missing+=(api)
+  [[ -n "${WEB_IMAGE:-}" ]] || missing+=(web)
+  [[ -n "${WORKER_IMAGE:-}" ]] || missing+=(worker)
+  [[ -n "${MIGRATE_IMAGE:-}" ]] || missing+=(migrate)
+  if [[ "${#missing[@]}" -ne 0 ]]; then
+    echo "ERROR: $SCAN_MANIFEST has no scanned image for: ${missing[*]}." >&2
+    exit 1
+  fi
+}
+
+# Read back rather than trusted. Starting from a pinned ID cannot produce the wrong image, but this
+# also catches a container an earlier, unpinned run left behind - `up` reuses a container whose
+# configuration it considers unchanged.
+assert_running_images() {
+  local service container running expected
+  for service in "$@"; do
+    case "$service" in
+      api) expected="$API_IMAGE" ;;
+      web) expected="$WEB_IMAGE" ;;
+      worker) expected="$WORKER_IMAGE" ;;
+      *) echo "ERROR: no scanned image recorded for service '$service'." >&2; exit 1 ;;
+    esac
+
+    container="$("${COMPOSE[@]}" ps --quiet "$service")"
+    if [[ -z "$container" ]]; then
+      echo "ERROR: $service has no running container after up." >&2
+      exit 1
+    fi
+
+    running="$(docker inspect --format '{{.Image}}' "$container")"
+    if [[ "$running" != "$expected" ]]; then
+      echo "ERROR: $service is running $running but the scan passed $expected." >&2
+      exit 1
+    fi
+  done
+
+  echo "api, worker and web are running the image IDs that passed the scan."
 }
 
 case "$mode" in
@@ -97,6 +175,7 @@ case "$mode" in
     "${COMPOSE[@]}" up -d postgres redis
     "${COMPOSE[@]}" --profile tools run --rm migrate
     "${COMPOSE[@]}" up -d --wait api worker web
+    assert_running_images api worker web
     "${COMPOSE[@]}" ps
     ;;
   update)
@@ -111,6 +190,7 @@ case "$mode" in
     BACKUP_PROJECT_NAME="$PROJECT_NAME" bash scripts/backup-production.sh
     "${COMPOSE[@]}" --profile tools run --rm migrate
     "${COMPOSE[@]}" up -d --wait --force-recreate api worker web
+    assert_running_images api worker web
     "${COMPOSE[@]}" ps
     "${COMPOSE[@]}" logs --tail 200 web api worker
     ;;

@@ -124,13 +124,19 @@ bash scripts/deploy-production.sh initial
 | --- | --- | --- |
 | 1 | `config --quiet` | Compose定義の検証。 |
 | 2 | `build api web worker migrate` | **サービス名を明示する**。`migrate`は`tools` profile配下にあり、省略するとbuild対象から外れる。初回はmigrate imageが存在せず、更新時は前リリースのbundleでMigrationを実行してしまう。 |
-| 3 | `scan-container-images.sh app` | **buildの後・起動の前**。前ならば前リリースのimageを、後ならば既に稼働中のimageを検査することになる。 |
-| 4 | `up -d postgres redis` | 依存サービスの起動。 |
-| 5 | `--profile tools run --rm migrate` | Migration適用。 |
-| 6 | `up -d --wait api worker web` | アプリ起動とhealthy待ち。 |
-| 7 | `ps` | 状態確認。 |
+| 3 | `scan-container-images.sh app` | **buildの後・起動の前**。前ならば前リリースのimageを、後ならば既に稼働中のimageを検査することになる。合格した4つのimage IDを`artifacts/scanned-images.tsv`へ記録する。 |
+| 4 | manifestの読み込みとexport | 記録されたimage IDを`API_IMAGE`等へ設定する。manifestが無い・IDでない値がある・4つ揃っていなければ**起動前に停止**する。 |
+| 5 | `up -d postgres redis` | 依存サービスの起動。 |
+| 6 | `--profile tools run --rm migrate` | Migration適用。 |
+| 7 | `up -d --wait api worker web` | アプリ起動とhealthy待ち。 |
+| 8 | 起動中コンテナの`.Image`照合 | 起動したimage IDが手順3で合格したものと一致することを確認する。 |
+| 9 | `ps` | 状態確認。 |
 
 この順序は`scripts/verify-production-compose.sh`が検証し、`scripts/verify-deployment-guards.sh`が「検証自体が機能しなくなっていないこと」を検証する。
+
+`compose.yaml`の`api` / `web` / `worker` / `migrate`は`${API_IMAGE:-seo-intelligence-api}`のように変数で書く。スクリプトが手順4で必ず自分で設定するため、環境に残った値がimageを選ぶことはない（Composeでは`--env-file`よりexportされた変数が優先される。`--project-name`を明示するのと同じ理由である）。手で`docker compose`を実行した場合は既定値のタグへ落ちるので、従来と同じ挙動になる。
+
+**タグではなくimage IDで起動する理由。** buildと`up`の間にタグが差し替わると、スキャンを通した成果物とは別のimageが起動する。手順8の照合だけでは、起動してしまった後にしか気づけない。`migrate`は本番DBへ書き込む唯一のコンポーネントなので、その差は「一瞬動いた」では済まない。
 
 CIも同じスキャンを行うが、VPSは同じコミットから再buildするため、CIが検査したimageと本番が起動するimageは同一とは限らない（`mcr.microsoft.com/dotnet/*`のタグ、`apt-get`、NuGet restoreはいずれも可変である）。**本番で実際に動くimageを保証できるのは手順3の実行だけ**である。より強い保証が必要なら、CIでbuild・スキャンしたimageをregistryへpushし、本番はそのdigestを`pull`して`up --no-build`する構成へ移行する。現構成はregistryを前提にしていない。
 

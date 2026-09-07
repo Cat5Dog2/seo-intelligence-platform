@@ -91,7 +91,17 @@ expect_failure "a digest that does not match the rendered image" \
 # than about building images or dumping a database.
 make_traceable() {
   local source="$1" destination="$2" backup_command="${3:-echo TRACE backup}"
-  sed     -e 's|^COMPOSE=(docker compose .*|COMPOSE=(echo TRACE compose)|'     -e 's|^  bash scripts/scan-container-images.sh app$|  echo TRACE scan|'     -e 's|^cd "$(dirname "$0")/\.\."$|cd "$(dirname "$0")/../.."|'     "$source" > "$destination"
+  sed     -e 's|^COMPOSE=(docker compose .*|COMPOSE=(echo TRACE compose)|'     -e 's|^  APP_SCAN_MANIFEST=.* bash scripts/scan-container-images.sh app$|  echo TRACE scan|'     -e 's|^  pin_scanned_images$|  echo TRACE pin|'     -e 's|^    assert_running_images .*|    echo TRACE verify|'     -e 's|^cd "$(dirname "$0")/\.\."$|cd "$(dirname "$0")/../.."|'     "$source" > "$destination"
+
+  # Same reasoning as the backup stub below: a pattern that stopped matching would leave the real
+  # scan and the real image verification running against a real Docker, and every trace case would
+  # fail slowly for the wrong reason.
+  for pattern in 'scripts/scan-container-images.sh app' 'pin_scanned_images$' 'assert_running_images '; do
+    if grep -qE "$pattern" "$destination"; then
+      echo "FAIL: '$pattern' in $source no longer matches the stub pattern." >&2
+      failures=$((failures + 1))
+    fi
+  done
   # The backup is its own script and shells out to docker; stubbed so the trace stays about order.
   # Only the command is replaced, never the whole line: the deployment sets the backup's target on
   # that line, and a stub that overwrote it would leave a test about what the backup is given
@@ -143,18 +153,22 @@ make_traceable scripts/deploy-production.sh "$traceable"
 expect_trace "the first deployment builds and scans before anything starts"   "$traceable" initial   "compose config --quiet
 compose build api web worker migrate
 scan
+pin
 compose up -d postgres redis
 compose --profile tools run --rm migrate
 compose up -d --wait api worker web
+verify
 compose ps"
 
 expect_trace "an update backs up while stopped and before migrating"   "$traceable" update   "compose config --quiet
 compose build api web worker migrate
 scan
+pin
 compose stop web api worker
 backup
 compose --profile tools run --rm migrate
 compose up -d --wait --force-recreate api worker web
+verify
 compose ps
 compose logs --tail 200 web api worker"
 
@@ -236,6 +250,7 @@ make_traceable "$work/deploy-uncalled-source" "$work/deploy-uncalled"
 expect_trace "a build and scan that is defined but never called is visible in the trace"   "$work/deploy-uncalled" initial   "compose up -d postgres redis
 compose --profile tools run --rm migrate
 compose up -d --wait api worker web
+verify
 compose ps"
 
 # Without `set -e` a failing scan would not stop the deployment, which is the whole reason the
@@ -269,7 +284,7 @@ expect_failure "the first-deploy procedure no longer invoking the deployment scr
 # flow rather than about building images, and the start commands announce themselves so their
 # absence is evidence rather than an assumption.
 stub="$work/deploy-abort"
-sed   -e 's|^COMPOSE=(docker compose .*|COMPOSE=(echo COMPOSE-RAN)|'   -e 's|^  bash scripts/scan-container-images.sh app$|  echo SCAN-RAN; return 3|'   -e 's|^cd "$(dirname "$0")/\.\."$|cd "$(dirname "$0")/../.."|'   scripts/deploy-production.sh > "$stub"
+sed   -e 's|^COMPOSE=(docker compose .*|COMPOSE=(echo COMPOSE-RAN)|'   -e 's|^  APP_SCAN_MANIFEST=.* bash scripts/scan-container-images.sh app$|  echo SCAN-RAN; return 3|'   -e 's|^cd "$(dirname "$0")/\.\."$|cd "$(dirname "$0")/../.."|'   scripts/deploy-production.sh > "$stub"
 
 abort_output="$(PATH="$PWD/$work/bin:$PATH" PRODUCTION_LOCK_DIR="$PWD/$work/lock" ENV_FILE=.env.production.example bash "$stub" initial 2>&1)" && abort_status=0 || abort_status=$?
 
@@ -378,6 +393,58 @@ HANDSHAKE
     echo "ok: a second deployment is refused while the first holds the lock."
   fi
 fi
+
+
+# --- the scan manifest ---------------------------------------------------------------------------
+
+# compose.yaml names the four application images by variable so the deployment can start exactly
+# the IDs the scan inspected. That is only worth anything if a missing or malformed manifest stops
+# the deployment: falling back to the tags would start whatever they point at by then, which is the
+# gap the manifest exists to close. pin_scanned_images is left real here; only Compose and the scan
+# are stubbed, and the scan is what writes the manifest.
+expect_manifest_refusal() {
+  local description="$1" expected_message="$2" scan_body="$3"
+  local stub="$work/deploy-manifest-$RANDOM"
+  local manifest="$work/manifest-$RANDOM.tsv"
+
+  sed \
+    -e 's|^COMPOSE=(docker compose .*|COMPOSE=(echo COMPOSE-RAN)|' \
+    -e "s|^  APP_SCAN_MANIFEST=.* bash scripts/scan-container-images.sh app\$|  ${scan_body}|" \
+    -e 's|^SCAN_MANIFEST=.*|SCAN_MANIFEST="'"$manifest"'"|' \
+    -e 's|^cd "$(dirname "$0")/\.\."$|cd "$(dirname "$0")/../.."|' \
+    scripts/deploy-production.sh > "$stub"
+
+  local output status=0
+  output="$(PATH="$PWD/$work/bin:$PATH" PRODUCTION_LOCK_DIR="$PWD/$work/lock" \
+    ENV_FILE=.env.production.example MANIFEST_PATH="$manifest" bash "$stub" initial 2>&1)" || status=$?
+
+  if [[ "$status" -eq 0 ]]; then
+    echo "FAIL: $description was accepted." >&2
+    failures=$((failures + 1))
+  elif ! grep -qF -- "$expected_message" <<< "$output"; then
+    echo "FAIL: $description was rejected, but not for the expected reason." >&2
+    echo "      expected to contain: $expected_message" >&2
+    sed 's/^/        /' <<< "$output" >&2
+    failures=$((failures + 1))
+  elif grep -qF "up -d postgres redis" <<< "$output"; then
+    echo "FAIL: $description started containers anyway." >&2
+    failures=$((failures + 1))
+  else
+    echo "ok: $description is caught."
+  fi
+}
+
+expect_manifest_refusal "a scan that records nothing" \
+  "is missing or empty" \
+  'echo SCAN-RAN'
+
+expect_manifest_refusal "a manifest naming a tag instead of an image ID" \
+  "which is not an image ID" \
+  'printf "seo-intelligence-api\\tseo-intelligence-api:latest\\n" > "$MANIFEST_PATH"'
+
+expect_manifest_refusal "a manifest missing one of the four images" \
+  "has no scanned image for" \
+  'printf "seo-intelligence-api\\tsha256:%064d\\n" 1 > "$MANIFEST_PATH"'
 
 if [[ "$failures" -ne 0 ]]; then
   echo "$failures guard(s) did not catch their case." >&2
