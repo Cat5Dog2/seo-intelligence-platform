@@ -14,9 +14,22 @@ COPY src/SeoIntelligence.Api/SeoIntelligence.Api.csproj src/SeoIntelligence.Api/
 COPY src/SeoIntelligence.Web/SeoIntelligence.Web.csproj src/SeoIntelligence.Web/
 COPY src/SeoIntelligence.Worker/SeoIntelligence.Worker.csproj src/SeoIntelligence.Worker/
 
-# The NuGet package cache lives in a BuildKit cache mount so csproj edits do not
-# re-download every package; every later dotnet invocation mounts the same cache.
-RUN --mount=type=cache,id=nuget,target=/root/.nuget/packages \
+# Restored into the image layer rather than a BuildKit cache mount.
+#
+# A cache mount is not part of any layer, so it is not carried by a registry or a
+# GitHub Actions layer cache. Every later stage here runs --no-restore or --no-build
+# and reads what this stage produced, so a build that restores its layers from a
+# remote cache and then re-executes one of those stages finds the packages and the
+# local tools gone:
+#
+#   Run "dotnet tool restore" to make the "dotnet-ef" command available.
+#   MSB3030: Could not copy the file ".../dapper/2.0.123/lib/net5.0/Dapper.dll"
+#
+# Reproducible with: docker build --no-cache-filter migrate-bundle .
+#
+# The cost is that a csproj change re-downloads. cache-from buys that back: this
+# layer is reused whenever the csproj files are unchanged, which is most builds.
+RUN \
     dotnet tool restore \
     && dotnet restore src/SeoIntelligence.Api/SeoIntelligence.Api.csproj \
     && dotnet restore src/SeoIntelligence.Web/SeoIntelligence.Web.csproj \
@@ -28,14 +41,14 @@ COPY src/ src/
 # and are reused by every publish target and the migration bundle.
 FROM restore AS build
 ARG BUILD_CONFIGURATION=Release
-RUN --mount=type=cache,id=nuget,target=/root/.nuget/packages \
+RUN \
     dotnet build src/SeoIntelligence.Api/SeoIntelligence.Api.csproj --configuration ${BUILD_CONFIGURATION} --no-restore \
     && dotnet build src/SeoIntelligence.Web/SeoIntelligence.Web.csproj --configuration ${BUILD_CONFIGURATION} --no-restore \
     && dotnet build src/SeoIntelligence.Worker/SeoIntelligence.Worker.csproj --configuration ${BUILD_CONFIGURATION} --no-restore
 
 FROM build AS publish-api
 ARG BUILD_CONFIGURATION=Release
-RUN --mount=type=cache,id=nuget,target=/root/.nuget/packages \
+RUN \
     dotnet publish src/SeoIntelligence.Api/SeoIntelligence.Api.csproj \
     --configuration ${BUILD_CONFIGURATION} \
     --no-build \
@@ -44,7 +57,7 @@ RUN --mount=type=cache,id=nuget,target=/root/.nuget/packages \
 
 FROM build AS publish-web
 ARG BUILD_CONFIGURATION=Release
-RUN --mount=type=cache,id=nuget,target=/root/.nuget/packages \
+RUN \
     dotnet publish src/SeoIntelligence.Web/SeoIntelligence.Web.csproj \
     --configuration ${BUILD_CONFIGURATION} \
     --no-build \
@@ -53,7 +66,7 @@ RUN --mount=type=cache,id=nuget,target=/root/.nuget/packages \
 
 FROM build AS publish-worker
 ARG BUILD_CONFIGURATION=Release
-RUN --mount=type=cache,id=nuget,target=/root/.nuget/packages \
+RUN \
     dotnet publish src/SeoIntelligence.Worker/SeoIntelligence.Worker.csproj \
     --configuration ${BUILD_CONFIGURATION} \
     --no-build \
@@ -67,7 +80,7 @@ RUN --mount=type=cache,id=nuget,target=/root/.nuget/packages \
 # environment variables via SeoIntelligenceDbContextFactory.
 FROM build AS migrate-bundle
 ARG BUILD_CONFIGURATION=Release
-RUN --mount=type=cache,id=nuget,target=/root/.nuget/packages \
+RUN \
     dotnet tool run dotnet-ef -- migrations bundle \
     --configuration ${BUILD_CONFIGURATION} \
     --no-build \

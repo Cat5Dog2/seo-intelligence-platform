@@ -1278,6 +1278,48 @@ ISSUE-MVP-00X の続きから再開してください。
 - [ ] `grep -nE 'uses: .*@[0-9a-f]{40}' .github/workflows/*.yaml` が全 `uses:` 行に一致する
 - [ ] CI が成功する
 
+### ISSUE-OPS-007 ビルドがレイヤ外の状態に依存していた
+
+参照ドキュメント: `docs/ci-cd-design.md`, `Dockerfile`
+
+背景:
+
+- `build-test-smoke` が全PRで失敗する一方、`main` は成功していた。docsのみを変更したPRでも落ちるため、変更内容とは無関係だった。
+- `Dockerfile` の `restore` ステージは `dotnet tool restore` と `dotnet restore` を **BuildKitのcache mount**（`--mount=type=cache,id=nuget`）へ行い、以降の `build` / `publish-*` / `migrate-bundle` は `--no-restore` / `--no-build` でその結果を読んでいた。
+- cache mount はレイヤの一部ではないため、`type=gha` のレイヤキャッシュでは復元されない。レイヤをリモートキャッシュから復元したうえで後段のいずれかが再実行されると、パッケージもローカルツールも存在しない。
+
+  ```
+  Run "dotnet tool restore" to make the "dotnet-ef" command available.
+  MSB3030: Could not copy the file ".../dapper/2.0.123/lib/net5.0/Dapper.dll"
+  ```
+
+- ローカルで再現手順を確立した。warm build の後 `docker build --no-cache-filter migrate-bundle .` で同じ失敗が出る。
+
+目的:
+
+- [x] ビルドが、レイヤグラフの外にある状態へ依存しないようにする。
+
+範囲:
+
+- [x] NuGetのcache mountを廃止し、パッケージとローカルツールを `restore` レイヤへ入れる。
+- [x] 同じ形の再発を止める `scripts/verify-dockerfile-restore.sh` を追加し、CIへ配線する。
+
+受入条件:
+
+- [x] `docker build --no-cache-filter migrate-bundle .` が warm build の後でも成功する。
+- [x] cache mount を戻すと検証スクリプトが失敗する。
+
+検証:
+
+- [x] 修正前: `--no-cache-filter migrate-bundle` で exit 1（`dotnet tool restore` が見つからない）
+- [x] 修正後: 同条件で exit 0
+- [x] ランタイムイメージのサイズは 403MB で変化なし（パッケージはビルドステージにのみ残る）
+
+補足:
+
+- 代償はcsproj変更時の再ダウンロードである。`cache-from` により、csprojが変わらない限り `restore` レイヤは再利用される。
+- 速度を優先してcache mountへ戻す場合は、後段の `--no-restore` / `--no-build` を外して各ステージが自分でrestoreする形にしないと、同じ失敗が戻る。
+
 ## 横断セキュリティ
 
 ### ISSUE-SEC-001 単一管理者ログインとAPIサービス認証を実装する
