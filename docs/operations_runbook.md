@@ -135,6 +135,17 @@ OpenTelemetry Meter名は `SeoIntelligence`。MVPで記録する運用メトリ�
 
 ### 7.1 単一利用者向け暫定VPSの運用
 
+同居VPS（`web-writing.cloud` と併設）では、デプロイと共通Caddyの操作は `wwt-seo-infra` の entrypoint を使う。`scripts/deploy-production.sh` や `docker compose` を直接呼ばない。
+
+| やりたいこと | 入口 |
+| --- | --- |
+| 更新デプロイ | `/srv/wwt-seo-infra/scripts/seo update` |
+| 単独バックアップ | `/srv/wwt-seo-infra/scripts/seo backup` |
+| 共通Caddyの再起動・設定変更 | `/srv/wwt-seo-infra/scripts/caddy-up.sh`（`caddy reload` と `docker compose restart` は使えない） |
+| 手順の正本 | `wwt-seo-infra/docs/vps-deploy.md` |
+
+`scripts/seo` は `CADDY_NETWORK` をinfraの決定へ固定する。これを飛ばすと、Caddyとアプリが別ネットワークに居るまま**デプロイは成功し、全リクエストが502**になる。障害調査でこの症状を見たら、まずネットワーク名の一致を確認する。
+
 VPSの初回デプロイ・更新・バックアップの正本手順は `docs/docker_deployment.md` とする（コマンド列は本書へ複製しない）。個人利用向け構成であり、PostgreSQL、Redis、APIのホストポートを公開せず、Web/APIだけを共通Caddyの専用external networkへ接続する。
 
 運用上の注意（正本手順に加えて守ること）:
