@@ -2,6 +2,12 @@
 
 本書はVPSデプロイの正本である。ローカル開発の正本は [`environment_setup.md`](environment_setup.md) とする。
 
+> **同居VPSでは本書が正本ではない。** `web-writing.cloud` と `seo-intelligence.cloud` を同じVPSで動かす構成では、共通Caddyの所有と「どのリビジョンを本番へ出すか」の決定は `wwt-seo-infra` にある。手順の正本は同リポジトリの `docs/vps-deploy.md`、実行の入口は `scripts/seo` である。
+>
+> 本書のコマンドをそのまま実行してよいのは、このスタックだけが載る**単独構成**のときに限る。同居構成で `scripts/deploy-production.sh` を直接呼ぶと、`CADDY_NETWORK` がinfraの決定で固定されない。親shellや `.env.production` に別のネットワーク名が残っていると、**Caddyとアプリが別ネットワークへ繋がったままデプロイが成功し、全リクエストが502になる**。`scripts/seo` はネットワーク名の固定に加えて、チェックアウトの完全SHA一致と、未追跡ファイルを含むclean検査も行う。
+>
+> 手順そのものはinfra側へ複製しない。二重管理にすると片方だけ直って食い違う。実際にデプロイ順序の記述が食い違い、修正が必要になったことがある。
+
 ## 1. 対象構成
 
 本書は、Web、API、Worker、PostgreSQL、RedisをDocker Composeで起動し、別Composeの共通Caddyから公開する単一利用者向けVPS構成を対象とする。アプリ内の単一管理者ログイン（ASP.NET Core Identity）とAPIサービスキーで保護する。詳細は `docs/adr/0008-aspnet-core-identity-auth.md` を参照する。
@@ -108,6 +114,8 @@ Migration前にPostgreSQLとStorageのバックアップを確認する。
 bash scripts/deploy-production.sh initial
 ```
 
+同居VPSでは代わりに `/srv/wwt-seo-infra/scripts/seo initial` を使う（冒頭の注記を参照）。委譲先は本節と同じスクリプトなので、以下の説明はそのまま当てはまる。
+
 手順は個別コマンドの列挙ではなくスクリプトで実行する。**スキャン失敗でデプロイを中断させるため**である。スクリプトは`flock`で全体を排他するので、2つのデプロイが同時に走ることもない（2つ目は即座に拒否される）。同じコマンドをシェルへ順に貼り付けた場合、スキャンが非0で終了しても次の`up`が実行され、脆弱なimageが起動してしまう。スクリプトは`set -euo pipefail`で中断する。
 
 スクリプトが行うこと:
@@ -213,6 +221,8 @@ git status --short   # 出力が空であること
 bash scripts/deploy-production.sh update
 ```
 
+同居VPSでは `/srv/wwt-seo-infra/scripts/seo update` を使う。先にinfraのチェックアウトを新しいSHAへ移し、`deployments/production.yaml` の `seo_intelligence_revision` に合わせてから実行する。
+
 実行順は build → スキャン → 停止 → **バックアップ** → Migration → 再作成で、途中で失敗すれば中断する。
 
 **バックアップはスクリプトが取得する。** 手動手順にしない理由は、正しい取得タイミングが「アプリ停止後・Migration前」という狭い窓であり、外すと復旧が必要になったときに初めて判明するためである。取得先は `backups/<UTCタイムスタンプ>/` で、PostgreSQLのdump、`seo-storage`、`web-data-protection`の3点を取る。取得後にすべて読み戻して検証し、1つでも復元できない状態ならMigrationへ進まず中断する（検証内容は5.1の表）。
@@ -253,6 +263,8 @@ docker compose --project-name seo-intelligence-prod --env-file .env.production -
 ```bash
 bash scripts/deploy-production.sh backup
 ```
+
+同居VPSでは `/srv/wwt-seo-infra/scripts/seo backup` を使う。
 
 停止・取得・再起動をスクリプトにまとめてあるのは、この3つが**デプロイと同じロックの中**で行われる必要があるためである。手動で3コマンドを打つと、その間にデプロイが走ればMigration中のdumpや、進行中デプロイのサービス停止が起こり得る。ロックはCompose project名で決まるcheckout外のパスに置くので、別のcloneやworktreeから実行しても排他される。
 
