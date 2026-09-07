@@ -7,6 +7,14 @@ on:
 
 jobs:
   discord-notify:
+    # Dependabot's runs cannot read this repository's secrets: GitHub puts them in a separate
+    # `dependabot` scope. DISCORD_WEBHOOK_URL therefore arrives empty, curl rejects the malformed
+    # URL, and every Dependabot pull request carried a red check for a notification nobody was
+    # waiting on - which is how a red check stops meaning anything.
+    #
+    # Skipped rather than made tolerant of an empty URL. A secret that goes missing anywhere else
+    # should still fail loudly; this is the one case where its absence is by design.
+    if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
