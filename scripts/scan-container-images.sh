@@ -173,8 +173,17 @@ scan_to_json() {
   local dir
   dir="$(mktemp -d "$scratch/scan.XXXXXX")"
 
+  # mktemp -d creates 0700, owned by whoever runs this. The scanner runs as root inside the
+  # container with every capability dropped, and root without DAC_OVERRIDE cannot traverse a
+  # directory owned by another user - the scan fails with "open /scan/image.tar: permission
+  # denied". Granting the capability back to read one file would undo the point, so the directory
+  # is made traversable instead. It holds an exported copy of an image that is about to be
+  # published anyway, and it exists for the length of one scan.
+  chmod 0755 "$dir"
+
   # Exported first so the scanner never touches the Docker daemon.
   docker save "$image" -o "$dir/image.tar"
+  chmod 0644 "$dir/image.tar"
 
   # The scanner is third-party code reading an artifact that is about to run in production, on a
   # host it shares with both production stacks. It gets no network, no capabilities, no writable
