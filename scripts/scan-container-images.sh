@@ -181,8 +181,10 @@ scan_to_json() {
   # published anyway, and it exists for the length of one scan.
   chmod 0755 "$dir"
 
-  # Exported first so the scanner never touches the Docker daemon.
-  docker save "$image" -o "$dir/image.tar"
+  # Exported first so the scanner never touches the Docker daemon. Callers that already resolved
+  # the image ID pass it, so what is scanned is the artifact they resolved even if something
+  # repoints the tag between the two commands.
+  docker save "${3:-$image}" -o "$dir/image.tar"
   chmod 0644 "$dir/image.tar"
 
   # The scanner is third-party code reading an artifact that is about to run in production, on a
@@ -295,10 +297,42 @@ status=0
 
 case "$mode" in
   app)
+    # APP_SCAN_MANIFEST records which image ID each name resolved to at scan time, so the
+    # deployment can start those IDs rather than resolving the tags again. Between the build and
+    # the `up` a tag can be repointed; the manifest is what makes "the image that was scanned" and
+    # "the image that started" the same claim rather than two.
+    #
+    # Cleared first. A failed scan must not leave a previous run's manifest for the deployment to
+    # read, and the deployment refuses to start without one.
+    manifest="${APP_SCAN_MANIFEST:-}"
+    if [[ -n "$manifest" ]]; then
+      rm -f -- "$manifest"
+      mkdir -p "$(dirname "$manifest")"
+    fi
+
+    scanned=()
     for image in "${APP_IMAGES[@]}"; do
-      scan_to_json "$image" "$scratch/report.json"
-      report "$image" "$scratch/report.json" || status=1
+      if ! image_id="$(docker image inspect --format '{{.Id}}' "$image" 2> /dev/null)"; then
+        echo "ERROR: $image does not exist locally. Build it before scanning." >&2
+        status=1
+        continue
+      fi
+
+      scan_to_json "$image" "$scratch/report.json" "$image_id"
+      if report "$image" "$scratch/report.json"; then
+        scanned+=("${image}"$'\t'"${image_id}")
+      else
+        status=1
+      fi
     done
+
+    # Written only when every image passed, and published by rename so a reader never sees a
+    # partial file.
+    if [[ -n "$manifest" && "$status" -eq 0 ]]; then
+      printf '%s\n' "${scanned[@]}" > "$manifest.tmp"
+      mv "$manifest.tmp" "$manifest"
+      echo "Recorded ${#scanned[@]} scanned image IDs in $manifest."
+    fi
     ;;
   runtime)
     read_reviewed_digests || exit 1

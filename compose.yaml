@@ -29,6 +29,10 @@ x-backend-environment: &backend-environment
   ServiceAuthentication__ServiceKeyRef: ApiServiceKey
   Secrets__ApiServiceKey: ${API_SERVICE_KEY:-local_development_service_key}
 
+# The four application images are named by variable so scripts/deploy-production.sh can start
+# exactly the image IDs the vulnerability scan inspected. The default is the tag the build
+# produces, so `docker compose` by hand behaves as before. The deployment always sets these
+# itself, which is what stops a value inherited from the environment choosing the image.
 services:
   postgres:
     # Pinned by digest so the VPS cannot pull a different image than the one whose
@@ -73,7 +77,7 @@ services:
       target: migrate
       args:
         SOURCE_REVISION: ${SOURCE_REVISION:-unknown}
-    image: seo-intelligence-migrate
+    image: ${MIGRATE_IMAGE:-seo-intelligence-migrate}
     environment:
       <<: *backend-environment
     depends_on:
@@ -88,7 +92,7 @@ services:
       target: api
       args:
         SOURCE_REVISION: ${SOURCE_REVISION:-unknown}
-    image: seo-intelligence-api
+    image: ${API_IMAGE:-seo-intelligence-api}
     env_file:
       - path: ${APP_ENV_FILE:-.env}
         required: false
@@ -118,7 +122,7 @@ services:
       target: worker
       args:
         SOURCE_REVISION: ${SOURCE_REVISION:-unknown}
-    image: seo-intelligence-worker
+    image: ${WORKER_IMAGE:-seo-intelligence-worker}
     env_file:
       - path: ${APP_ENV_FILE:-.env}
         required: false
@@ -143,7 +147,7 @@ services:
       target: web
       args:
         SOURCE_REVISION: ${SOURCE_REVISION:-unknown}
-    image: seo-intelligence-web
+    image: ${WEB_IMAGE:-seo-intelligence-web}
     # Deliberately no env_file. That file carries the external API key and the Discord webhook,
     # which only api/worker call out with; the Web host is the internet-facing service and has no
     # use for them. Everything it does need is listed explicitly below.

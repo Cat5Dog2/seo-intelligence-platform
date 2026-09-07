@@ -82,13 +82,171 @@ case "$SOURCE_REVISION" in
     ;;
 esac
 
+# Which image ID each application image resolved to when it was scanned. compose.yaml names these
+# four by variable so exactly those IDs start, rather than whatever the tags point at by then.
+SCAN_MANIFEST="artifacts/scanned-images.tsv"
+
+# Fix the build inputs before Compose parses either file. Inherited values are intentionally
+# ignored: they could otherwise make Compose build one image name while the scanner inspects the
+# repository's standard tag from an earlier run. After the scan, pin_scanned_images replaces these
+# names with the exact IDs that passed.
+set_build_image_names() {
+  export API_IMAGE="seo-intelligence-api"
+  export WEB_IMAGE="seo-intelligence-web"
+  export WORKER_IMAGE="seo-intelligence-worker"
+  export MIGRATE_IMAGE="seo-intelligence-migrate"
+}
+
 # Both paths run these first, in this order.
 build_and_scan() {
+  set_build_image_names
   "${COMPOSE[@]}" config --quiet
   "${COMPOSE[@]}" build api web worker migrate
   # Scans what this host just built. The images CI scanned are not these images: the VPS rebuilds
   # from source, and the .NET base images, apt and NuGet restore are all mutable.
-  bash scripts/scan-container-images.sh app
+  #
+  # The scanner writes the manifest only when every image passes, and clears it first, so a failed
+  # scan leaves nothing for the pinning below to read.
+  APP_SCAN_MANIFEST="$SCAN_MANIFEST" bash scripts/scan-container-images.sh app
+  pin_scanned_images
+}
+
+# Exported here rather than trusted from the environment. Compose lets an exported variable win
+# over --env-file, so setting them unconditionally is what stops an inherited value choosing the
+# image - the same reason --project-name is passed explicitly above.
+pin_scanned_images() {
+  if [[ ! -s "$SCAN_MANIFEST" ]]; then
+    echo "ERROR: $SCAN_MANIFEST is missing or empty, so there is no record of what passed the scan." >&2
+    echo "       It is written only when every application image passes. Re-run the scan." >&2
+    exit 1
+  fi
+
+  local image id
+  local api_id="" web_id="" worker_id="" migrate_id=""
+  while IFS=$'\t' read -r image id; do
+    [[ -n "$image" ]] || continue
+    if [[ ! "$id" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+      echo "ERROR: $SCAN_MANIFEST records '$id' for $image, which is not an image ID." >&2
+      exit 1
+    fi
+
+    case "$image" in
+      seo-intelligence-api)
+        [[ -z "$api_id" ]] || { echo "ERROR: $SCAN_MANIFEST records seo-intelligence-api more than once." >&2; exit 1; }
+        api_id="$id"
+        ;;
+      seo-intelligence-web)
+        [[ -z "$web_id" ]] || { echo "ERROR: $SCAN_MANIFEST records seo-intelligence-web more than once." >&2; exit 1; }
+        web_id="$id"
+        ;;
+      seo-intelligence-worker)
+        [[ -z "$worker_id" ]] || { echo "ERROR: $SCAN_MANIFEST records seo-intelligence-worker more than once." >&2; exit 1; }
+        worker_id="$id"
+        ;;
+      seo-intelligence-migrate)
+        [[ -z "$migrate_id" ]] || { echo "ERROR: $SCAN_MANIFEST records seo-intelligence-migrate more than once." >&2; exit 1; }
+        migrate_id="$id"
+        ;;
+      *)
+        echo "ERROR: $SCAN_MANIFEST names an unexpected image '$image'." >&2
+        exit 1
+        ;;
+    esac
+  done < "$SCAN_MANIFEST"
+
+  local missing=()
+  [[ -n "$api_id" ]] || missing+=(api)
+  [[ -n "$web_id" ]] || missing+=(web)
+  [[ -n "$worker_id" ]] || missing+=(worker)
+  [[ -n "$migrate_id" ]] || missing+=(migrate)
+  if [[ "${#missing[@]}" -ne 0 ]]; then
+    echo "ERROR: $SCAN_MANIFEST has no scanned image for: ${missing[*]}." >&2
+    exit 1
+  fi
+
+  export API_IMAGE="$api_id"
+  export WEB_IMAGE="$web_id"
+  export WORKER_IMAGE="$worker_id"
+  export MIGRATE_IMAGE="$migrate_id"
+}
+
+# The backup path does not build or scan. Capture the immutable IDs of the application containers
+# that are running before they are stopped, so the restart cannot follow a moved tag or an inherited
+# image variable. Resolve every service first and export only after the complete set is valid.
+pin_running_images() {
+  set_build_image_names
+
+  local service container image_id
+  local api_id="" web_id="" worker_id=""
+  for service in "$@"; do
+    if ! container="$("${COMPOSE[@]}" ps --quiet "$service")" || [[ -z "$container" ]]; then
+      echo "ERROR: cannot identify the running $service container before the backup." >&2
+      exit 1
+    fi
+    if ! image_id="$(docker inspect --format '{{.Image}}' "$container")" ||
+       [[ ! "$image_id" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+      echo "ERROR: cannot identify the immutable image ID for the running $service container." >&2
+      exit 1
+    fi
+
+    case "$service" in
+      api) api_id="$image_id" ;;
+      web) web_id="$image_id" ;;
+      worker) worker_id="$image_id" ;;
+      *) echo "ERROR: cannot pin the unsupported service '$service' for backup." >&2; exit 1 ;;
+    esac
+  done
+
+  [[ -n "$api_id" && -n "$web_id" && -n "$worker_id" ]] || {
+    echo "ERROR: backup requires the running image IDs for api, worker and web." >&2
+    exit 1
+  }
+  export API_IMAGE="$api_id"
+  export WEB_IMAGE="$web_id"
+  export WORKER_IMAGE="$worker_id"
+}
+
+# Read back rather than trusted. Starting from a pinned ID cannot produce the wrong image, but this
+# also catches a container an earlier, unpinned run left behind - `up` reuses a container whose
+# configuration it considers unchanged.
+assert_running_images() {
+  local service container running expected
+  local failed=0
+  for service in "$@"; do
+    expected=""
+    case "$service" in
+      api) expected="$API_IMAGE" ;;
+      web) expected="$WEB_IMAGE" ;;
+      worker) expected="$WORKER_IMAGE" ;;
+      *) echo "ERROR: no pinned image recorded for service '$service'." >&2; failed=1; continue ;;
+    esac
+
+    if ! container="$("${COMPOSE[@]}" ps --quiet "$service")" || [[ -z "$container" ]]; then
+      echo "ERROR: $service has no running container after up." >&2
+      failed=1
+      continue
+    fi
+
+    if ! running="$(docker inspect --format '{{.Image}}' "$container")"; then
+      echo "ERROR: the image ID of the running $service container could not be inspected." >&2
+      failed=1
+      continue
+    fi
+    if [[ "$running" != "$expected" ]]; then
+      echo "ERROR: $service is running $running but the pinned image is $expected." >&2
+      failed=1
+    fi
+  done
+
+  if [[ "$failed" -ne 0 ]]; then
+    echo "ERROR: stopping web, api and worker because their running images could not be verified." >&2
+    if ! "${COMPOSE[@]}" stop web api worker; then
+      echo "ERROR: the application image check failed and one or more services could not be stopped." >&2
+    fi
+    return 1
+  fi
+
+  echo "api, worker and web are running their pinned image IDs."
 }
 
 case "$mode" in
@@ -97,6 +255,7 @@ case "$mode" in
     "${COMPOSE[@]}" up -d postgres redis
     "${COMPOSE[@]}" --profile tools run --rm migrate
     "${COMPOSE[@]}" up -d --wait api worker web
+    assert_running_images api worker web
     "${COMPOSE[@]}" ps
     ;;
   update)
@@ -111,6 +270,7 @@ case "$mode" in
     BACKUP_PROJECT_NAME="$PROJECT_NAME" bash scripts/backup-production.sh
     "${COMPOSE[@]}" --profile tools run --rm migrate
     "${COMPOSE[@]}" up -d --wait --force-recreate api worker web
+    assert_running_images api worker web
     "${COMPOSE[@]}" ps
     "${COMPOSE[@]}" logs --tail 200 web api worker
     ;;
@@ -123,6 +283,7 @@ case "$mode" in
     # answer is to bring the previous version back up and report the failure. This is the opposite
     # of the update path, where a failure must leave the stack stopped rather than restart old code
     # against a database a migration may already have touched.
+    pin_running_images api worker web
     backup_taken=false
     restart_after_failed_backup() {
       local status=$?
@@ -131,7 +292,11 @@ case "$mode" in
       # send the operator looking in the wrong place.
       if [[ "$status" -ne 0 && "$backup_taken" != "true" ]]; then
         echo "The backup failed; restarting the services it stopped." >&2
-        "${COMPOSE[@]}" up -d --wait api worker web || true
+        if "${COMPOSE[@]}" up -d --wait api worker web; then
+          # Preserve the original backup failure. assert_running_images stops every application
+          # service itself if the restart cannot be shown to use the captured IDs.
+          assert_running_images api worker web || true
+        fi
       fi
       return "$status"
     }
@@ -142,6 +307,7 @@ case "$mode" in
     BACKUP_PROJECT_NAME="$PROJECT_NAME" bash scripts/backup-production.sh
     backup_taken=true
     "${COMPOSE[@]}" up -d --wait api worker web
+    assert_running_images api worker web
     "${COMPOSE[@]}" ps
     trap - EXIT
     ;;
