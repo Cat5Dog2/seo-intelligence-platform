@@ -2,6 +2,18 @@
 
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <!--
+      Without this, a project can put VersionOverride="..." on its PackageReference and NuGet
+      prefers it over the version above, silently. Measured: with StackExchange.Redis pinned at
+      2.13.17 here, an override of 3.1.31 in one csproj restored cleanly and resolved to 3.1.31 -
+      no error, no warning. That is a per-project version divergence, which is the condition this
+      file exists to remove, so the escape hatch is closed rather than left to review to catch.
+      With it set, the same override is refused at restore with NU1013.
+
+      If a project ever genuinely needs a different version, turn this back on deliberately. A
+      visible one-line change beats an attribute nobody notices.
+    -->
+    <CentralPackageVersionOverrideEnabled>false</CentralPackageVersionOverrideEnabled>
   </PropertyGroup>
 
   <!--

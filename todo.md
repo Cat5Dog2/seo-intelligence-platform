@@ -1343,6 +1343,8 @@ ISSUE-MVP-00X の続きから再開してください。
 - [ ] Dependabot が `Directory.Packages.props` を更新できることを、実際の更新PRで確認する。
 - [x] `Dockerfile` の restore ステージへ `Directory.Packages.props` を copy する。集中管理により、これが無いと restore が1つも版を解決できない。
 - [x] Dependabot の `efcore` グループへ `Microsoft.EntityFrameworkCore` 本体（`Microsoft.EntityFrameworkCore.*` はドットがあるためマッチしない）と `Microsoft.AspNetCore.Identity.EntityFrameworkCore` を含める。後者は `aspnetcore` グループから除外する。この2つを分けたままにすると、#112 と #113 のように一族が2つのPRへ割れ、マージ順に依存する状態が残る。
+- [x] `CentralPackageVersionOverrideEnabled` を false にし、csproj単位の `VersionOverride` を禁止する。既定では上書きが中央定義に勝ち、しかも静かに勝つ。
+- [x] `scripts/verify-package-versions.sh` を追加してCIへ配線する。上の2設定と Dockerfile の copy は、消えても何もビルドが落ちないため、消えたことに気づく手段が要る。
 
 受入条件:
 
@@ -1353,7 +1355,9 @@ ISSUE-MVP-00X の続きから再開してください。
 
 - [x] `dotnet build SeoIntelligence.sln -c Release`（0 warning / 0 error）
 - [x] `bash scripts/test.sh`
-- [x] 変異確認: `Microsoft.EntityFrameworkCore.Design` だけを上げる変更が、CPM導入前は `CS1705` で失敗し、導入後は成功する
+- [x] 変異確認: `Microsoft.AspNetCore.Identity.EntityFrameworkCore` を 10.0.4 へ据え置いて同じ版の分裂を作ると、`Microsoft.EntityFrameworkCore` の直接参照がある状態ではビルド成功、その参照だけを外すと `CS1705`。当初書いた「`Design` だけを上げる」形は 10.0.11 が nuget.org 上の最新のため実行できず、同じ分裂を逆側から作って代替した。
+- [x] `VersionOverride` の実測: 禁止前は `StackExchange.Redis` 2.13.17 に対し 3.1.31 の上書きが警告も無く通り、禁止後は `NU1013` で拒否される。
+- [x] `bash scripts/verify-package-versions.sh`（5つの変異それぞれで落ちることを確認）
 
 補足:
 
