@@ -75,15 +75,22 @@ expect_success() {
   fi
 }
 
+# Arguments after the expected message are additional substrings the output must also contain,
+# checked in the same run rather than by invoking the guard again.
 expect_rejection() {
-  local case_root="$1" description="$2" expected="$3" output
+  local case_root="$1" description="$2" output required
+  shift 2
   if output="$(cd "$case_root" && bash scripts/verify-package-versions.sh 2>&1)"; then
     fail "$description (command succeeded)"
-  elif [[ "$output" == *"$expected"* ]]; then
-    pass "$description"
-  else
-    fail "$description (expected '$expected' in: $output)"
+    return
   fi
+  for required in "$@"; do
+    if [[ "$output" != *"$required"* ]]; then
+      fail "$description (expected '$required' in: $output)"
+      return
+    fi
+  done
+  pass "$description"
 }
 
 baseline="$(new_case baseline)"
@@ -111,7 +118,8 @@ nested_props="$(new_case nested-props)"
 cp "$nested_props/Directory.Packages.props" "$nested_props/src/Directory.Packages.props"
 expect_rejection "$nested_props" \
   "a nested Directory.Packages.props cannot shadow the repository root" \
-  "exactly one Directory.Packages.props"
+  "exactly one Directory.Packages.props" \
+  "PASS: every project enables central versions"
 
 commented_setting="$(new_case commented-setting)"
 sed -i 's#    <CentralPackageVersionOverrideEnabled>false</CentralPackageVersionOverrideEnabled>#    <!-- <CentralPackageVersionOverrideEnabled>false</CentralPackageVersionOverrideEnabled> -->#' \

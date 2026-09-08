@@ -82,6 +82,11 @@ if [[ "${#projects[@]}" -eq 0 ]]; then
 elif ! command -v dotnet > /dev/null 2>&1; then
   fail "dotnet is required to evaluate central package settings for every project."
 else
+  # Counted from here rather than from zero: the PASS below reports on the projects alone.
+  # Reading the global counter would hide their result whenever an unrelated check above had
+  # already failed, leaving no way to tell whether they were evaluated at all.
+  failures_before_projects="$failures"
+
   for project in "${projects[@]}"; do
     if manage="$(dotnet msbuild "$project" -nologo \
         -getProperty:ManagePackageVersionsCentrally 2>&1)"; then
@@ -111,7 +116,7 @@ else
     fi
   done
 
-  if [[ "$failures" -eq 0 ]]; then
+  if [[ "$failures" -eq "$failures_before_projects" ]]; then
     echo "PASS: every project enables central versions and refuses VersionOverride"
   fi
 fi
