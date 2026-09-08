@@ -1,6 +1,13 @@
-# Development-only overlay; `docker compose` loads this file automatically.
+# Development overlay; `docker compose` loads this file automatically.
 # Production must NOT include it: use -f compose.yaml -f compose.production.yaml.
 # All published ports bind to 127.0.0.1 only.
+#
+# It is no longer only development, though. scripts/redis-integration-test.sh names this file
+# explicitly and reaches Redis through the mapping below, driving REDIS_PORT to 0 so the host
+# port is ephemeral and two runs cannot collide. compose.yaml publishes no Redis port of its
+# own, so removing that mapping - or making it ignore REDIS_PORT - stops the CI step rather
+# than only a local convenience. CI does say so when it happens; this note is here so the
+# reason is visible before the edit rather than after.
 
 x-service-logging: &service-logging
   driver: json-file
