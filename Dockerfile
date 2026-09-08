@@ -5,6 +5,10 @@ ARG DOTNET_VERSION=10.0
 FROM mcr.microsoft.com/dotnet/sdk:${DOTNET_VERSION} AS restore
 WORKDIR /src
 
+# Central package management puts every version in this file, so restore cannot resolve a single
+# package without it. It is copied before the project files because it is what gives them their
+# versions: changing it has to invalidate the restore layer.
+COPY Directory.Packages.props ./
 COPY .config/dotnet-tools.json .config/dotnet-tools.json
 COPY src/SeoIntelligence.Domain/SeoIntelligence.Domain.csproj src/SeoIntelligence.Domain/
 COPY src/SeoIntelligence.Contracts/SeoIntelligence.Contracts.csproj src/SeoIntelligence.Contracts/

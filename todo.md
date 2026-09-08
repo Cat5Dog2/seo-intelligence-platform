@@ -1333,25 +1333,31 @@ ISSUE-MVP-00X の続きから再開してください。
 
 目的:
 
-- [ ] 単一パッケージの更新が、プロジェクト間で参照版を分裂させないようにする。
+- [x] 単一パッケージの更新が、プロジェクト間で参照版を分裂させないようにする。
 
 範囲:
 
-- [ ] `Directory.Packages.props` を追加し、`ManagePackageVersionsCentrally` を有効にする。
-- [ ] 各csprojの `PackageReference` から `Version` を外す。`PrivateAssets` と `IncludeAssets` はcsprojに残す（集中管理するのは版だけである）。
-- [ ] 推移解決に委ねていた `Microsoft.EntityFrameworkCore` を `PackageVersion` として明示する。
+- [x] `Directory.Packages.props` を追加し、`ManagePackageVersionsCentrally` を有効にする。
+- [x] 各csprojの `PackageReference` から `Version` を外す。`PrivateAssets` と `IncludeAssets` はcsprojに残す（集中管理するのは版だけである）。
+- [x] 推移解決に委ねていた `Microsoft.EntityFrameworkCore` を `PackageVersion` として明示する。
 - [ ] Dependabot が `Directory.Packages.props` を更新できることを、実際の更新PRで確認する。
+- [x] `Dockerfile` の restore ステージへ `Directory.Packages.props` を copy する。集中管理により、これが無いと restore が1つも版を解決できない。
+- [x] Dependabot の `efcore` グループへ `Microsoft.EntityFrameworkCore` 本体（`Microsoft.EntityFrameworkCore.*` はドットがあるためマッチしない）と `Microsoft.AspNetCore.Identity.EntityFrameworkCore` を含める。後者は `aspnetcore` グループから除外する。この2つを分けたままにすると、#112 と #113 のように一族が2つのPRへ割れ、マージ順に依存する状態が残る。
+- [x] `CentralPackageVersionOverrideEnabled` を false にし、csproj単位の `VersionOverride` を禁止する。既定では上書きが中央定義に勝ち、しかも静かに勝つ。
+- [x] `scripts/verify-package-versions.sh` を追加してCIへ配線する。各csprojのMSBuild実効値、ルート以外の `Directory.Packages.props`、Docker restoreステージのcopy先と順序を検査し、上の2設定がプロジェクト側で上書きされても検出する。
 
 受入条件:
 
-- [ ] EF Core関連のうち1つだけを上げても `CS1705` にならない。
-- [ ] 同一パッケージの版が2箇所以上に書かれていない。
+- [x] EF Core関連のうち1つだけを上げても `CS1705` にならない。
+- [x] 同一パッケージの版が2箇所以上に書かれていない。
 
 検証:
 
-- [ ] `dotnet build SeoIntelligence.sln -c Release`（0 warning / 0 error）
-- [ ] `bash scripts/test.sh`
-- [ ] 変異確認: `Microsoft.EntityFrameworkCore.Design` だけを上げる変更が、CPM導入前は `CS1705` で失敗し、導入後は成功する
+- [x] `dotnet build SeoIntelligence.sln -c Release`（0 warning / 0 error）
+- [x] `bash scripts/test.sh`
+- [x] 変異確認: `Microsoft.AspNetCore.Identity.EntityFrameworkCore` を 10.0.4 へ据え置いて同じ版の分裂を作ると、`Microsoft.EntityFrameworkCore` の直接参照がある状態ではビルド成功、その参照だけを外すと `CS1705`。当初書いた「`Design` だけを上げる」形は 10.0.11 が nuget.org 上の最新のため実行できず、同じ分裂を逆側から作って代替した。
+- [x] `VersionOverride` の実測: 禁止前は `StackExchange.Redis` 2.13.17 に対し 3.1.31 の上書きが警告も無く通り、禁止後は `NU1013` で拒否される。
+- [x] `bash scripts/verify-package-versions.sh` と `bash scripts/test-package-version-guard.sh`（プロジェクト単位のCPM無効化・`VersionOverride` 再有効化、ネストしたprops、コメントアウト・後続上書き、誤ったDockerステージ・copy先を恒久テスト）
 
 補足:
 
