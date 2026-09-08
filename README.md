@@ -137,7 +137,7 @@ BrowserE2EはAPI/Webと依存サービスが起動した状態で実行します
 [`.github/workflows/ci.yaml`](.github/workflows/ci.yaml) はpush（`main`）とpull requestで次を実行します。
 
 1. .NET 10でrestoreし、`scripts/build.sh` でRelease buildします。
-2. `scripts/test.sh` でRelease testを実行します。
+2. `scripts/test.sh` でRelease testを実行し、`scripts/redis-integration-test.sh`で実Redis 7に対する文字列操作と分散ロックを確認します。
 3. `scripts/migration-dry-run.sh` でEF Coreの冪等Migration SQLを生成します。
 4. 開発用/VPS用Composeの構文を検証し、Web/API/Worker/Migration imageをGitHub Actionsレイヤーキャッシュ付きでbuildして、`scripts/container-smoke.sh`で隔離Compose project上のMigration、HTTP、非root、Storage共有、Data Protection keys永続化をスモーク確認します。同スクリプトはローカルでも `bash scripts/container-smoke.sh` で実行できます。
 5. `scripts/smoke-local.ps1` で依存サービス、Migration、API/Worker/Web、Health/Readiness、マスタ同期、CSV出力までを確認します。BrowserE2Eはリポジトリ変数 `RUN_BROWSER_E2E=true` の場合だけ追加実行します。

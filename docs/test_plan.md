@@ -20,6 +20,7 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | 1.2 | 2026-06-02 | MVP運用メトリクスと包括Runbookスモークの実行手順を追記。 | Codex |
 | 1.3 | 2026-07-11 | Compose構文、application image build、Migration、Volume永続化の確認方針を追記。 | Codex |
 | 1.4 | 2026-07-12 | レビュー反映。Compose overlay構成と`scripts/container-smoke.sh`による共通コンテナスモークへ更新。 | Claude |
+| 1.5 | 2026-09-08 | 実Redisに対する文字列操作と分散ロックの統合テストを追加。 | Codex |
 
 ## 1. 目的
 
@@ -164,12 +165,13 @@ dotnet test --filter Category=Unit
 dotnet test --filter Category=Integration
 dotnet test --filter Category=Contract
 docker compose up -d postgres redis minio minio-init
+bash scripts/redis-integration-test.sh
 docker compose config --quiet
 docker compose build api web worker migrate
 docker compose --profile tools run --rm migrate
 ```
 
-VPS用定義は検証用`POSTGRES_PASSWORD`を環境変数へ設定し、`docker compose --env-file .env.production.example -f compose.yaml -f compose.production.yaml config --quiet`で構文とoverlay mergeを確認する。コンテナ実起動試験はCIと同一の`bash scripts/container-smoke.sh`を使う。同スクリプトは分離したCompose project/Volume上でMigration、API `/healthz`・`/readyz`（未適用Migration検知を含む）、DB利用API、Web表示、Worker起動、Storage共有、Data Protection keys永続化、非root UIDを確認し、終了時にテスト用コンテナとVolumeを削除する。
+VPS用定義は検証用`POSTGRES_PASSWORD`を環境変数へ設定し、`docker compose --env-file .env.production.example -f compose.yaml -f compose.production.yaml config --quiet`で構文とoverlay mergeを確認する。実Redisクライアントの検証は`bash scripts/redis-integration-test.sh`を使い、分離したCompose project上のRedis 7に対して文字列のset/get/deleteと分散ロックの取得、競合、解放後の再取得を確認する。コンテナ実起動試験はCIと同一の`bash scripts/container-smoke.sh`を使う。同スクリプトは分離したCompose project/Volume上でMigration、API `/healthz`・`/readyz`（未適用Migration検知を含む）、DB利用API、Web表示、Worker起動、Storage共有、Data Protection keys永続化、非root UIDを確認し、終了時にテスト用コンテナとVolumeを削除する。
 
 デプロイ手順そのものの検証は、実行トレースを取る5本のスクリプトで行う。CIでも同じものを実行する。
 

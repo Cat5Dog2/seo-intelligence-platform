@@ -1340,7 +1340,7 @@ ISSUE-MVP-00X の続きから再開してください。
 - [x] `Directory.Packages.props` を追加し、`ManagePackageVersionsCentrally` を有効にする。
 - [x] 各csprojの `PackageReference` から `Version` を外す。`PrivateAssets` と `IncludeAssets` はcsprojに残す（集中管理するのは版だけである）。
 - [x] 推移解決に委ねていた `Microsoft.EntityFrameworkCore` を `PackageVersion` として明示する。
-- [ ] Dependabot が `Directory.Packages.props` を更新できることを、実際の更新PRで確認する。
+- [x] Dependabot が `Directory.Packages.props` を更新できることを、実際の更新PRで確認する。#126（Hangfire.AspNetCore）と #127（StackExchange.Redis）はいずれも `Directory.Packages.props` 1ファイル・1行のみの変更で、csprojには触れていない。
 - [x] `Dockerfile` の restore ステージへ `Directory.Packages.props` を copy する。集中管理により、これが無いと restore が1つも版を解決できない。
 - [x] Dependabot の `efcore` グループへ `Microsoft.EntityFrameworkCore` 本体（`Microsoft.EntityFrameworkCore.*` はドットがあるためマッチしない）と `Microsoft.AspNetCore.Identity.EntityFrameworkCore` を含める。後者は `aspnetcore` グループから除外する。この2つを分けたままにすると、#112 と #113 のように一族が2つのPRへ割れ、マージ順に依存する状態が残る。
 - [x] `CentralPackageVersionOverrideEnabled` を false にし、csproj単位の `VersionOverride` を禁止する。既定では上書きが中央定義に勝ち、しかも静かに勝つ。

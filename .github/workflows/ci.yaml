@@ -41,6 +41,9 @@ jobs:
       - name: Test
         run: bash scripts/test.sh
 
+      - name: Test Redis client against Redis 7
+        run: bash scripts/redis-integration-test.sh
+
       - name: Migration dry-run
         run: bash scripts/migration-dry-run.sh
 
