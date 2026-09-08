@@ -1,0 +1,58 @@
+<Project>
+
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <!--
+    Every package version this solution pins lives here, and nowhere else. The csproj files carry
+    the reference and its asset flags; this file carries the number.
+
+    Versions are written as literals rather than as $(SomeVersion) MSBuild properties. Grouping a
+    family behind one property reads better, but every update to this repository arrives as a
+    Dependabot pull request, and a version it cannot see is a version it stops updating. Silently
+    falling behind is the failure this file exists to prevent, so the duplication of a version
+    number across a family is accepted in exchange for keeping it visible to the updater.
+  -->
+
+  <ItemGroup Label="Data">
+    <!--
+      Microsoft.EntityFrameworkCore is listed - and referenced directly by the Infrastructure
+      project - even though no project used to name it. It arrived transitively, so its version was
+      whatever resolution landed on, and that answer differed per project:
+      Microsoft.EntityFrameworkCore.Design carries PrivateAssets=all and does not flow to
+      consumers, so raising Design raised the version Infrastructure compiled against while Web and
+      ContractTests kept the older one they saw through Identity.EntityFrameworkCore. The result was
+      CS1705 in two projects, from a change that touched neither.
+
+      Naming it does two things: the version is now stated instead of inferred, and Dependabot can
+      see it, so it moves with the rest of the family instead of being dragged along behind it.
+    -->
+    <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.0.11" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.11" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.11" />
+    <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+    <PackageVersion Include="StackExchange.Redis" Version="2.13.17" />
+  </ItemGroup>
+
+  <ItemGroup Label="Hosting and identity">
+    <PackageVersion Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.11" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.11" />
+  </ItemGroup>
+
+  <ItemGroup Label="Jobs and serialisation">
+    <PackageVersion Include="Hangfire.AspNetCore" Version="1.8.23" />
+    <PackageVersion Include="Hangfire.PostgreSql" Version="1.21.1" />
+    <PackageVersion Include="Newtonsoft.Json" Version="13.0.4" />
+  </ItemGroup>
+
+  <ItemGroup Label="Testing">
+    <PackageVersion Include="coverlet.collector" Version="10.0.1" />
+    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.11" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
+    <PackageVersion Include="Microsoft.Playwright.Xunit" Version="1.62.0" />
+    <PackageVersion Include="xunit" Version="2.9.3" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.0" />
+  </ItemGroup>
+
+</Project>

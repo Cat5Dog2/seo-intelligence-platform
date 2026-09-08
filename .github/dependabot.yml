@@ -26,12 +26,22 @@ updates:
       microsoft-extensions:
         patterns:
           - "Microsoft.Extensions.*"
+      # Identity.EntityFrameworkCore is excluded here and named in the efcore group instead. It
+      # decides which Microsoft.EntityFrameworkCore version flows to Web and ContractTests, so a
+      # bump that leaves it behind is what produced CS1705 in #113: the two halves of one family
+      # arrived as two pull requests, and merging them in the wrong order did not build.
       aspnetcore:
         patterns:
           - "Microsoft.AspNetCore.*"
+        exclude-patterns:
+          - "Microsoft.AspNetCore.Identity.EntityFrameworkCore"
       efcore:
         patterns:
-          - "Microsoft.EntityFrameworkCore.*"
+          # No dot after EntityFrameworkCore: the package of that exact name is referenced directly
+          # by the Infrastructure project, and "Microsoft.EntityFrameworkCore.*" does not match it.
+          # Left ungrouped it would arrive on its own, which is the split this grouping prevents.
+          - "Microsoft.EntityFrameworkCore*"
+          - "Microsoft.AspNetCore.Identity.EntityFrameworkCore"
           - "Npgsql*"
       testing:
         patterns:
