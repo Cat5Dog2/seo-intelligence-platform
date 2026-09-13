@@ -3,9 +3,8 @@
 #
 #   bash scripts/verify-development-image-pins.sh
 #
-# MinIO's Docker Hub repositories disappeared after the upstream project reached EOL. Keep the
-# Compose profile and vulnerability scanner on the same explicit Quay release manifests so a
-# floating tag or an accidental registry rollback cannot silently reintroduce that failure.
+# RustFS is still pre-stable, so keep the Compose profile and vulnerability scanner on the same
+# reviewed release manifest. A floating tag or scanner/Compose drift must fail this check.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -52,14 +51,14 @@ mapfile -t compose_images < <(
   "$docker_bin" compose \
     --file compose.yaml \
     --file compose.override.yaml \
-    --profile minio \
+    --profile rustfs \
     config --images |
-    grep -E '(^|/)minio/(minio|mc):' |
+    grep -E '(^|/)rustfs/rustfs:' |
     sort -u
 )
 
-if [ "${#scanner_images[@]}" -ne 2 ]; then
-  echo "FAIL: expected two development images from the scanner, found ${#scanner_images[@]}." >&2
+if [ "${#scanner_images[@]}" -ne 1 ]; then
+  echo "FAIL: expected one development image from the scanner, found ${#scanner_images[@]}." >&2
   exit 1
 fi
 
@@ -71,10 +70,57 @@ if [ "${scanner_images[*]}" != "${compose_images[*]}" ]; then
 fi
 
 for image in "${scanner_images[@]}"; do
-  if [[ ! "$image" =~ ^quay\.io/minio/(minio|mc):RELEASE\.[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}-[0-9]{2}-[0-9]{2}Z@sha256:[0-9a-f]{64}$ ]]; then
-    echo "FAIL: development image is not an explicit Quay release pinned by digest: $image" >&2
+  if [[ ! "$image" =~ ^rustfs/rustfs:1\.0\.0-rc\.[0-9]+@sha256:[0-9a-f]{64}$ ]]; then
+    echo "FAIL: RustFS is not an explicit release candidate pinned by digest: $image" >&2
     exit 1
   fi
 done
+
+mapfile -t rustfs_services < <(
+  "$docker_bin" compose \
+    --file compose.yaml \
+    --file compose.override.yaml \
+    --profile rustfs \
+    config --services |
+    grep -E '^rustfs(-volume-init|-init)?$' |
+    sort -u
+)
+
+expected_services=(rustfs rustfs-init rustfs-volume-init)
+if [ "${rustfs_services[*]}" != "${expected_services[*]}" ]; then
+  echo "FAIL: RustFS profile services do not match the required server, volume, and bucket bootstrap services." >&2
+  printf '  expected: %s\n' "${expected_services[*]}" >&2
+  printf '  actual:   %s\n' "${rustfs_services[*]}" >&2
+  exit 1
+fi
+
+if "$docker_bin" compose \
+  --file compose.yaml \
+  --file compose.override.yaml \
+  config --services | grep -Eq '^rustfs(-volume-init|-init)?$'; then
+  echo "FAIL: RustFS must remain opt-in and must not start in the default Compose profile." >&2
+  exit 1
+fi
+
+if "$docker_bin" compose \
+  --file compose.yaml \
+  --file compose.override.yaml \
+  --profile '*' \
+  config --images | grep -Eq '(^|/)(minio/minio|minio/mc):'; then
+  echo "FAIL: the development Compose stack still references a MinIO image." >&2
+  exit 1
+fi
+
+if POSTGRES_PASSWORD=compose-validation-only \
+  API_SERVICE_KEY=compose-validation-only \
+  CADDY_NETWORK_SUBNET=10.89.0.0/28 \
+  "$docker_bin" compose \
+  --env-file .env.production.example \
+  --file compose.yaml \
+  --file compose.production.yaml \
+  config --services | grep -Eq '^rustfs(-volume-init|-init)?$'; then
+  echo "FAIL: RustFS must not be present in the production Compose stack." >&2
+  exit 1
+fi
 
 echo "Development image pin checks passed."

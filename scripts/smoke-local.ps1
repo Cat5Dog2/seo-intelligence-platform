@@ -427,9 +427,14 @@ function Invoke-BrowserE2ETests {
 
 try {
     if (-not $SkipDependencies) {
-        Invoke-DockerCompose -Arguments @("up", "-d", "postgres", "redis", "minio", "minio-init")
+        Invoke-DockerCompose -Arguments @("--profile", "rustfs", "up", "-d", "postgres", "redis", "rustfs")
         if ($LASTEXITCODE -ne 0) {
             throw "Docker Compose dependencies could not be started."
+        }
+
+        Invoke-DockerCompose -Arguments @("--profile", "rustfs", "run", "--rm", "--no-deps", "rustfs-init")
+        if ($LASTEXITCODE -ne 0) {
+            throw "The RustFS development bucket could not be initialized."
         }
 
         Wait-ComposeDependencies
@@ -550,7 +555,7 @@ finally {
     }
 
     if ($StopDependencies -and -not $SkipDependencies) {
-        $downArguments = @("down", "--remove-orphans")
+        $downArguments = @("--profile", "rustfs", "down", "--remove-orphans")
         if ($RemoveDependencyVolumes) {
             $downArguments += "--volumes"
         }

@@ -1,3 +1,5 @@
+using System.Net;
+using System.Net.Sockets;
 using System.Text;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -101,6 +103,56 @@ public sealed class InfrastructureCommonFoundationTests
         {
             DeleteTempStoragePath(storagePath);
         }
+    }
+
+    [Theory]
+    [Trait("Category", "Integration")]
+    [InlineData(200, true, "RustFS endpoint readiness succeeded.")]
+    [InlineData(503, false, "RustFS endpoint returned 503.")]
+    public async Task RustFsStorageChecksTheDocumentedReadinessEndpoint(
+        int statusCode,
+        bool expectedHealthy,
+        string expectedMessage)
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        var responseTask = RespondOnceAsync(listener, statusCode);
+
+        await using var provider = BuildProvider(
+            CreateTempStoragePath(),
+            new Dictionary<string, string?>
+            {
+                ["Storage:Provider"] = "RustFS",
+                ["Storage:Endpoint"] = $"http://127.0.0.1:{port}"
+            });
+
+        var storage = provider.GetRequiredService<IObjectStorage>();
+        var result = await storage.CheckConnectivityAsync();
+        var requestLine = await responseTask.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(expectedHealthy, result.IsHealthy);
+        Assert.Equal(expectedMessage, result.Message);
+        Assert.Equal("GET /health/ready HTTP/1.1", requestLine);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task RustFsStorageReportsAnUnreachableEndpoint()
+    {
+        await using var provider = BuildProvider(
+            CreateTempStoragePath(),
+            new Dictionary<string, string?>
+            {
+                ["Storage:Provider"] = "RustFS",
+                ["Storage:Endpoint"] = "http://127.0.0.1:0"
+            });
+
+        var storage = provider.GetRequiredService<IObjectStorage>();
+        var result = await storage.CheckConnectivityAsync();
+
+        Assert.False(result.IsHealthy);
+        Assert.StartsWith("RustFS endpoint check failed:", result.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -235,6 +287,28 @@ public sealed class InfrastructureCommonFoundationTests
         var services = new ServiceCollection();
         services.AddSeoIntelligenceInfrastructure(configuration);
         return services.BuildServiceProvider(validateScopes: true);
+    }
+
+    private static async Task<string?> RespondOnceAsync(TcpListener listener, int statusCode)
+    {
+        using var client = await listener.AcceptTcpClientAsync();
+        await using var stream = client.GetStream();
+        using var reader = new StreamReader(
+            stream,
+            Encoding.ASCII,
+            detectEncodingFromByteOrderMarks: false,
+            leaveOpen: true);
+
+        var requestLine = await reader.ReadLineAsync();
+        while (!string.IsNullOrEmpty(await reader.ReadLineAsync()))
+        {
+        }
+
+        var reason = statusCode == 200 ? "OK" : "Service Unavailable";
+        var response = Encoding.ASCII.GetBytes(
+            $"HTTP/1.1 {statusCode} {reason}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+        await stream.WriteAsync(response);
+        return requestLine;
     }
 
     private static ServiceProvider BuildProviderWithInMemoryDb(string storagePath)

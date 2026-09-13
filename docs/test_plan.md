@@ -164,7 +164,7 @@ dotnet test
 dotnet test --filter Category=Unit
 dotnet test --filter Category=Integration
 dotnet test --filter Category=Contract
-docker compose up -d postgres redis minio minio-init
+docker compose --profile rustfs up -d postgres redis rustfs rustfs-init
 bash scripts/redis-integration-test.sh
 docker compose config --quiet
 docker compose build api web worker migrate

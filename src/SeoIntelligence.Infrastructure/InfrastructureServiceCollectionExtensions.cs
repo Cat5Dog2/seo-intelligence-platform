@@ -159,9 +159,9 @@ public static class InfrastructureServiceCollectionExtensions
 
     private static void AddStorage(IServiceCollection services, StorageOptions storageOptions)
     {
-        if (string.Equals(storageOptions.Provider, StorageOptions.MinioProvider, StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(storageOptions.Provider, StorageOptions.RustFsProvider, StringComparison.OrdinalIgnoreCase))
         {
-            services.AddSingleton<IObjectStorage, MinioEndpointObjectStorage>();
+            services.AddSingleton<IObjectStorage, RustFsEndpointObjectStorage>();
             return;
         }
 

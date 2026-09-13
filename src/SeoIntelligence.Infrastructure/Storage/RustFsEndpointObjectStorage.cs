@@ -4,7 +4,7 @@ using SeoIntelligence.Application.Storage;
 
 namespace SeoIntelligence.Infrastructure.Storage;
 
-internal sealed class MinioEndpointObjectStorage(IOptions<StorageOptions> options) : IObjectStorage
+internal sealed class RustFsEndpointObjectStorage(IOptions<StorageOptions> options) : IObjectStorage
 {
     private static readonly HttpClient HttpClient = new();
 
@@ -31,18 +31,18 @@ internal sealed class MinioEndpointObjectStorage(IOptions<StorageOptions> option
         try
         {
             var endpoint = options.Value.Endpoint!.TrimEnd('/');
-            using var response = await HttpClient.GetAsync($"{endpoint}/minio/health/ready", cancellationToken);
+            using var response = await HttpClient.GetAsync($"{endpoint}/health/ready", cancellationToken);
 
             return response.IsSuccessStatusCode
-                ? new StorageConnectivityResult(true, "MinIO endpoint readiness succeeded.")
-                : new StorageConnectivityResult(false, $"MinIO endpoint returned {(int)response.StatusCode}.");
+                ? new StorageConnectivityResult(true, "RustFS endpoint readiness succeeded.")
+                : new StorageConnectivityResult(false, $"RustFS endpoint returned {(int)response.StatusCode}.");
         }
         catch (Exception exception)
         {
-            return new StorageConnectivityResult(false, $"MinIO endpoint check failed: {exception.GetType().Name}.");
+            return new StorageConnectivityResult(false, $"RustFS endpoint check failed: {exception.GetType().Name}.");
         }
     }
 
     private static NotSupportedException CreateUnsupportedException()
-        => new("MinIO object operations require a signed S3 adapter. Configure Storage:Provider=Local for MVP file read/write operations.");
+        => new("RustFS object operations require a signed S3 adapter. Configure Storage:Provider=Local for MVP file read/write operations.");
 }

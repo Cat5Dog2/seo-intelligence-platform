@@ -38,7 +38,7 @@ Phase 4の複数ユーザー、RBAC、SSO、承認フローと、推奨バック
 | Worker | .NET Worker Service、Hangfire、Hangfire PostgreSQL storage |
 | DB | PostgreSQL 16、EF Core 10、Npgsql、JSONB |
 | Cache/Coordination | Redis 7、StackExchange.Redis |
-| Storage | ローカルストレージ、MinIO接続 |
+| Storage | ローカルストレージ、RustFS接続 |
 | External | ラッコキーワードAPI、Discord Webhook、Phase 3外部連携スタブ |
 | Test | xUnit、ASP.NET Core Integration Test、Playwright BrowserE2E |
 
@@ -141,7 +141,7 @@ BrowserE2EはAPI/Webと依存サービスが起動した状態で実行します
 3. `scripts/migration-dry-run.sh` でEF Coreの冪等Migration SQLを生成します。
 4. 開発用/VPS用Composeの構文を検証し、Web/API/Worker/Migration imageをGitHub Actionsレイヤーキャッシュ付きでbuildして、`scripts/container-smoke.sh`で隔離Compose project上のMigration、HTTP、非root、Storage共有、Data Protection keys永続化をスモーク確認します。同スクリプトはローカルでも `bash scripts/container-smoke.sh` で実行できます。
 5. `scripts/smoke-local.ps1` で依存サービス、Migration、API/Worker/Web、Health/Readiness、マスタ同期、CSV出力までを確認します。BrowserE2Eはリポジトリ変数 `RUN_BROWSER_E2E=true` の場合だけ追加実行します。
-6. `scripts/scan-container-images.sh` がイメージをTrivyでスキャンします。自前ビルドの4イメージ（`app`）と、本番で動くPostgreSQL / Redis（`runtime`）は**ゲート対象**で、受容済みリストに無い修正可能なHIGH/CRITICALが出ればCIを失敗させます。MinIO系（`dev`）と、修正版の存在しない脆弱性（`unfixed`）は報告のみです。受容の記録は `docs/operations_runbook.md` 7.3節。
+6. `scripts/scan-container-images.sh` がイメージをTrivyでスキャンします。自前ビルドの4イメージ（`app`）と、本番で動くPostgreSQL / Redis（`runtime`）は**ゲート対象**で、受容済みリストに無い修正可能なHIGH/CRITICALが出ればCIを失敗させます。開発専用RustFS（`dev`）と、修正版の存在しない脆弱性（`unfixed`）は報告のみです。受容の記録は `docs/operations_runbook.md` 7.3節。
 
 ## セキュリティと運用上の前提
 

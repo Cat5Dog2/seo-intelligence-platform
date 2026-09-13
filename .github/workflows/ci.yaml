@@ -138,7 +138,7 @@ jobs:
           TRIVY_CACHE_DIR: ${{ runner.temp }}/trivy-cache
         run: bash scripts/scan-container-images.sh unfixed
 
-      # MinIO is an opt-in development profile that no production Compose file starts, so its
+      # RustFS is an opt-in development profile that no production Compose file starts, so its
       # findings are reported without gating.
       - name: Report development-only images
         env:

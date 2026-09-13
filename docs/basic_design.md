@@ -137,7 +137,7 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 
 | 環境 | 推奨構成 |
 | --- | --- |
-| 開発 | Docker Compose: Web/API, Worker, PostgreSQL, Redis, LocalStack/MinIO。APIキーは開発用Key VaultまたはUser Secrets。 |
+| 開発 | Docker Compose: Web/API, Worker, PostgreSQL, Redis, RustFS。APIキーは開発用Key VaultまたはUser Secrets。 |
 | 小規模VPS（個人利用） | Docker Compose: Web/API/Worker/PostgreSQL/Redis。API/WorkerでLocal Storage Volumeを共有し、別Composeの共通Caddyだけを公開境界にする。アプリ内の単一管理者ログインとAPIサービスキーで保護し、外部認証ゲートは多層防御として併用を推奨する。 |
 | ステージング | Azure Container AppsまたはApp Service、PostgreSQL Flexible Server、Azure Cache for Redis、Key Vault、Application Insights。 |
 | 本番 | Azure Container Apps/Kubernetes/App Serviceのいずれか。API/Worker分離、Auto Scale、Private Endpoint、WAF、監視/バックアップ有効化。 |
@@ -762,7 +762,7 @@ Phase 3追加: [AI再生成] [PDF出力] [共有URL発行]
 | Key Vault | APIキー、AIキー、OAuthシークレット、署名キーを保管。 |
 | CI/CD | GitHub Actions/Azure DevOps。build, test, migration dry-run, container scan, deploy, smoke test。 |
 
-小規模VPSでは、Web/API/Workerを.NET 10の非rootコンテナとして分離する。Compose定義はbase（`compose.yaml`）へ開発用（`compose.override.yaml`）またはVPS用（`compose.production.yaml`）のoverlayを重ねる構成とし、VPS overlayはホストへポート公開せず、共通Caddyと同じexternal networkへWeb/APIだけを接続する。API/Workerは`seo-storage`を同一パスへ共有mountし、WebのData Protection keysは別Volumeへ永続化する。DB接続はアプリが`Database__*`個別キーから接続文字列を組み立てる。DB MigrationはAPI起動時に自動適用せず、バックアップ確認後にEF migration bundleのone-shot `migrate`コンテナで適用する。API readinessは未適用Migrationを検知してunhealthyを返し、api/webコンテナのhealthcheckがデプロイ完了のシグナルとなる。MinIOは現行adapterが疎通確認のみのため、小規模VPSの既定構成には含めない。
+小規模VPSでは、Web/API/Workerを.NET 10の非rootコンテナとして分離する。Compose定義はbase（`compose.yaml`）へ開発用（`compose.override.yaml`）またはVPS用（`compose.production.yaml`）のoverlayを重ねる構成とし、VPS overlayはホストへポート公開せず、共通Caddyと同じexternal networkへWeb/APIだけを接続する。API/Workerは`seo-storage`を同一パスへ共有mountし、WebのData Protection keysは別Volumeへ永続化する。DB接続はアプリが`Database__*`個別キーから接続文字列を組み立てる。DB MigrationはAPI起動時に自動適用せず、バックアップ確認後にEF migration bundleのone-shot `migrate`コンテナで適用する。API readinessは未適用Migrationを検知してunhealthyを返し、api/webコンテナのhealthcheckがデプロイ完了のシグナルとなる。RustFSは現行adapterが疎通確認のみのため、開発overlayの任意profileに限定し、小規模VPSの既定構成には含めない。
 
 ### 14.1 環境変数例
 
