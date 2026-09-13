@@ -64,6 +64,7 @@ jobs:
           bash scripts/verify-source-revision.sh
           bash scripts/verify-dockerfile-restore.sh
           bash scripts/verify-scanner-isolation.sh
+          bash scripts/verify-development-image-pins.sh
           bash scripts/verify-package-versions.sh
           bash scripts/test-package-version-guard.sh
 
