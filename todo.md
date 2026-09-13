@@ -1481,6 +1481,36 @@ ISSUE-MVP-00X の続きから再開してください。
 - [x] `docs/operations_runbook.md` 7.4の有効化手順が、GitHub App準備の直後に`CD_ENABLED=true`とする流れになっており、infra側に受信workflowが無くても送信自体は成功（204）してしまう点への言及が無かった。infra側の準備に「受信workflowがdefault branch上に存在し有効化されていること」を明記し（GitHub公式の`repository_dispatch`仕様を根拠に引用）、有効化手順の初回確認をinfra側のworkflow run確認まで含める形に修正した。
 - [x] workflow末尾の`$GITHUB_STEP_SUMMARY`表示を「infra accepted the notification」から、GitHubがAPI呼び出しを受け付けたことのみを意味する表現へ修正した。
 
+### ISSUE-OPS-011 CDリリース候補通知workflowを有効化する
+
+参照ドキュメント: `docs/operations_runbook.md`（7.4）
+
+GitHub Issue: [#132](https://github.com/Cat5Dog2/seo-intelligence-platform/issues/132)
+
+背景:
+
+- ISSUE-OPS-010で `release-candidate-notify.yaml` の実装とローカルで可能な検証は完了しているが、`CD_ENABLED` が未設定のため現時点では無効であり、実際の `repository_dispatch` によるend-to-end動作は未確認である。
+- 有効化には、このリポジトリのVariable/Secret設定に加え、`wwt-seo-infra` 側でのGitHub Appインストールと受信workflowの準備（infra側の作業）が必要である。
+
+目的:
+
+- [ ] 実際のCI成功トリガーで、`wwt-seo-infra` が通知を受け取り反応することをActions上で確認する。
+
+範囲:
+
+- [ ] GitHub Appを作成し、`wwt-seo-infra` へインストールする（repository permissions: Contents Read and write）。
+- [ ] このリポジトリに `INFRA_REPOSITORY` / `CD_APP_ID` / `CD_APP_PRIVATE_KEY` / `CD_ENABLED` を設定する。
+- [ ] `wwt-seo-infra` のdefault branchに受信workflow（`repository_dispatch` / `app-release-candidate-v1`）が存在し有効化されていることを確認する（無ければinfra側で先に実装する）。
+- [ ] `actionlint` 等によるworkflow構文の追加検証を行う（この開発環境には未導入）。
+
+受入条件:
+
+- [ ] `main` へのpush後、このリポジトリの `Release Candidate Notify` と、`wwt-seo-infra` 側の対応するworkflow runの両方が成功する。
+
+検証:
+
+- [ ] Actionsタブでの実行確認（両リポジトリ）
+
 ## 横断セキュリティ
 
 ### ISSUE-SEC-001 単一管理者ログインとAPIサービス認証を実装する
