@@ -1,0 +1,135 @@
+name: Release Candidate Notify
+
+# Fires once the "CI" workflow's run has completed - the whole run, every
+# job including container-scan, not just build-test-smoke. workflow_run only
+# reports the run's overall conclusion, so a container-scan failure already
+# makes github.event.workflow_run.conclusion != 'success' below; there is no
+# earlier point at which build-test-smoke alone could trigger this.
+#
+# workflow_run fires for ANY completed run of "CI" regardless of what
+# triggered it (push, pull_request, the nightly schedule, workflow_dispatch),
+# using this file's version on the default branch and this repository's
+# secrets/variables - including runs whose head_sha belongs to a fork PR. The
+# job-level `if:` below is what actually restricts this to a same-repository
+# push to main; see https://docs.github.com/actions/using-workflows/events-that-trigger-workflows#workflow_run.
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+# Only used so the checkout step below can read scripts/lib from this repo.
+# The actual notification is authenticated separately with a short-lived
+# GitHub App installation token scoped to the infra repository (see
+# docs/operations_runbook.md 7.4) - the default GITHUB_TOKEN never touches
+# INFRA_REPOSITORY.
+permissions:
+  contents: read
+
+jobs:
+  notify:
+    name: Notify infra of release candidate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Only a same-repository push to main whose CI run finished green.
+    #   event == 'push'                    excludes pull_request (including
+    #                                       fork PRs), schedule, workflow_dispatch
+    #   head_branch == 'main'              excludes CI runs for any other branch
+    #   head_repository.full_name ==
+    #     github.repository                excludes fork-originated runs; this is
+    #                                       GitHub's own documented workflow_run
+    #                                       guard, kept even though ci.yaml's
+    #                                       `push: branches: [main]` trigger
+    #                                       already makes a fork match unlikely
+    #   conclusion == 'success'            excludes failure/cancelled/timed_out/
+    #                                       action_required/stale/skipped
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    steps:
+      # Reads only the CD_ENABLED repository variable - never a secret - so
+      # an unset or non-"true" value skips every later step (checkout, the
+      # App token mint, and the dispatch) before any secret is read or any
+      # external call is made.
+      - name: Check whether release candidate notification is enabled
+        id: gate
+        env:
+          CD_ENABLED: ${{ vars.CD_ENABLED }}
+        run: |
+          set -euo pipefail
+          if [[ "$CD_ENABLED" == "true" ]]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "CD_ENABLED repository variable is not \"true\"; skipping (no secrets read, nothing sent)." >&2
+          fi
+
+      # Checks out the current default branch (not the upstream CI's
+      # head_sha) purely to load scripts/lib/release-candidate-notify.sh.
+      # Always running the latest validation/payload logic here is correct
+      # regardless of which commit's CI run is being reported on.
+      - name: Checkout
+        if: steps.gate.outputs.enabled == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Resolve infra repository owner/name
+        if: steps.gate.outputs.enabled == 'true'
+        id: validate
+        env:
+          INFRA_REPOSITORY: ${{ vars.INFRA_REPOSITORY }}
+        run: |
+          set -euo pipefail
+          source scripts/lib/release-candidate-notify.sh
+          rc_notify_split_infra_repository "$INFRA_REPOSITORY" >> "$GITHUB_OUTPUT"
+
+      # Short-lived (1 hour, auto-revoked when this job ends) installation
+      # token for the GitHub App identified by CD_APP_ID, scoped only to the
+      # infra repository resolved above - never to this repository or to any
+      # other repository the app may be installed on. Requires that app to
+      # be installed on the infra repository with the "Contents" repository
+      # permission (read & write); see docs/operations_runbook.md 7.4.
+      - name: Mint GitHub App installation token for infra repository
+        if: steps.gate.outputs.enabled == 'true'
+        id: app_token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ vars.CD_APP_ID }}
+          private-key: ${{ secrets.CD_APP_PRIVATE_KEY }}
+          owner: ${{ steps.validate.outputs.owner }}
+          repositories: ${{ steps.validate.outputs.repo }}
+          permission-contents: write
+
+      # Event values are never interpolated into the shell script; they only
+      # ever reach it through `env:`, and rc_notify_build_payload re-checks
+      # their type/format before building JSON with Python's json module
+      # (not string concatenation). `gh api` exits non-zero on any non-2xx
+      # response (repository_dispatch succeeds with 204 No Content), and
+      # `set -euo pipefail` means that failure fails this step and therefore
+      # this job - a rejected or unreachable infra endpoint is never reported
+      # as success.
+      - name: Send release candidate notification
+        if: steps.gate.outputs.enabled == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app_token.outputs.token }}
+          INFRA_REPOSITORY: ${{ vars.INFRA_REPOSITORY }}
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+          SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
+          SOURCE_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+        run: |
+          set -euo pipefail
+          source scripts/lib/release-candidate-notify.sh
+          payload="$(rc_notify_build_payload "$SOURCE_SHA" "$SOURCE_RUN_ID" "$SOURCE_RUN_ATTEMPT")"
+          echo "$payload" | gh api \
+            --method POST \
+            "repos/${INFRA_REPOSITORY}/dispatches" \
+            --input -
+
+          {
+            echo "### Release candidate dispatch sent"
+            echo "Sent \`app-release-candidate-v1\` for component \`seo\` at \`${SOURCE_SHA}\` (CI run ${SOURCE_RUN_ID}, attempt ${SOURCE_RUN_ATTEMPT}) to \`${INFRA_REPOSITORY}\`."
+            echo
+            echo "This confirms GitHub accepted the \`repository_dispatch\` API call (HTTP 204) - nothing more. It does **not** confirm that \`${INFRA_REPOSITORY}\` has a workflow reacting to this event, and it does **not** mean production has been updated. Check that repository's Actions tab for a run triggered by this dispatch; wwt-seo-infra validates the commit and deploys separately."
+          } >> "$GITHUB_STEP_SUMMARY"
