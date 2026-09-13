@@ -39,7 +39,10 @@ APP_IMAGES=(
   seo-intelligence-migrate
 )
 RUNTIME_IMAGES=(postgres:16-alpine redis:7-alpine)
-DEV_IMAGES=(minio/minio:latest minio/mc:latest)
+DEV_IMAGES=(
+  quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+  quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727
+)
 
 # Accepted findings on the runtime images, one line per CVE:
 #   <image>\t<CVE id>\t<target>\t<package>

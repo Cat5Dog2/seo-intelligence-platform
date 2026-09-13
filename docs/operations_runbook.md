@@ -175,7 +175,9 @@ VPSの初回デプロイ・更新・バックアップの正本手順は `docs/d
 | --- | --- | --- |
 | `app` | `seo-intelligence-api` / `web` / `worker` / `migrate` | 自前でre-buildできるため、検出があればCIを失敗させる。 |
 | `runtime` | `postgres:16-alpine` / `redis:7-alpine` | 本番で稼働するためゲート対象。下表の除外に該当しない検出があればCIを失敗させる。 |
-| `dev` | `minio/minio` / `minio/mc` | 開発専用の任意profileで、本番Composeは起動しない。報告のみでゲートしない。 |
+| `dev` | `quay.io/minio/minio` / `quay.io/minio/mc` | 開発専用の任意profileで、本番Composeは起動しない。報告のみでゲートしない。 |
+
+MinIO CommunityはEOLで、Docker Hubの`minio/minio`と`minio/mc`が取得不能であることを2026-09-12のCIで確認した。開発profileでは、Quayに残る最終Communityリリースをタグとmanifest digestの両方で固定する。これは開発・接続確認専用の暫定依存であり、本番ストレージには使用しない。参照を更新する場合は`compose.override.yaml`と`scripts/scan-container-images.sh`を同時に変更し、`bash scripts/verify-development-image-pins.sh`で一致と固定形式を確認する。
 
 ローカル再確認:
 
