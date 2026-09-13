@@ -1421,6 +1421,66 @@ ISSUE-MVP-00X の続きから再開してください。
 - RustFSのリリースがまだ安定版前である間は、更新時にrelease notes、既知のセキュリティ問題、コンテナの実行ユーザーとVolume権限を再確認する。
 - 採用版は`1.0.0-rc.6`、multi-arch manifest digestは`sha256:97171b3d72cd47dc81000f92ea84de25608bfc35a94c965501afaeb5d99f6035`。同一imageのSigV4対応curlをbucket初期化にも使用し、追加client imageは導入していない。
 
+### ISSUE-OPS-010 CDリリース候補通知workflowを実装する
+
+参照ドキュメント: `docs/operations_runbook.md`（7.4）, `docs/docker_deployment.md`, `.github/workflows/ci.yaml`, `scripts/deploy-production.sh`
+
+背景:
+
+- `web-writing.cloud` と `seo-intelligence.cloud` は同じVPSを共有し、採用SHAの決定と本番デプロイは `wwt-seo-infra` に一本化されている（7.1）。各アプリリポジトリは自身のCI成功をinfraへ知らせるだけで、検証・採用SHA更新PR作成・本番デプロイはinfra側の責務になる。
+- このリポジトリのCI（`.github/workflows/ci.yaml`）は `build-test-smoke` と `container-scan` の2 jobが並列に走り、両方が成功して初めて `CI` workflow全体が成功する。`container-scan`（runtimeイメージの脆弱性ゲート）を待たずに通知すると、ゲートを通っていないコミットがリリース候補として扱われかねない。
+- 通知はGitHub Appの短命installation tokenで認証し、対象を `wwt-seo-infra` リポジトリだけに限定する。長命PAT、Organization全体に有効なcredential、`GITHUB_TOKEN` の他リポジトリへの流用はいずれも使わない。
+
+目的:
+
+- [x] `main` へのpushで `CI` workflow全体（`container-scan` を含む）が成功した場合だけ、`wwt-seo-infra` へリリース候補を通知する。
+- [x] `CD_ENABLED` が文字列 `"true"` でない限り、Secret取得や外部送信が一切発生しないようにする。
+
+範囲:
+
+- [x] `workflow_run`（`workflows: ["CI"]`, `types: [completed]`）で起動する `.github/workflows/release-candidate-notify.yaml` を追加する。
+- [x] 通知対象を、元CIの `conclusion == success`、`event == push`、`head_branch == main`、`head_repository` が自リポジトリ、の全一致に限定する（job-level `if:`）。
+- [x] `CD_ENABLED` repository variableのチェックを最初のstepにし、`"true"` でなければ以降のstep（checkout、GitHub App token発行、送信）をすべてスキップする。
+- [x] `actions/create-github-app-token`（Variable `CD_APP_ID` / Secret `CD_APP_PRIVATE_KEY`）で、`INFRA_REPOSITORY`（`owner/repository`）だけに限定し `permission-contents: write` だけを持つ短命tokenを発行する。
+- [x] `client_payload`（`component`固定値 `"seo"`、`source_sha`＝元CIの `head_sha`、`source_run_id`＝元CIの `id`、`source_run_attempt`＝元CIの `run_attempt`）を、イベント値を直接シェル展開せず（`env:` 経由 + 型・形式検証）構築し、`gh api --input -` で送信する。
+- [x] `gh api` のHTTPエラー（非2xx）をworkflow失敗として扱う（`set -euo pipefail`、`continue-on-error` 不使用、`|| true` での握り潰し不使用）。
+- [x] 検証・payload構築ロジックを `scripts/lib/release-candidate-notify.sh` に切り出し、`scripts/verify-release-candidate-notify.sh` で外部送信なしに回帰テストし、CI（`ci.yaml`）へ配線する。
+- [x] `actions/create-github-app-token` を実在確認済みの40桁commit SHAで固定する（`bcd2ba49218906704ab6c1aa796996da409d3eb1` / v3.2.0。GitHub releasesページと`git ls-remote`の両方で確認）。既存の `actions/checkout` pinを再利用する。
+- [x] `docs/operations_runbook.md` 7.4に、設定するVariable/Secret、GitHub App権限、有効化手順、通知失敗時の再実行方法、infra側の準備事項を記載する。
+
+対象外:
+
+- [x] `wwt-seo-infra` 側（受信、検証、採用SHA更新PR作成、本番デプロイ）は実装していない。他リポジトリは変更していない。
+- [x] `scripts/deploy-production.sh` によるVPS内build、スキャン、バックアップ、Migration、イメージ固定のいずれも変更していない。
+- [x] 本番へのSSH、GHCRなどimage registryへの移行は行っていない。
+- [x] GitHub Appの作成、`wwt-seo-infra` へのインストール、このリポジトリのVariable/Secretへの実値投入は行っていない（利用者が行う。7.4参照）。
+
+受入条件:
+
+- [x] `main` push発のCI全体成功だけが通知対象になり、PR・fork・schedule・workflow_dispatch起点のCI、およびCI失敗・キャンセルでは通知されない。
+- [x] `CD_ENABLED` が未設定または `"true"` 以外のとき、Secret参照・外部送信が発生しない。
+- [x] `client_payload` の `source_sha` が通知workflow自身の `github.sha` ではなく元CIの `head_sha` になる。
+- [x] `gh api` が非2xxを返した場合にjob・workflowが失敗として記録される。
+
+検証:
+
+- [x] `bash scripts/verify-release-candidate-notify.sh`（`rc_notify_split_infra_repository` / `rc_notify_build_payload` の入力検証とpayload構築の実挙動、workflow YAMLから抽出した実際のgate stepの実行、およびworkflow構文の静的検査を外部送信なしで確認）
+- [x] `python -c "import yaml; yaml.safe_load(open('.github/workflows/release-candidate-notify.yaml', encoding='utf-8'))"`（workflow YAML構文の妥当性確認）
+- [x] 変異テスト: gate stepの `[[ "$CD_ENABLED" == "true" ]]` を `!=` へ反転させ、検証スクリプトが検出して失敗することを確認後、復元。
+- [ ] 実際の `repository_dispatch` 送信によるend-to-end確認。本Issueの方針（実際の送信はしない）と、Secret/Variable未設定、および受信側`wwt-seo-infra`の実装が対象外であることから未実施。
+- [ ] `actionlint` によるworkflowスキーマの静的検証。この開発環境に未導入のため未実施。PyYAMLによる構文検証と `scripts/verify-release-candidate-notify.sh` の構造チェック（トリガー、`if:`条件、`uses:`のSHA固定、`env:`経由のイベント値渡し等）で代替した。
+
+補足:
+
+- 3リポジトリ共通の連携仕様（送信先Variable名 `INFRA_REPOSITORY`、`event_type: app-release-candidate-v1`、`client_payload` のフィールド名と型）は本Issueでは変更しない前提とする。
+- GitHub Appのインストール先は `wwt-seo-infra` 側であり、このリポジトリへのインストールは不要（7.4）。
+
+レビュー反映（2026-09-14）:
+
+- [x] `scripts/verify-release-candidate-notify.sh` が `rc_notify_gate_enabled`（workflowからは呼ばれていない関数）だけを検証しており、実際のgate step（`run:`本文のインラインbash）のregressionを検出できていなかった。ライブラリから該当関数を削除し、workflow YAMLから実際のgate stepの`run:`本文をstdlibのみで抽出してbashで実行するテストに置き換えた。既存条件を`==`から`!=`へ反転させて検証スクリプトが検出することを確認済み（上記変異テスト）。
+- [x] `docs/operations_runbook.md` 7.4の有効化手順が、GitHub App準備の直後に`CD_ENABLED=true`とする流れになっており、infra側に受信workflowが無くても送信自体は成功（204）してしまう点への言及が無かった。infra側の準備に「受信workflowがdefault branch上に存在し有効化されていること」を明記し（GitHub公式の`repository_dispatch`仕様を根拠に引用）、有効化手順の初回確認をinfra側のworkflow run確認まで含める形に修正した。
+- [x] workflow末尾の`$GITHUB_STEP_SUMMARY`表示を「infra accepted the notification」から、GitHubがAPI呼び出しを受け付けたことのみを意味する表現へ修正した。
+
 ## 横断セキュリティ
 
 ### ISSUE-SEC-001 単一管理者ログインとAPIサービス認証を実装する

@@ -19,6 +19,8 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | 1.1 | 2026-06-02 | MVP運用メトリクス、管理画面/API確認導線、Runbookスモークコマンドを追記。 | Codex |
 | 1.2 | 2026-07-11 | Docker ComposeによるVPSデプロイ、更新、再起動、永続Volume運用を追記。 | Codex |
 | 1.3 | 2026-07-12 | レビュー反映。VPS手順を`docker_deployment.md`へ一本化し、Compose overlay構成、`/readyz`の未適用Migration検知、`container-smoke.sh`を反映。 | Claude |
+| 1.4 | 2026-09-13 | CDリリース候補通知（`release-candidate-notify.yaml`）の追加を反映。設定するVariable/Secret、GitHub App権限、有効化手順、通知失敗時の再実行方法を7.4に追記。 | Claude |
+| 1.5 | 2026-09-14 | レビュー反映。送信成功（204）と受信側の反応は別であることを明記し、infra側の受信workflowがdefault branch上に必要な旨と、有効化時にinfra側の実行も確認する手順を7.4に追加。 | Claude |
 
 ## 1. 目的
 
@@ -230,6 +232,79 @@ docker image inspect --format '{{index .RepoDigests 0}}' postgres:16-alpine
 #### スキャナへDockerソケットを渡さない
 
 各イメージは `docker save` でtarへ書き出し、`trivy image --input` で読ませる。Dockerソケットを渡すとスキャナのコンテナがDockerデーモンを操作でき、これはホストのroot相当の権限に等しい。開発PCとCI runnerを第三者イメージへ委ねないため、渡すのはtar 1ファイルだけにする。スキャナimageもタグではなくdigestで固定する。
+
+### 7.4 CDリリース候補通知（release-candidate-notify）
+
+`main`への push で `CI` workflow（`build-test-smoke` と `container-scan` の両方を含むCI全体）が成功した場合に、`.github/workflows/release-candidate-notify.yaml` が `wwt-seo-infra`（Repository Variable `INFRA_REPOSITORY` で指定する `owner/repository`）へ `repository_dispatch`（`event_type: app-release-candidate-v1`）を送る。採用SHAの決定、検証、本番デプロイはinfra側の責務であり、このworkflowは通知だけを行う。**通知が成功したことは、本番へデプロイされたことを意味しない。**
+
+送信する `client_payload`（3リポジトリ共通の契約。フィールド名・型・`component`の値はこのリポジトリ単独では変更しない）:
+
+| フィールド | 型 | 内容 |
+| --- | --- | --- |
+| `component` | string | 固定値 `"seo"`。受信側はこの値で送信元リポジトリを識別する。 |
+| `source_sha` | string | 元CIが検証した40桁の完全なコミットSHA（`workflow_run.head_sha`）。通知workflow自身の `github.sha` は使わない。 |
+| `source_run_id` | string | 元CIのrun ID（10進数文字列）。 |
+| `source_run_attempt` | number | 元CIの実際の試行番号（整数）。 |
+
+#### 通知対象になる条件
+
+次をすべて満たすCI runの完了だけが通知対象になる（`.github/workflows/release-candidate-notify.yaml` の `jobs.notify.if` が判定する）。
+
+- 元CIの `conclusion` が `success`（`workflow_run` イベントはworkflow全体の完了時にのみ発火するため、`build-test-smoke` だけの成功で `container-scan` の結果を待たずに先行通知することはできない）。
+- 元CIの `event` が `push`（pull_request、schedule、workflow_dispatch起点のCI実行は対象外）。
+- 元CIの `head_branch` が `main`。
+- 元CIの `head_repository` がこのリポジトリ自身（forkからのCI実行を除外する。GitHub公式の `workflow_run` セキュリティガイダンスに沿った確認）。
+
+#### 設定するVariable / Secret（このリポジトリ側）
+
+| 種別 | 名前 | 内容 |
+| --- | --- | --- |
+| Variable | `CD_ENABLED` | 文字列 `"true"` のときだけ通知を有効化する。未設定または `"true"` 以外なら、Secret取得や外部送信より前にスキップする。 |
+| Variable | `INFRA_REPOSITORY` | 送信先。`owner/repository` 形式（例: `<org>/wwt-seo-infra`）。 |
+| Variable | `CD_APP_ID` | 通知に使うGitHub AppのApp ID（数値）。Appの設定画面の「App ID」欄の値をそのまま使う。 |
+| Secret | `CD_APP_PRIVATE_KEY` | 同AppがGenerateした秘密鍵（.pem）の内容全体。 |
+
+設定はこのリポジトリの Settings → Secrets and variables → Actions で行う。値そのものは本書に記載しない。
+
+#### infra側の準備（GitHub App + 受信workflow。いずれも必須）
+
+このworkflowは `CD_APP_ID` / `CD_APP_PRIVATE_KEY` でGitHub Appとして認証し、`INFRA_REPOSITORY` だけに限定した短命installation tokenを発行して `repository_dispatch` を送る（`actions/create-github-app-token`）。**送信が成功（HTTP 204）しても、それだけでは何も起きない。** 次の2点がinfra側で揃って初めて、通知が候補の検証や採用SHA更新PRにつながる。
+
+1. GitHub App（インストール先はこのリポジトリではなく `wwt-seo-infra` 側）
+   1. GitHub Appを作成する（3リポジトリ共通の通知用Appを1つ用意し共用してもよいし、リポジトリごとに分けてもよい）。
+   2. Appのrepository permissionsに **Contents: Read and write** を設定する（`repository_dispatch` の送信に必要な最小権限。他の権限は付与しない）。
+   3. Appを `wwt-seo-infra` リポジトリにインストールする（"Only select repositories" → `wwt-seo-infra` のみ）。このリポジトリ（`seo-intelligence-platform`）へインストールする必要はない。
+   4. AppのApp IDと秘密鍵をこのリポジトリの `CD_APP_ID` / `CD_APP_PRIVATE_KEY` として設定する（次節）。
+2. 受信workflow（`wwt-seo-infra` 側の実装・配置が必要。このリポジトリの変更だけでは届かない）
+   - `wwt-seo-infra` の**default branch上に**、`repository_dispatch`（`types: [app-release-candidate-v1]` を推奨）を受け取るworkflowが存在し、有効化されていること。
+   - GitHubの`repository_dispatch`は「workflowファイルがdefault branch上に存在する場合にのみworkflow runを起動する」（[GitHub公式ドキュメント](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#repository_dispatch)）。受信workflowが無い、またはdefault branch上に無い状態でも、GitHub APIへの送信自体（`POST /repos/{owner}/{repo}/dispatches`）はHTTP 204で成功する。**このリポジトリ側の送信成功は、infra側が反応したことを何も保証しない。**
+
+#### 有効化手順
+
+1. 上記のinfra側の準備（GitHub Appのインストール、および受信workflowのdefault branchへの配置・有効化の両方）を完了する。
+2. このリポジトリに `INFRA_REPOSITORY`、`CD_APP_ID`、`CD_APP_PRIVATE_KEY` を設定する。
+3. `CD_ENABLED` を `"true"` に設定する。
+4. `main` へpushしてCIが成功した後、次の**両方**を確認する。送信側jobの成功だけでは有効化完了とみなさない。
+   - このリポジトリのActionsタブで `Release Candidate Notify` の `Notify infra of release candidate` ジョブが成功していること。
+   - `wwt-seo-infra` 側のActionsタブに、この`repository_dispatch`（`source_sha`が一致するもの）に対応するworkflow runが実際に記録され、想定どおり動作していること。
+
+`CD_ENABLED` を設定しない、または `"true"` 以外にしている間は、Secretの取得も外部送信も発生しない（`scripts/verify-release-candidate-notify.sh` で回帰確認している）。
+
+#### 通知失敗時の対応・再実行
+
+- 通知の送信失敗（GitHub APIのHTTPエラーを含む）はworkflowの失敗として記録され、成功として扱われない。
+- 再実行は、Actionsタブでこの `Release Candidate Notify` のrunを「Re-run failed jobs」する。`workflow_run` イベントのペイロード（元CIの `head_sha` / `id` / `run_attempt`）は元CI実行時点の値のまま保持されるため、再実行しても元CIを再実行する必要はなく、同じ内容で再送される。
+- 主な失敗原因と確認先:
+
+| 症状 | 確認 |
+| --- | --- |
+| `Mint GitHub App installation token` で失敗 | `CD_APP_ID` の値、`CD_APP_PRIVATE_KEY` が現在有効な秘密鍵か、Appが `INFRA_REPOSITORY` にインストール済みで `Contents` 権限を持つか。 |
+| `Send release candidate notification` で404 | `INFRA_REPOSITORY` の値（`owner/repository` の綴り）。 |
+| `Send release candidate notification` で403 | Appのpermissionが `Contents: write` を含むか、インストール範囲が対象リポジトリを含むか。 |
+| `Send release candidate notification` は成功（204）するのに `wwt-seo-infra` 側で何も起きない | 送信は「GitHubがAPI呼び出しを受け付けた」ことしか示さない。infra側の受信workflowが**default branch上に**存在し有効化されているか、`types:` フィルタが `app-release-candidate-v1` を含むかを確認する（前節）。 |
+| workflowが起動しない、または `skipping` ログのまま終わる | `CD_ENABLED` が `"true"` か、元CIの `event` / `head_branch` / `head_repository` / `conclusion` が対象条件を満たすか。 |
+
+再送してもinfra側で同一の `source_sha` / `source_run_id` / `source_run_attempt` が重複登録されないようにする責務は、受信側（`wwt-seo-infra`）にある。
 
 ## 8. スモークテスト
 
