@@ -31,7 +31,7 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | ツール | 用途 |
 | --- | --- |
 | .NET 10 SDK | API、Blazor、Workerのビルド/実行。 |
-| Docker DesktopまたはDocker Engine + Compose | Web/API/Worker、PostgreSQL、Redis、任意のMinIO疎通環境の起動。 |
+| Docker DesktopまたはDocker Engine + Compose | Web/API/Worker、PostgreSQL、Redis、任意のRustFS疎通環境の起動。 |
 | PostgreSQL Client | DB接続確認、手動調査。 |
 | Git | ソース管理。 |
 | PowerShell | Windowsローカル手順の標準シェル。 |
@@ -44,14 +44,14 @@ Developer Browser
   -> PostgreSQL
   -> Redis
   -> SeoIntelligence.Worker
-  -> MinIO or Local Storage
+  -> RustFS or Local Storage
   -> External API mocks or Rakko Keyword API
 ```
 
-Composeは3ファイル構成である。`compose.yaml`（base、ホストポート非公開）、`compose.override.yaml`（開発専用overlay。`docker compose`が自動読込し、`127.0.0.1`bindの公開ポートとMinIOを持つ）、`compose.production.yaml`（VPS用overlay。差分のみ。正本は `docker_deployment.md`）。既定ユーザー名とパスワードはローカル開発専用であり、実Secretとして扱わない。開発では従来どおり `docker compose <command>` だけでよい。
+Composeは3ファイル構成である。`compose.yaml`（base、ホストポート非公開）、`compose.override.yaml`（開発専用overlay。`docker compose`が自動読込し、`127.0.0.1`bindの公開ポートとRustFSを持つ）、`compose.production.yaml`（VPS用overlay。差分のみ。正本は `docker_deployment.md`）。既定ユーザー名とパスワードはローカル開発専用であり、実Secretとして扱わない。開発では従来どおり `docker compose <command>` だけでよい。
 
 ```powershell
-docker compose up -d postgres redis minio minio-init
+docker compose --profile rustfs up -d postgres redis rustfs rustfs-init
 docker compose ps
 ```
 
@@ -63,16 +63,20 @@ docker compose ps
 | Redis | `localhost:6379` | キャッシュ、分散ロック、レート制御、一時状態。 |
 | API | `http://localhost:5251` | Minimal API、Health/Readiness、OpenAPI。 |
 | Web | `http://localhost:5295` | Blazor Web App。APIはCompose内部の`http://api:8080`を使用。 |
-| MinIO API | `http://localhost:9000` | adapterの疎通確認用。bucketは`seo-intelligence`。成果物read/writeには使わない。 |
-| MinIO Console | `http://localhost:9001` | ローカルMinIO疎通確認。 |
+| RustFS API | `http://localhost:9000` | adapterの疎通確認用。bucketは`seo-intelligence`。成果物read/writeには使わない。 |
+| RustFS Console | `http://localhost:9001` | ローカルRustFS疎通確認。 |
 
 ローカル公開ポートはすべて`127.0.0.1`へbindする。同じVPS上の別ComposeとDBポートを共有しない本番構成では、PostgreSQL、Redis、APIのホストポート自体を公開しない。
+
+MinIOから移行した既存環境では、新しい`rustfs-data` volumeを使用する。旧`minio-data` volumeはComposeから自動削除も再利用もしない。必要な開発データがある場合は、旧環境を保持したままS3 API経由でコピーし、内容を確認してから旧volumeの扱いを決める。暗号化オブジェクトやMinIO固有機能の直接移行は本手順の対象外である。
+
+RustFSは安定版前の`1.0.0-rc.6`をdigest固定して開発用途に限って使用する。Composeは非defaultの開発用`RUSTFS_ACCESS_KEY`、`RUSTFS_SECRET_KEY`、`RUSTFS_RPC_SECRET`を設定する。値を上書きする場合も3値を別々にし、本番credentialをローカル環境へ流用しない。
 
 ### 3.1 よく使うCompose操作
 
 | 目的 | コマンド | 備考 |
 | --- | --- | --- |
-| 依存サービスを起動 | `docker compose up -d postgres redis minio minio-init` | ホストでWeb/API/Workerをデバッグする場合。MinIOは明示指定時だけ起動する。 |
+| 依存サービスを起動 | `docker compose --profile rustfs up -d postgres redis rustfs rustfs-init` | ホストでWeb/API/Workerをデバッグする場合。RustFSは任意profileで、明示指定時だけ起動する。 |
 | 全スタックを起動 | `docker compose up -d --build --wait api worker web` | 初回は事前に`migrate`を実行する。依存DB/Redisも起動し、api/webのhealthcheckがhealthyになるまで待つ。 |
 | 状態確認 | `docker compose ps` | PostgreSQL/Redis/api/webが`healthy`であることを確認する。 |
 | コンテナスモーク | `bash scripts/container-smoke.sh` | CIと同一のコンテナ起動スモーク。隔離projectで実行され開発スタックへ影響しない。 |
@@ -165,7 +169,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-local.ps1
 ```
 
 `scripts/smoke-test.ps1` はAPI単体のRunbookスモーク、`scripts/smoke-local.ps1` はDocker Compose依存サービス、DB migration、API/Worker/Web起動、マスタ同期ジョブ、CSV出力ジョブまで含めた包括スモークとして使う。
-`scripts/smoke-local.ps1 -StopDependencies` はCI向けに `docker compose down --volumes --remove-orphans` 相当まで行うため、ローカルDB/MinIOデータを残したい通常開発では付けない。
+`scripts/smoke-local.ps1 -StopDependencies` は終了時にコンテナとnetworkを削除するが、DB/RustFSのvolumeは保持する。CIのように一時データも削除する場合だけ`-RemoveDependencyVolumes`を併用する。ローカルDB/RustFSを起動したままにしたい通常開発では`-StopDependencies`を付けない。
 
 実ブラウザ操作まで確認する場合は、PlaywrightのChromiumをインストールしてからBrowserE2Eを有効化する。`dotnet test` で直接BrowserE2Eを実行する場合も、E2Eテストはリポジトリルートの `.env` を自動読み込みする。既にプロセス環境変数が設定されている場合は、プロセス環境変数を優先する。
 
@@ -189,10 +193,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-local.ps1 -Run
 | `Api__BaseUrl` | WebからAPIへの接続先 | ホスト起動は`http://localhost:5251`、Composeは`http://api:8080` |
 | `DataProtection__KeysPath` | WebのData Protection keys保存先（未設定時はContentRoot配下`.data/data-protection-keys`） | Composeは`/app/.data/data-protection-keys` |
 | `Hangfire__Storage` | Hangfire storage | `PostgreSQL` |
-| `Storage__Provider` | ローデータ/出力保存先 | MVP既定は`Local`。`MinIO`は疎通確認のみ。 |
+| `Storage__Provider` | ローデータ/出力保存先 | MVP既定は`Local`。`RustFS`は疎通確認のみ。 |
 | `Storage__BasePath` | ローカル保存先 | `./.data/storage` |
-| `Storage__Endpoint` | MinIO API URL | `http://localhost:9000` |
+| `Storage__Endpoint` | RustFS API URL | `http://localhost:9000` |
 | `Storage__BucketName` | Storage bucket | `seo-intelligence` |
+| `RUSTFS_API_PORT` / `RUSTFS_CONSOLE_PORT` | 開発用RustFSのhost公開ポート | `9000` / `9001` |
+| `RUSTFS_ACCESS_KEY` / `RUSTFS_SECRET_KEY` / `RUSTFS_RPC_SECRET` | 開発用RustFSのcredentialとinternode RPC secret。Compose既定値はlocalhost限定の開発専用 | 必要時だけ別々の開発用値で上書き |
 | `SecretStore__Provider` | Secret Store実装 | `Configuration` |
 | `SecretStore__ConfigurationPrefix` | User Secrets/環境変数上のSecret prefix | `Secrets` |
 | `ServiceAuthentication__ServiceKeyRef` | APIサービスキーのSecret参照名 | `ApiServiceKey` |
@@ -306,7 +312,7 @@ GitHub Actionsは `.github/workflows/ci.yaml` を使う。
 | Job | 実行内容 |
 | --- | --- |
 | `build-test-smoke` | restore、build、test、migration dry-run、包括スモーク（Docker Compose依存サービス起動、依存サービスready待機、DB migration適用、API/Worker/Web起動、ジョブ完了確認）。リポジトリ変数 `RUN_BROWSER_E2E=true` の場合のみPlaywright BrowserE2Eも実行する。 |
-| `container-scan` | PostgreSQL、Redis、MinIO、MinIO Clientのコンテナイメージをリトライ付きでpullし、Trivyでvuln-only scanする。初期雛形では検出結果を表示し、fail条件は後続の運用品質ゲートで調整する。 |
+| `container-scan` | PostgreSQL、Redis、RustFSのコンテナイメージをリトライ付きでpullし、Trivyでvuln-only scanする。PostgreSQL/Redisはゲート対象、開発専用RustFSは報告のみとする。 |
 
 `build-test-smoke`は開発用/VPS用Composeの構文検証、Web/API/Worker/Migration imageのbuild（GitHub Actionsレイヤーキャッシュ使用）、`scripts/container-smoke.sh`による隔離Compose project上のコンテナ起動スモークも行う。スモークはMigration、HTTP、非root UID、Storage共有、Data Protection keys永続化を確認後、テスト用コンテナとVolumeを削除する。同じスモークはローカルでも `bash scripts/container-smoke.sh` で実行できる。
 
@@ -318,7 +324,7 @@ GitHub Actionsは `.github/workflows/ci.yaml` を使う。
 | --- | --- |
 | DB接続不可 | PostgreSQL起動、接続文字列、Firewall、DB名。 |
 | Redis接続不可 | Redis起動、ポート、接続文字列。 |
-| MinIO接続不可 | `docker compose ps`、`http://localhost:9001`、bucket `seo-intelligence`。 |
+| RustFS接続不可 | `docker compose --profile rustfs ps`、`http://localhost:9001`、`/health/ready`、bucket `seo-intelligence`。 |
 | 外部API 403 | APIキーSecret名、Secret参照権限、契約状態。 |
 | 外部API 402 | 契約側のクレジット残量、契約プラン、対象ジョブの消費量。 |
 | ジョブが進まない | Worker起動、Hangfire storage、キュー名、`jobs.status`。 |
@@ -329,6 +335,6 @@ GitHub Actionsは `.github/workflows/ci.yaml` を使う。
 | 項目 | 追記タイミング |
 | --- | --- |
 | Integration/Contract/E2Eの正式手順 | 各テスト整備後。 |
-| MinIOの署名付きObject Storage adapter | Storage credential参照方式確定後。 |
+| RustFSの署名付きObject Storage adapter | Storage credential参照方式確定後。 |
 | CI/CD Secretと品質ゲート | Secret管理、外部API Mock、コンテナポリシー確定後。 |
 | マネージド環境向けデプロイ手順 | Azure等のステージング環境作成後。小規模VPS手順は`docker_deployment.md`へ記載済み。 |

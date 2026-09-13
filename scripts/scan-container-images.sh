@@ -3,7 +3,7 @@
 #
 #   bash scripts/scan-container-images.sh app     # api / web / worker / migrate (must exist locally)
 #   bash scripts/scan-container-images.sh runtime # postgres / redis (pulled)
-#   bash scripts/scan-container-images.sh dev     # minio / mc, reported only
+#   bash scripts/scan-container-images.sh dev     # RustFS, reported only
 #   bash scripts/scan-container-images.sh unfixed # postgres / redis including unfixed, reported only
 #
 # Application images are ours to rebuild, so any fixable HIGH or CRITICAL fails.
@@ -12,7 +12,7 @@
 # findings accepted in docs/operations_runbook.md section 7.3. Acceptances are listed one CVE at a
 # time: excusing a whole component would also hide a future CVE in that component that IS reachable.
 #
-# Development-only images (the MinIO profile) are reported and never gate: they are opt-in for local
+# Development-only images (the RustFS profile) are reported and never gate: they are opt-in for local
 # storage experiments, no Compose file used on the VPS starts them, and gating on them would block
 # unrelated work for vulnerabilities that cannot reach production.
 #
@@ -40,8 +40,7 @@ APP_IMAGES=(
 )
 RUNTIME_IMAGES=(postgres:16-alpine redis:7-alpine)
 DEV_IMAGES=(
-  quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
-  quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727
+  rustfs/rustfs:1.0.0-rc.6@sha256:97171b3d72cd47dc81000f92ea84de25608bfc35a94c965501afaeb5d99f6035
 )
 
 # Accepted findings on the runtime images, one line per CVE:

@@ -32,44 +32,90 @@ services:
     ports:
       - "127.0.0.1:${WEB_PORT:-5295}:8080"
 
-  minio:
-    # Connectivity checks for the MinIO adapter only; not part of the default stack.
-    # MinIO Community is EOL and its Docker Hub repositories were removed. Quay still serves the
-    # final community release, pinned here by manifest digest so the development profile cannot
-    # drift to a different build. Keep this aligned with scripts/scan-container-images.sh.
-    profiles: ["minio"]
-    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
-    command: ["server", "/data", "--console-address", ":9001"]
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-seo_dev}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-seo_dev_password}
-    ports:
-      - "127.0.0.1:${MINIO_API_PORT:-9000}:9000"
-      - "127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001"
+  rustfs-volume-init:
+    # RustFS runs as uid/gid 10001. A new named volume is root-owned, so grant ownership before
+    # the non-root server starts. This service never deletes or reuses the old minio-data volume.
+    profiles: ["rustfs"]
+    image: rustfs/rustfs:1.0.0-rc.6@sha256:97171b3d72cd47dc81000f92ea84de25608bfc35a94c965501afaeb5d99f6035
+    user: "0:0"
+    entrypoint: ["/bin/sh", "-ec"]
+    command: ["chown -R 10001:10001 /data"]
+    cap_drop: ["ALL"]
+    cap_add: ["CHOWN", "DAC_READ_SEARCH"]
+    security_opt: ["no-new-privileges:true"]
     volumes:
-      - minio-data:/data
-    restart: unless-stopped
+      - rustfs-data:/data
+    restart: "no"
     logging: *service-logging
 
-  minio-init:
-    profiles: ["minio"]
-    image: quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727
+  rustfs:
+    # Connectivity checks for the RustFS adapter only; not part of the default stack. RustFS has
+    # not reached a stable release, so pin the reviewed release candidate by manifest digest and
+    # keep it aligned with scripts/scan-container-images.sh.
+    profiles: ["rustfs"]
+    image: rustfs/rustfs:1.0.0-rc.6@sha256:97171b3d72cd47dc81000f92ea84de25608bfc35a94c965501afaeb5d99f6035
     depends_on:
-      minio:
-        condition: service_started
+      rustfs-volume-init:
+        condition: service_completed_successfully
+    environment:
+      RUSTFS_VOLUMES: /data
+      RUSTFS_ADDRESS: 0.0.0.0:9000
+      RUSTFS_CONSOLE_ADDRESS: 0.0.0.0:9001
+      RUSTFS_CONSOLE_ENABLE: "true"
+      RUSTFS_REGION: ${RUSTFS_REGION:-us-east-1}
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-seo_dev}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:-seo_dev_password}
+      RUSTFS_RPC_SECRET: ${RUSTFS_RPC_SECRET:-seo_dev_rpc_secret}
+    ports:
+      - "127.0.0.1:${RUSTFS_API_PORT:-9000}:9000"
+      - "127.0.0.1:${RUSTFS_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - rustfs-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:9000/health/ready"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 20s
+    restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
+    logging: *service-logging
+
+  rustfs-init:
+    profiles: ["rustfs"]
+    image: rustfs/rustfs:1.0.0-rc.6@sha256:97171b3d72cd47dc81000f92ea84de25608bfc35a94c965501afaeb5d99f6035
+    depends_on:
+      rustfs:
+        condition: service_healthy
     entrypoint:
       - /bin/sh
-      - -c
+      - -ec
       - >
-        until mc alias set local http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}"; do
+        endpoint=http://rustfs:9000;
+        attempts=0;
+        until curl --fail --silent "$$endpoint/health/ready" > /dev/null; do
+          attempts=$$((attempts + 1));
+          if [ "$$attempts" -ge 60 ]; then echo "RustFS readiness timed out." >&2; exit 1; fi;
           sleep 2;
         done;
-        mc mb --ignore-existing local/seo-intelligence;
-        mc anonymous set none local/seo-intelligence
+        status="$$(curl --silent --output /dev/null --write-out '%{http_code}'
+        --aws-sigv4 "aws:amz:$${RUSTFS_REGION}:s3"
+        --user "$${RUSTFS_ACCESS_KEY}:$${RUSTFS_SECRET_KEY}"
+        --head "$$endpoint/$${RUSTFS_BUCKET}")";
+        case "$$status" in
+          200) echo "RustFS bucket already exists: $${RUSTFS_BUCKET}" ;;
+          404) curl --fail --silent --show-error --aws-sigv4 "aws:amz:$${RUSTFS_REGION}:s3" --user "$${RUSTFS_ACCESS_KEY}:$${RUSTFS_SECRET_KEY}" --request PUT "$$endpoint/$${RUSTFS_BUCKET}";
+               echo "RustFS bucket created: $${RUSTFS_BUCKET}" ;;
+          *) echo "RustFS bucket check failed with HTTP $$status." >&2; exit 1 ;;
+        esac
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-seo_dev}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-seo_dev_password}
+      RUSTFS_REGION: ${RUSTFS_REGION:-us-east-1}
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-seo_dev}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:-seo_dev_password}
+      RUSTFS_BUCKET: seo-intelligence
+    security_opt: ["no-new-privileges:true"]
+    restart: "no"
     logging: *service-logging
 
 volumes:
-  minio-data:
+  rustfs-data:

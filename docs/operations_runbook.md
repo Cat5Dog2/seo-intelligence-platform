@@ -175,9 +175,11 @@ VPSの初回デプロイ・更新・バックアップの正本手順は `docs/d
 | --- | --- | --- |
 | `app` | `seo-intelligence-api` / `web` / `worker` / `migrate` | 自前でre-buildできるため、検出があればCIを失敗させる。 |
 | `runtime` | `postgres:16-alpine` / `redis:7-alpine` | 本番で稼働するためゲート対象。下表の除外に該当しない検出があればCIを失敗させる。 |
-| `dev` | `quay.io/minio/minio` / `quay.io/minio/mc` | 開発専用の任意profileで、本番Composeは起動しない。報告のみでゲートしない。 |
+| `dev` | `rustfs/rustfs:1.0.0-rc.6` | 開発専用の任意profileで、本番Composeは起動しない。報告のみでゲートしない。 |
 
-MinIO CommunityはEOLで、Docker Hubの`minio/minio`と`minio/mc`が取得不能であることを2026-09-12のCIで確認した。開発profileでは、Quayに残る最終Communityリリースをタグとmanifest digestの両方で固定する。これは開発・接続確認専用の暫定依存であり、本番ストレージには使用しない。参照を更新する場合は`compose.override.yaml`と`scripts/scan-container-images.sh`を同時に変更し、`bash scripts/verify-development-image-pins.sh`で一致と固定形式を確認する。
+MinIO CommunityのEOLと公式Docker Hubリポジトリ消失を受け、開発用S3互換環境はRustFSへ移行した。RustFSはまだ安定版前のため、レビュー済みの`1.0.0-rc.6`をmanifest digest `sha256:97171b3d72cd47dc81000f92ea84de25608bfc35a94c965501afaeb5d99f6035`で固定する。これは開発・接続確認専用であり、本番ストレージには使用しない。参照を更新する場合はrelease notesと既知のセキュリティ問題を確認し、`compose.override.yaml`と`scripts/scan-container-images.sh`を同時に変更して、`bash scripts/verify-development-image-pins.sh`で一致と固定形式を検証する。
+
+RustFSは非root UID/GID `10001:10001`で実行する。`rustfs-volume-init`はnamed volumeの所有権設定だけを行い、`rustfs-init`は同じ固定image内のSigV4対応curlで`seo-intelligence` bucketを冪等作成する。旧`minio-data` volumeは自動削除も再利用もしない。必要な開発データがある場合は、旧環境を保持したままS3 API経由で手動移行し、確認が終わるまでvolumeを削除しない。
 
 ローカル再確認:
 

@@ -1364,6 +1364,63 @@ ISSUE-MVP-00X の続きから再開してください。
 - 当面の回避策は「関連PRをまとめる、または依存が流れる側から順にマージする」である。ただし順序を人が覚えている必要があり、間違えるとCIが原因の分かりにくい形で落ちる。
 - Central Package Management は .NET SDK 標準の機能で、追加パッケージを必要としない。
 
+### ISSUE-OPS-009 開発用オブジェクトストレージをMinIOからRustFSへ移行する
+
+参照ドキュメント: `README.md`, `docs/basic_design.md`, `docs/environment_setup.md`, `docs/docker_deployment.md`, `docs/operations_runbook.md`, `docs/test_plan.md`
+
+背景:
+
+- MinIO CommunityはEOLとなり、Docker Hubの公式リポジトリも取得不能になった。現在は開発専用profileを維持するため、Quayに残る最終Communityリリースをタグとdigestで固定しているが、これは短期的な回避策である。
+- MinIOは本番Composeには含まれず、`Storage:Provider=Local`が本番とMVPの既定である。移行対象は、開発用のS3互換接続確認、bucket初期化、スモークテスト、devイメージスキャンである。
+- RustFSはS3 API、SigV4、path-styleアクセス、bucket/objectの基本操作、`/health/ready`を提供する。ただし現時点ではリリース候補版であり、MinIO固有APIとの完全互換を前提にしない。
+- 現行の`MinioEndpointObjectStorage`は`/minio/health/ready`による疎通確認だけを実装し、成果物のread/writeには使用していない。今回の移行で、未実装の署名付きS3 adapterまで先行実装しない。
+
+目的:
+
+- [x] EOL製品への開発時依存をなくし、RustFSでS3互換のローカル接続確認を再現できるようにする。
+- [x] RustFSのプレリリース性と互換範囲を、開発用途へ限定した構成・テスト・ドキュメントで明示する。
+
+範囲:
+
+- [x] `compose.override.yaml`の任意profileをRustFSへ置き換える。S3 APIは`127.0.0.1:9000`、Consoleは`127.0.0.1:9001`を維持し、レビュー済みの非previewリリースをタグとmanifest digestの両方で固定する。非preview版を採用できない場合は、採用理由と更新条件を記録する。
+- [x] `minio-init` / `mc`を廃止し、RustFSがサポートするS3クライアントまたは初期化手段で`seo-intelligence` bucketを冪等に作成する。追加イメージを使う場合もタグとdigestを固定する。
+- [x] 開発用credentialを`RUSTFS_ACCESS_KEY` / `RUSTFS_SECRET_KEY`へ移し、RustFSの既定credentialを使用しない。選択したバージョンでinternode RPC secretが必要な場合は、開発用の明示値を設定する。
+- [x] `Storage:Provider`、Options、DI、接続確認実装、Development設定、UnitTestsをRustFSへ揃える。疎通確認はRustFSの`/health/ready`を使い、成果物read/write未対応という既存の制約は維持する。
+- [x] `scripts/smoke-local.ps1`、`scripts/scan-container-images.sh`、`.github/workflows/ci.yaml`、開発イメージ固定の回帰テストを更新する。RustFSイメージは開発専用の`dev`対象として報告し、本番の`app` / `runtime`ゲートへ混ぜない。
+- [x] READMEと関連設計・環境構築・運用・テスト文書を更新し、通常開発の起動コマンド、ポート、bucket名、接続確認方法、RustFSの互換範囲を一致させる。
+- [x] 新しい`rustfs-data` named volumeを使い、既存の`minio-data`を自動削除または再利用しない。開発データの引継ぎが必要な場合はS3 API経由の手動移行とし、暗号化オブジェクトやMinIO固有機能は対象外とする。
+
+対象外:
+
+- [x] 本番ストレージをLocalからRustFSへ変更していない。
+- [x] 署名付きS3 adapter、成果物read/write、MinIOの実データや暗号化オブジェクトの自動移行を実装していない。
+- [x] DB migration、Secret Store、外部API契約を変更していない。
+
+受入条件:
+
+- [x] 実行構成、スクリプト、設定、通常手順から`quay.io/minio/minio`と`quay.io/minio/mc`への依存がなく、残るMinIO表記は移行履歴または互換性上必要な説明に限定されている。
+- [x] `docker compose --profile rustfs up -d rustfs rustfs-init`でRustFSがhealthyになり、`seo-intelligence` bucketが作成済みになる。同じ初期化を再実行しても成功する。
+- [x] `Storage:Provider=RustFS`の接続確認が成功し、RustFS停止時または不正endpoint指定時は失敗を返す。
+- [x] 開発用RustFS関連イメージがタグとdigestで固定され、ComposeとTrivyスキャン対象のdriftを回帰テストが検知する。
+- [x] production ComposeにRustFSサービス、公開ポート、credentialが入らず、`Storage:Provider=Local`の既定動作が変わらない。
+- [x] 旧`minio-data` volumeを削除する自動処理が追加されていない。
+
+検証:
+
+- [x] `docker compose -f compose.yaml -f compose.override.yaml --profile rustfs config --quiet`
+- [x] RustFS起動後に`/health/ready`、bucket存在、初期化の再実行を確認する。
+- [x] `bash scripts/verify-development-image-pins.sh`
+- [x] `bash scripts/scan-container-images.sh dev`
+- [x] `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-local.ps1`
+- [x] `dotnet test --filter FullyQualifiedName~ConfigurationOptionsTests`
+- [x] `dotnet build SeoIntelligence.sln`
+
+補足:
+
+- RustFSはS3互換を掲げるが、AWS S3やMinIOの全APIと同一ではない。採用バージョンのcompatibility matrixで、利用するhealth、SigV4、path-style、bucket作成の経路を確認する。
+- RustFSのリリースがまだ安定版前である間は、更新時にrelease notes、既知のセキュリティ問題、コンテナの実行ユーザーとVolume権限を再確認する。
+- 採用版は`1.0.0-rc.6`、multi-arch manifest digestは`sha256:97171b3d72cd47dc81000f92ea84de25608bfc35a94c965501afaeb5d99f6035`。同一imageのSigV4対応curlをbucket初期化にも使用し、追加client imageは導入していない。
+
 ## 横断セキュリティ
 
 ### ISSUE-SEC-001 単一管理者ログインとAPIサービス認証を実装する

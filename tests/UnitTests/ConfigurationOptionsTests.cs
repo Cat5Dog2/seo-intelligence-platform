@@ -24,11 +24,11 @@ public sealed class ConfigurationOptionsTests
 
     [Fact]
     [Trait("Category", "Unit")]
-    public void StorageOptionsRequiresAbsoluteEndpointForMinioProvider()
+    public void StorageOptionsRequiresAbsoluteEndpointForRustFsProvider()
     {
         var options = new StorageOptions
         {
-            Provider = StorageOptions.MinioProvider,
+            Provider = StorageOptions.RustFsProvider,
             Endpoint = "localhost:9000",
             BucketName = "seo-intelligence"
         };
@@ -36,7 +36,7 @@ public sealed class ConfigurationOptionsTests
         var errors = options.Validate();
 
         Assert.Contains(
-            "Storage:Endpoint must be an absolute URI when Storage:Provider is MinIO.",
+            "Storage:Endpoint must be an absolute URI when Storage:Provider is RustFS.",
             errors);
     }
 

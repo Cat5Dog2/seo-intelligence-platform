@@ -30,7 +30,7 @@ seo-intelligence-prod
 | --- | --- |
 | `Dockerfile` | `web`、`api`、`worker`、`migrate`のmulti-stage build。共有buildステージで1回だけコンパイルし、`migrate`はEF migration bundle（SDK非搭載の小型runtime image）。 |
 | `compose.yaml` | 開発/本番共通のbase定義。ホストポートは公開しない。 |
-| `compose.override.yaml` | 開発専用overlay。`docker compose`が自動読込。`127.0.0.1`bindの公開ポートとMinIOはここだけにある。 |
+| `compose.override.yaml` | 開発専用overlay。`docker compose`が自動読込。`127.0.0.1`bindの公開ポートとRustFSはここだけにある。 |
 | `compose.production.yaml` | VPS用overlay。Production環境変数、必須パスワード、network、専用project name（`seo-intelligence-prod`）の差分のみ。 |
 | `.env.production.example` | VPS設定の雛形。実値は`.env.production`へ置き、Gitへ追加しない。Composeが補間する値だけを持つ。 |
 | `.env.production.app.example` | アプリ設定とアプリSecretの雛形。実値は`.env.production.app`へ置き、Gitへ追加しない。api/workerだけが`env_file`として読む。 |
@@ -49,7 +49,7 @@ docker compose --project-name seo-intelligence-prod --env-file .env.production -
 
 環境ファイルは2つに分ける。`--env-file`が指す`.env.production`はComposeが補間に使うだけでコンテナへは自動投入されず、`compose.yaml`が明示的にマッピングしたキーだけが各サービスへ届く。アプリ設定とアプリSecretは`.env.production.app`に置き、外部APIを呼ぶapiとworkerだけが`env_file`として読む。Webは`env_file`を持たないため、ラッコキーワードAPIキーとDiscord Webhookはインターネットに面するサービスへ渡らない。この分離は`scripts/verify-production-compose.sh`が検証する。新しいアプリSecretは`.env.production.app`側へ追加する。
 
-現行のMinIO adapterはreadiness確認のみで、オブジェクトの書き込み・読み取りには対応していない。そのためVPS構成は`Storage__Provider=Local`を使用し、MinIOは開発overlayの任意profileとしてのみ存在する。
+現行のRustFS adapterはreadiness確認のみで、オブジェクトの書き込み・読み取りには対応していない。そのためVPS構成は`Storage__Provider=Local`を使用し、RustFSは開発overlayの任意profileとしてのみ存在する。
 
 ## 2. ローカルで全スタックを起動する
 
@@ -388,5 +388,5 @@ API、DB、Redisにはホスト`ports`を設定していない。調査目的で
 
 - 利用者は単一管理者1名を前提とする。複数ユーザー管理、RBAC、SSOは `ISSUE-P4-001` の範囲であり未実装である。
 - 二要素認証は未実装である。
-- MinIO adapterはreadiness確認のみである。署名付きS3 adapterが実装されるまで、`Storage__Provider=MinIO`を成果物保存へ使用しない。
+- RustFS adapterはreadiness確認のみである。署名付きS3 adapterが実装されるまで、`Storage__Provider=RustFS`を成果物保存へ使用しない。
 - 成果物のダウンロードは、APIの`.../content`とWebホストの`/downloads/...`が担う。Local Storageでも画面からCSV/Excel/PDFを取得できる。ファイル本体は常にAPI経由で配信し、Storage Volumeを直接公開しない。

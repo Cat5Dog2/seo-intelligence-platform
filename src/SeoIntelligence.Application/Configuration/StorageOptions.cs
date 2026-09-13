@@ -4,7 +4,7 @@ public sealed class StorageOptions
 {
     public const string SectionName = "Storage";
     public const string LocalProvider = "Local";
-    public const string MinioProvider = "MinIO";
+    public const string RustFsProvider = "RustFS";
 
     public string Provider { get; set; } = LocalProvider;
 
@@ -25,22 +25,22 @@ public sealed class StorageOptions
                 errors.Add("Storage:BasePath is required when Storage:Provider is Local.");
             }
         }
-        else if (string.Equals(Provider, MinioProvider, StringComparison.OrdinalIgnoreCase))
+        else if (string.Equals(Provider, RustFsProvider, StringComparison.OrdinalIgnoreCase))
         {
             if (string.IsNullOrWhiteSpace(BucketName))
             {
-                errors.Add("Storage:BucketName is required when Storage:Provider is MinIO.");
+                errors.Add("Storage:BucketName is required when Storage:Provider is RustFS.");
             }
 
             if (string.IsNullOrWhiteSpace(Endpoint)
                 || !IsHttpUri(Endpoint))
             {
-                errors.Add("Storage:Endpoint must be an absolute URI when Storage:Provider is MinIO.");
+                errors.Add("Storage:Endpoint must be an absolute URI when Storage:Provider is RustFS.");
             }
         }
         else
         {
-            errors.Add("Storage:Provider must be Local or MinIO.");
+            errors.Add("Storage:Provider must be Local or RustFS.");
         }
 
         return errors;
