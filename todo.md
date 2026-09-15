@@ -1345,6 +1345,7 @@ ISSUE-MVP-00X の続きから再開してください。
 - [x] Dependabot の `efcore` グループへ `Microsoft.EntityFrameworkCore` 本体（`Microsoft.EntityFrameworkCore.*` はドットがあるためマッチしない）と `Microsoft.AspNetCore.Identity.EntityFrameworkCore` を含める。後者は `aspnetcore` グループから除外する。この2つを分けたままにすると、#112 と #113 のように一族が2つのPRへ割れ、マージ順に依存する状態が残る。
 - [x] `CentralPackageVersionOverrideEnabled` を false にし、csproj単位の `VersionOverride` を禁止する。既定では上書きが中央定義に勝ち、しかも静かに勝つ。
 - [x] `scripts/verify-package-versions.sh` を追加してCIへ配線する。各csprojのMSBuild実効値、ルート以外の `Directory.Packages.props`、Docker restoreステージのcopy先と順序を検査し、上の2設定がプロジェクト側で上書きされても検出する。
+- [x] Dependabot の `microsoft-extensions` / `aspnetcore` / `efcore` の3グループを `dotnet` 1グループへ統合し、`.config/dotnet-tools.json` の `dotnet-ef` も同じグループに含める（2026-09-15）。実測: 10.0.12 サービシングが #134〜#138 の5本に割れ、#134/#136 と #135/#137 は `Directory.Packages.props` の隣接行を変えるため互いに競合、main の「マージ前にブランチ最新化必須」により1本マージするごとに残りが rebase と CI を要した。5本は手でまとめた #139 で置き換え、以後は Microsoft 一族 + `dotnet-ef` が1本、`testing` が1本になる。`dotnet-ef` が同じPRに入ることは次回のサービシングPRで確認する。
 
 受入条件:
 
@@ -1361,7 +1362,7 @@ ISSUE-MVP-00X の続きから再開してください。
 
 補足:
 
-- 当面の回避策は「関連PRをまとめる、または依存が流れる側から順にマージする」である。ただし順序を人が覚えている必要があり、間違えるとCIが原因の分かりにくい形で落ちる。
+- 当面の回避策は「関連PRをまとめる、または依存が流れる側から順にマージする」である。ただし順序を人が覚えている必要があり、間違えるとCIが原因の分かりにくい形で落ちる。Microsoft 一族については `dotnet` グループへの統合でPRが1本になり、この回避策は不要になった。
 - Central Package Management は .NET SDK 標準の機能で、追加パッケージを必要としない。
 
 ### ISSUE-OPS-009 開発用オブジェクトストレージをMinIOからRustFSへ移行する

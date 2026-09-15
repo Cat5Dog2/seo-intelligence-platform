@@ -22,27 +22,31 @@ updates:
       prefix: "chore"
     groups:
       # One PR per family rather than per package. These version together, and a partial bump of a
-      # Microsoft.Extensions.* or Npgsql set is a build failure rather than a review.
-      microsoft-extensions:
-        patterns:
-          - "Microsoft.Extensions.*"
-      # Identity.EntityFrameworkCore is excluded here and named in the efcore group instead. It
-      # decides which Microsoft.EntityFrameworkCore version flows to Web and ContractTests, so a
-      # bump that leaves it behind is what produced CS1705 in #113: the two halves of one family
-      # arrived as two pull requests, and merging them in the wrong order did not build.
-      aspnetcore:
-        patterns:
-          - "Microsoft.AspNetCore.*"
-        exclude-patterns:
-          - "Microsoft.AspNetCore.Identity.EntityFrameworkCore"
-      efcore:
+      # Microsoft.* or Npgsql set is a build failure rather than a review.
+      #
+      # The Microsoft families were three groups (microsoft-extensions, aspnetcore, efcore) with
+      # Identity.EntityFrameworkCore moved by hand into efcore, because a bump that left it behind
+      # is what produced CS1705 in #113. They are one group now. Microsoft.Extensions.*,
+      # Microsoft.AspNetCore.* and Microsoft.EntityFrameworkCore* are one servicing release and
+      # move on the same day, so the three groups arrived as three pull requests for one version
+      # (#134, #135, #136 for 10.0.12), two of them editing adjacent lines of
+      # Directory.Packages.props and conflicting with each other. main requires an up-to-date
+      # branch before merging, so every merge sent the remaining pull requests back through a
+      # rebase and a CI run. One group is one pull request and one CI run, and it cannot leave
+      # half a family behind either, which is what the split into families was for.
+      dotnet:
         patterns:
           # No dot after EntityFrameworkCore: the package of that exact name is referenced directly
           # by the Infrastructure project, and "Microsoft.EntityFrameworkCore.*" does not match it.
           # Left ungrouped it would arrive on its own, which is the split this grouping prevents.
           - "Microsoft.EntityFrameworkCore*"
-          - "Microsoft.AspNetCore.Identity.EntityFrameworkCore"
+          - "Microsoft.AspNetCore.*"
+          - "Microsoft.Extensions.*"
           - "Npgsql*"
+          # The EF tool in .config/dotnet-tools.json. Dependabot reads that file as part of this
+          # nuget job (#138 came from it, with no group to land in), and the tool is versioned with
+          # Microsoft.EntityFrameworkCore, so it belongs in the same pull request as the packages.
+          - "dotnet-ef"
       testing:
         patterns:
           - "xunit*"
