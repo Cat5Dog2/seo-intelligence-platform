@@ -76,8 +76,18 @@ expect_failure "a service missing from the digest lock file" \
   "every third-party service this stack runs must be pinned" \
   "DIGEST_LOCK_FILE=$work/lock-missing-redis"
 
-# A digest that no longer matches what Compose deploys.
-sed 's/sha256:cf78e766/sha256:00000000/' image-digests.lock > "$work/lock-wrong-digest"
+# A digest that no longer matches what Compose deploys. Matched by shape rather than by value: a
+# pattern carrying one image's current digest stops substituting the day that image is bumped, and
+# the fixture then becomes a copy of the real lock file that the verifier rightly passes - which
+# reads as the guard breaking rather than the fixture.
+sed 's/sha256:[0-9a-f]\{64\}/sha256:0000000000000000000000000000000000000000000000000000000000000000/' \
+  image-digests.lock > "$work/lock-wrong-digest"
+# Same safeguard the stub patterns below use: a substitution that quietly stopped matching would
+# leave a fixture that tests nothing, so say so here instead of reporting it as a missed case.
+if cmp -s image-digests.lock "$work/lock-wrong-digest"; then
+  echo "FAIL: the wrong-digest fixture is identical to image-digests.lock, so it tests nothing." >&2
+  failures=$((failures + 1))
+fi
 expect_failure "a digest that does not match the rendered image" \
   "the rendered images do not match the digest lock file" \
   "DIGEST_LOCK_FILE=$work/lock-wrong-digest"

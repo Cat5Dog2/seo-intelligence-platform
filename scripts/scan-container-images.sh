@@ -71,17 +71,9 @@ RUNTIME_ACCEPTED=(
   "postgres:16-alpine	CVE-2026-56860	usr/local/bin/gosu	stdlib"
   "postgres:16-alpine	CVE-2026-56862	usr/local/bin/gosu	stdlib"
 
-  # OS packages. The target carries the Alpine version, so a base image bump stops these
-  # from matching and the gate asks for the judgement again rather than carrying it over.
-  "postgres:16-alpine	CVE-2026-14456	/scan/image.tar (alpine 3.24.1)	libcrypto3"
-  "postgres:16-alpine	CVE-2026-14456	/scan/image.tar (alpine 3.24.1)	libssl3"
-  "postgres:16-alpine	CVE-2026-53612	/scan/image.tar (alpine 3.24.1)	libuuid"
-  "postgres:16-alpine	CVE-2026-53613	/scan/image.tar (alpine 3.24.1)	libuuid"
-  "postgres:16-alpine	CVE-2026-53614	/scan/image.tar (alpine 3.24.1)	libuuid"
-  "postgres:16-alpine	CVE-2026-76642	/scan/image.tar (alpine 3.24.1)	libuuid"
-  "postgres:16-alpine	CVE-2026-78408	/scan/image.tar (alpine 3.24.1)	libuuid"
-  "postgres:16-alpine	CVE-2026-78409	/scan/image.tar (alpine 3.24.1)	libuuid"
-  "postgres:16-alpine	CVE-2026-78410	/scan/image.tar (alpine 3.24.1)	libuuid"
+  # No OS-package acceptance is in force. When one is added, its target carries the Alpine
+  # version, so a base image bump stops it from matching and the gate asks for the judgement
+  # again rather than carrying it over.
 )
 
 # Digests the acceptances above were judged against, read from the lock file that compose.yaml and

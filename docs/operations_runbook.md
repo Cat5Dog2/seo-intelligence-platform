@@ -196,8 +196,13 @@ bash scripts/scan-container-images.sh runtime
 | 対象 | 受容コンポーネント | 件数 | 判断 | 記録日 |
 | --- | --- | --- | --- | --- |
 | `postgres:16-alpine` | `usr/local/bin/gosu` の `stdlib` | 22件（Critical 1 / High 21） | **受容**。`gosu`はentrypointが起動時にrootからpostgresへ権限降格するためだけに1回`exec`する補助バイナリで、ネットワーク通信を一切行わない。受容した22件はいずれもGo標準ライブラリのTLS/HTTP/暗号系であり、到達するコードパスが存在しない。CVE IDの一覧は `scripts/scan-container-images.sh` の `RUNTIME_ACCEPTED` を正本とする。 | 2026-08-22 |
-| `postgres:16-alpine` | `libcrypto3` / `libssl3` | 2件（High、いずれも CVE-2026-14456） | **受容**。OpenSSLのQUICサーバー実装に限定される脆弱性である。イメージの `libssl3-3.5.7-r0` はQUICのエントリポイント（`SSL_set_quic_tls_cbs` / `SSL_set_quic_tls_early_data_enabled` / `SSL_set_quic_tls_transport_params`）を公開しているが、**イメージ内のバイナリと拡張のいずれもそれらを参照していない**（イメージ内で実測）。`postgres` は `libssl.so.3` / `libcrypto.so.3` をリンクするが、用途はTLSとSCRAM認証で、PostgreSQL 16 はQUICを話さない。加えて本構成では postgres をホストへ公開せず（両Composeに `ports:` が無い）、`backend` ネットワークからのみ到達する。 | 2026-09-07 |
-| `postgres:16-alpine` | `libuuid` | 7件（High） | **受容**。util-linux のアドバイザリは同梱サブパッケージすべてに付くが、`libuuid` が提供するのは `usr/lib/libuuid.so.1` だけで、これをリンクするELFはイメージ全体で `/usr/local/lib/postgresql/uuid-ossp.so` の1つに限られる（イメージ内で実測）。本スキーマが作成する拡張は `pg_trgm` のみで（`SeoIntelligenceDbContext`）、`uuid-ossp` を作成しないため、この共有ライブラリは読み込まれない。 | 2026-09-07 |
+
+2026-09-19: `postgres:16-alpine` のdigestが更新され、Alpine 3.24.1 → 3.24.2相当のパッケージ更新を含んでいたため、以下2項目(計9件)は受容判断ごと不要になった。
+
+- `libcrypto3` / `libssl3`（CVE-2026-14456、旧`libssl3-3.5.7-r0`）: 新イメージでは`libssl3-3.5.8-r0`へ更新され、修正済みのため検出されなくなった。
+- `libuuid`（旧7件）: 新イメージでは`libuuid-2.42.3-r1`へ更新され、修正済みのため検出されなくなった。
+
+`RUNTIME_ACCEPTED` から該当9件を削除済み。`gosu`/`stdlib` の22件は対象バイナリ(gosu本体)が変わっていないため据え置き。
 
 受容を見直す条件:
 
