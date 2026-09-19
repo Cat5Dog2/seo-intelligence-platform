@@ -12,5 +12,5 @@
 # findings for the new image, re-judge the acceptances in the runbook, then update compose.yaml.
 #
 # Format: <compose service><TAB><image tag><TAB><digest>
-postgres	postgres:16-alpine	sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685
-redis	redis:7-alpine	sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
+postgres	postgres:16-alpine	sha256:3c5c8892d184f738f4fe282d14ddaa613a38f00f4189d2d94725ebe6f2909ddb
+redis	redis:7-alpine	sha256:520775a41a63e77e06c73e35d2fd9cc15921a609516818796b4ecbb813078bc7
