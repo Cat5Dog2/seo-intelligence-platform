@@ -179,7 +179,7 @@ VPSの初回デプロイ・更新・バックアップの正本手順は `docs/d
 | `runtime` | `postgres:16-alpine` / `redis:7-alpine` を `image-digests.lock` のdigestで取得 | 本番で稼働しているイメージそのものを検査するゲート。下表の除外に該当しない検出、またはどの検出にも一致しなくなった受容があればCIを失敗させる。 |
 | `unfixed` | 同上 | 修正版の無いCVEも含めて一覧する。報告のみでゲートしない。 |
 | `dev` | `rustfs/rustfs:1.0.0-rc.6` | 開発専用の任意profileで、本番Composeは起動しない。報告のみでゲートしない。 |
-| `drift` | `postgres:16-alpine` / `redis:7-alpine` のタグ | 上流タグが `image-digests.lock` のdigestから動いたかを報告する。動いていればexit 2で、CIはwarning annotationとstep summaryに出すだけでゲートしない。 |
+| `drift` | `postgres:16-alpine` / `redis:7-alpine` のタグ | 上流タグが指すindexと、その中の当該プラットフォーム（linux/amd64）imageを `image-digests.lock` のdigestと比較する。indexだけが動いてimageが同一ならexit 0で報告のみ、imageが変わっていればexit 2。CIはexit 2をwarning annotationとstep summaryに出すだけでゲートしない。レジストリに直接問い合わせ、pullもスキャンもしない。 |
 
 MinIO CommunityのEOLと公式Docker Hubリポジトリ消失を受け、開発用S3互換環境はRustFSへ移行した。RustFSはまだ安定版前のため、レビュー済みの`1.0.0-rc.6`をmanifest digest `sha256:97171b3d72cd47dc81000f92ea84de25608bfc35a94c965501afaeb5d99f6035`で固定する。これは開発・接続確認専用であり、本番ストレージには使用しない。参照を更新する場合はrelease notesと既知のセキュリティ問題を確認し、`compose.override.yaml`と`scripts/scan-container-images.sh`を同時に変更して、`bash scripts/verify-development-image-pins.sh`で一致と固定形式を検証する。
 
@@ -221,13 +221,13 @@ bash scripts/scan-container-images.sh runtime
 
 `runtime` / `unfixed` モードはタグではなく同ファイルのdigestを `pull` して検査する。したがってゲートが答える問いは「本番で動いているイメージに、未判断の修正可能なHIGH/CRITICALがあるか」だけである。上流が受容済みCVEの修正版を公開すれば脆弱性DBに修正バージョンが載り、タグを見張らなくてもこのスキャンが失敗して更新を促す。
 
-上流タグが動いたこと自体は失敗にしない。Alpine系の公式イメージは数日おきに再ビルドされ、その大半はこのスタックが使うパッケージを1つも変えない（2026-09-21の再ビルドはpostgres/redisともパッケージ差分0件だった）。以前はこれで `container-scan` が失敗し、required checkのため無関係な全PRのマージとリリース候補通知が止まっていた。タグの移動は `drift` モードが報告し、nightlyのwarning annotationとstep summaryに出る。
+上流タグが動いたこと自体は失敗にしない。lockが固定しているのはマルチプラットフォームのindexのdigestで、他プラットフォームやattestationが再ビルドされるだけで変わる。Alpine系の公式イメージは数日おきに再ビルドされ、その大半はこのスタックが動かすlinux/amd64のimageを1バイトも変えない（2026-09-21の再ビルドはpostgres/redisともlinux/amd64のmanifest digestが旧indexと同一だった）。以前はこれで `container-scan` が失敗し、required checkのため無関係な全PRのマージとリリース候補通知が止まっていた。タグの移動は `drift` モードが報告し、当該プラットフォームのimageが実際に変わった場合だけnightlyのwarning annotationに出る。
 
-`scripts/verify-production-compose.sh` が、Composeの**レンダリング結果**を同ファイルと完全一致で照合する。ソースへのgrepではないため、コメント行に期待値があっても通らない。`scripts/verify-runtime-scan.sh` が、`runtime` / `unfixed` がlockのdigestだけをpullすること、タグの移動では失敗しないこと、一致しなくなった受容で失敗することを fake docker で固定する。
+`scripts/verify-production-compose.sh` が、Composeの**レンダリング結果**を同ファイルと完全一致で照合する。ソースへのgrepではないため、コメント行に期待値があっても通らない。`scripts/verify-runtime-scan.sh` が、`runtime` / `unfixed` がlockのdigestだけをpullすること、タグの移動では失敗しないこと、一致しなくなった受容で失敗すること、`drift` がレジストリに問い合わせてindexの移動とimageの変更を区別することを fake docker で固定する。
 
 更新手順:
 
-1. `bash scripts/scan-container-images.sh drift` で、上流タグが現在指すdigestを確認する。
+1. `bash scripts/scan-container-images.sh drift` で、上流タグが現在指すdigestと、当該プラットフォームのimageが変わったかを確認する。imageが同一（"identical"）なら更新は不要で、以降の手順は省略してよい。
 2. `image-digests.lock` のdigestを新しい値へ変更する。
 3. `bash scripts/scan-container-images.sh runtime` を実行し、新イメージの検出内容を確認する。どの検出にも一致しなくなった受容は失敗として列挙されるので、`RUNTIME_ACCEPTED` と本節の受容表から削除する。
 4. 新たに検出されたものを本節の受容表で判断し、`RUNTIME_ACCEPTED` を更新する。

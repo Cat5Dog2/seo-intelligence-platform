@@ -146,8 +146,10 @@ jobs:
       # Not a gate either. The upstream tags moving is a reason to start the update procedure in the
       # runbook, not a finding against the image that is deployed. It used to fail this required
       # check, and upstream rebuilds these tags every few days - usually without changing a single
-      # package this stack runs - so every pull request was blocked until someone re-pinned an
-      # identical image. Exit 2 is "moved"; anything else non-zero is a real error and still fails.
+      # byte of the linux/amd64 image this stack runs - so every pull request was blocked until
+      # someone re-pinned an identical image. Exit 2 means the image behind a tag has changed for
+      # this platform; an index that moved with the image unchanged exits 0 and is only printed.
+      # Anything else non-zero is a real error and still fails.
       - name: Report upstream tag movement
         run: |
           code=0
@@ -156,7 +158,7 @@ jobs:
           { echo '```'; cat "$RUNNER_TEMP/drift.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           case "$code" in
             0) ;;
-            2) echo "::warning title=Runtime image tags moved upstream::postgres/redis now resolve to a different digest than image-digests.lock. Not a failure; see the step summary and docs/operations_runbook.md section 7.3." ;;
+            2) echo "::warning title=Runtime image changed upstream::The image behind postgres:16-alpine or redis:7-alpine differs from the digest in image-digests.lock. Not a failure; see the step summary and docs/operations_runbook.md section 7.3." ;;
             *) exit "$code" ;;
           esac
 

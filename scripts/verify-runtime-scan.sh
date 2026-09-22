@@ -7,9 +7,11 @@
 # It used to pull the tag and fail whenever the tag no longer matched image-digests.lock, which
 # turned every upstream rebuild - most of them changing nothing this stack runs - into a red
 # required check on every pull request. These cases pin the replacement: the gate pulls the locked
-# digest and never the bare tag, a moved tag is reported by `drift` and by nothing else, and an
-# acceptance that matches no finding fails the gate so the list cannot excuse a finding nobody is
-# looking at. docker is replaced at the process boundary; nothing is pulled or scanned.
+# digest and never the bare tag, a moved tag is reported by `drift` and by nothing else - asked of
+# the registry, and telling an index that merely moved from an image that changed for this
+# platform - and an acceptance that matches no finding fails the gate so the list cannot excuse a
+# finding nobody is looking at. docker is replaced at the process boundary; nothing is pulled or
+# scanned.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -36,7 +38,10 @@ mkdir -p "$state"
 
 # Records every invocation. `pull` remembers what was pulled so the scan that follows can answer
 # with that image's fixture report - the scan command itself only names /scan/image.tar.
-# `image inspect` answers the two questions the script asks: an image ID, or where a tag points.
+# `buildx imagetools inspect` plays the registry: where a tag points (the locked digest, or
+# FAKE_MOVED_DIGEST when FAKE_TAG_MOVED is set) and what an index holds for linux/amd64 (the same
+# platform manifest for every index, unless FAKE_PLATFORM_CHANGED is set and the index is the
+# moved one).
 cat > "$work/bin/docker" <<'DOCKER'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$FAKE_DOCKER_LOG"
@@ -55,17 +60,31 @@ case "$1 ${2:-}" in
     exit 0
     ;;
   "image inspect")
+    printf 'sha256:%064d\n' 1
+    exit 0
+    ;;
+  "version "*|"version")
+    printf 'linux/amd64\n'
+    exit 0
+    ;;
+  "buildx imagetools")
+    ref="${@: -1}"
     case "$*" in
-      *RepoDigests*)
-        tag="${@: -1}"
-        name="${tag%%:*}"
+      *" --raw "*)
+        manifest="sha256:$(printf '%064d' 3)"
+        if [ -n "${FAKE_PLATFORM_CHANGED:-}" ] && [ "${ref##*@}" = "$FAKE_MOVED_DIGEST" ]; then
+          manifest="sha256:$(printf '%064d' 4)"
+        fi
+        printf '{"manifests":[{"digest":"%s","platform":{"os":"linux","architecture":"amd64"}}]}\n' "$manifest"
+        ;;
+      *)
+        # --format '{{.Manifest.Digest}}' prints no trailing newline, and neither does this.
         if [ -n "${FAKE_TAG_MOVED:-}" ]; then
-          printf '%s@sha256:%064d\n' "$name" 2
+          printf '%s' "$FAKE_MOVED_DIGEST"
         else
-          printf '%s@%s\n' "$name" "$(tr -d '\r' < "$FAKE_LOCK" | awk -F'\t' -v tag="$tag" '$2 == tag { print $3 }')"
+          tr -d '\r' < "$FAKE_LOCK" | awk -F'\t' -v tag="$ref" '$2 == tag { printf "%s", $3 }'
         fi
         ;;
-      *) printf 'sha256:%064d\n' 1 ;;
     esac
     exit 0
     ;;
@@ -150,15 +169,18 @@ locked_digest() {
   tr -d '\r' < image-digests.lock | awk -F'\t' -v tag="$1" '$2 == tag { print $3 }'
 }
 
-# run_scan <mode> <report dir> [FAKE_TAG_MOVED value] - runs the script against the fake docker,
-# leaving stdout, stderr and the exit status in $work.
+moved_digest="sha256:$(printf '%064d' 2)"
+
+# run_scan <mode> <report dir> [VAR=value ...] - runs the script against the fake docker with the
+# given fake-registry settings, leaving stdout, stderr and the exit status in $work.
 run_scan() {
-  local mode="$1" reports="$2" moved="${3:-}"
+  local mode="$1" reports="$2"
+  shift 2
   : > "$log"
   rm -f "$state/last-pull"
   set +e
-  FAKE_DOCKER_LOG="$log" FAKE_STATE="$state" FAKE_LOCK="$PWD/image-digests.lock" \
-    FAKE_REPORT_DIR="$PWD/$reports" FAKE_TAG_MOVED="$moved" PATH="$PWD/$work/bin:$PATH" \
+  env FAKE_DOCKER_LOG="$log" FAKE_STATE="$state" FAKE_LOCK="$PWD/image-digests.lock" \
+    FAKE_REPORT_DIR="$PWD/$reports" FAKE_MOVED_DIGEST="$moved_digest" "$@" PATH="$PWD/$work/bin:$PATH" \
     bash scripts/scan-container-images.sh "$mode" > "$work/stdout" 2> "$work/stderr"
   scan_status=$?
   set -e
@@ -185,7 +207,7 @@ assert_pulls_locked_digests() {
 
 # --- runtime: scans the locked digest, passes with the tag moved, and pins the reviewed image ---
 
-run_scan runtime "$work/reports-complete" 1
+run_scan runtime "$work/reports-complete" FAKE_TAG_MOVED=1 FAKE_PLATFORM_CHANGED=1
 if [ "$scan_status" -ne 0 ]; then
   fail "runtime failed although every finding is accepted (exit $scan_status):"
   sed 's/^/      /' "$work/stderr" >&2
@@ -237,31 +259,61 @@ else
   pass "drift exits 0 while the tags point at the locked digests"
 fi
 
-run_scan drift "$work/reports-complete" 1
-if [ "$scan_status" -ne 2 ]; then
-  fail "drift exited $scan_status with the tags moved, expected 2"
+# The index moved but this platform's image inside it did not - the shape of the 2026-09-21
+# rebuilds. Reported, and nothing to act on.
+run_scan drift "$work/reports-complete" FAKE_TAG_MOVED=1
+if [ "$scan_status" -ne 0 ]; then
+  fail "drift exited $scan_status for an index that moved with the platform image unchanged, expected 0:"
+  sed 's/^/      /' "$work/stderr" >&2
 else
-  moved_ok=1
+  identical_ok=1
   for tag in $(locked_tags); do
-    if ! grep -qF -- "${tag}: the tag has moved to" "$work/stdout" ||
-       ! grep -qF -- "the reviewed digest is $(locked_digest "$tag")" "$work/stdout"; then
-      moved_ok=0
+    if ! grep -qF -- "${tag}: the tag now resolves to ${moved_digest}" "$work/stdout" ||
+       ! grep -q 'image is' "$work/stdout" || ! grep -q 'identical' "$work/stdout"; then
+      identical_ok=0
     fi
   done
-  if [ "$moved_ok" -eq 1 ]; then
-    pass "drift exits 2 and names the new and the reviewed digest when a tag has moved"
+  if [ "$identical_ok" -eq 1 ]; then
+    pass "drift exits 0 and says so when the index moved but the platform image is identical"
   else
-    fail "drift did not report both digests for every moved tag:"
+    fail "drift did not report the moved index as identical for every tag:"
     sed 's/^/      /' "$work/stdout" >&2
   fi
 fi
 
-if grep -q -- '--input /scan/image.tar' "$log"; then
+run_scan drift "$work/reports-complete" FAKE_TAG_MOVED=1 FAKE_PLATFORM_CHANGED=1
+if [ "$scan_status" -ne 2 ]; then
+  fail "drift exited $scan_status with the platform image changed, expected 2"
+else
+  moved_ok=1
+  for tag in $(locked_tags); do
+    if ! grep -qF -- "${tag}: the tag has moved to ${moved_digest}" "$work/stdout" ||
+       ! grep -qF -- "the reviewed digest is $(locked_digest "$tag")" "$work/stdout" ||
+       ! grep -q 'image differs' "$work/stdout"; then
+      moved_ok=0
+    fi
+  done
+  if [ "$moved_ok" -eq 1 ]; then
+    pass "drift exits 2 and names both digests when the platform image behind a tag has changed"
+  else
+    fail "drift did not report both digests for every changed tag:"
+    sed 's/^/      /' "$work/stdout" >&2
+  fi
+fi
+
+# Asked of the registry, never of the local image store: after the gate has pulled the reviewed
+# digest, a tag resolving to the same platform image lands on the same local image, whose first
+# RepoDigest is the old one - which is how the runner reported "not moved" for tags that had.
+if grep -qE '^pull ' "$log"; then
+  fail "drift pulled an image; it must ask the registry instead"
+elif grep -q 'RepoDigests' "$log"; then
+  fail "drift read the local image store's RepoDigests, which cannot tell a moved tag from an earlier digest pull"
+elif grep -q -- '--input /scan/image.tar' "$log"; then
   fail "drift scanned an image; it must only compare digests"
 elif grep -q -- '--download-db-only' "$log"; then
   fail "drift refreshed the vulnerability database although it scans nothing"
 else
-  pass "drift scans nothing and refreshes no database"
+  pass "drift pulls nothing, reads no local image store, scans nothing and refreshes no database"
 fi
 
 if [ "$failures" -ne 0 ]; then

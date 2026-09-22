@@ -2286,16 +2286,17 @@ CI失敗の是正:
 
 範囲:
 
-- [x] `scripts/scan-container-images.sh`: `assert_reviewed_digest` を廃止し、`reviewed_digest_of` / `pull_reviewed_image` で lock の digest を pull、image ID で `docker save` する。`report()` に stale 受容の検出を追加（`runtime` だけ fail）。`drift` モードを追加（動いていれば exit 2、エラーは 1）。
+- [x] `scripts/scan-container-images.sh`: `assert_reviewed_digest` を廃止し、`reviewed_digest_of` / `pull_reviewed_image` で lock の digest を pull、image ID で `docker save` する。`report()` に stale 受容の検出を追加（`runtime` だけ fail）。`drift` モードを追加（当該プラットフォームの image が変わっていれば exit 2、index だけの移動は exit 0、エラーは 1）。
+- [x] `drift` はローカル image store ではなくレジストリに問い合わせる（`docker buildx imagetools inspect`）。PR #148 の CI で判明: `runtime` が先に lock の digest を pull すると、同じ linux/amd64 image にタグが付いて `RepoDigests` が 2 つ溜まり、`{{index .RepoDigests 0}}` がソート順で旧 digest を返して「動いていない」と誤報した（classic image store の GitHub runner で再現、containerd store の Docker Desktop では再現しない）。あわせて index の移動と image の変更を区別する: 2026-09-21 の再ビルドは postgres / redis とも **linux/amd64 の manifest digest が旧 index と同一**で、旧ポリシーは同一バイトの image に対して CI を止めていた。
 - [x] `.github/workflows/ci.yaml`: `container-scan` に非ゲートの `Report upstream tag movement` step を追加。exit 2 のとき warning annotation と step summary に出す。`verify-runtime-scan.sh` を Validate step に追加。
-- [x] `scripts/verify-runtime-scan.sh`: fake docker で「lock の digest だけを pull しタグを pull しない」「タグが動いても runtime は通る」「stale 受容で失敗し CVE を名指しする」「drift は 0 / 2 を返しスキャンしない」を固定。
+- [x] `scripts/verify-runtime-scan.sh`: fake docker で「lock の digest だけを pull しタグを pull しない」「タグが動いても runtime は通る」「stale 受容で失敗し CVE を名指しする」「drift は index 同一 / index 移動かつ image 同一で 0、image 変更で 2 を返し、pull も RepoDigests 参照もスキャンも DB 更新もしない」を固定。
 - [x] `docs/operations_runbook.md` 7.3 のモード表、digest 固定の説明、更新手順を更新。`docs/environment_setup.md`、`README.md`、`.github/dependabot.yml` の記述を合わせる。
 - `image-digests.lock` は正本のまま維持する。`backup-production.sh` / `verify-production-restore.sh` / `verify-production-compose.sh` が参照しており、廃止して `compose.yaml` を正本に寄せ Dependabot（docker-compose）で更新 PR を開かせる案は別 Issue とする。
 
 受入条件:
 
 - [x] 上流タグが lock と異なる状態で `bash scripts/scan-container-images.sh runtime` が exit 0 になる（実測: 2026-09-22、両タグとも移動済みの状態で 22 件受容 / gated 0）。
-- [x] `bash scripts/scan-container-images.sh drift` が exit 2 で新旧 digest を出す。
+- [x] `bash scripts/scan-container-images.sh drift` が、index の移動と当該プラットフォーム image の異同を新旧 digest 付きで出す（実測: 両タグとも index は移動、linux/amd64 image は同一、exit 0）。fake registry で image を変えると exit 2。
 - [x] `RUNTIME_ACCEPTED` からどの検出にも一致しない行を 1 つ作ると `runtime` が失敗し、その CVE を名指しする。
 - [x] 旧スクリプトに対して `verify-runtime-scan.sh` が失敗する（Red: 8 件）。
 
@@ -2305,7 +2306,7 @@ CI失敗の是正:
 - [x] `bash scripts/verify-scanner-isolation.sh`
 - [x] `bash scripts/verify-development-image-pins.sh`
 - [x] `bash scripts/scan-container-images.sh runtime`（実 Docker、exit 0）
-- [x] `bash scripts/scan-container-images.sh drift`（実 Docker、exit 2）
+- [x] `bash scripts/scan-container-images.sh drift`（実 Docker、旧 digest を先に pull した状態でも同じ結果）
 - [x] CI の drift step 本体をローカルで `bash -e` 実行し、exit 0 と annotation / summary 出力を確認
 - [ ] main での nightly 1 回目が緑になり、drift の warning が出る
 

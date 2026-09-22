@@ -141,7 +141,7 @@ BrowserE2EはAPI/Webと依存サービスが起動した状態で実行します
 3. `scripts/migration-dry-run.sh` でEF Coreの冪等Migration SQLを生成します。
 4. 開発用/VPS用Composeの構文を検証し、Web/API/Worker/Migration imageをGitHub Actionsレイヤーキャッシュ付きでbuildして、`scripts/container-smoke.sh`で隔離Compose project上のMigration、HTTP、非root、Storage共有、Data Protection keys永続化をスモーク確認します。同スクリプトはローカルでも `bash scripts/container-smoke.sh` で実行できます。
 5. `scripts/smoke-local.ps1` で依存サービス、Migration、API/Worker/Web、Health/Readiness、マスタ同期、CSV出力までを確認します。BrowserE2Eはリポジトリ変数 `RUN_BROWSER_E2E=true` の場合だけ追加実行します。
-6. `scripts/scan-container-images.sh` がイメージをTrivyでスキャンします。自前ビルドの4イメージ（`app`）と、本番で動くPostgreSQL / Redis（`runtime`）は**ゲート対象**で、受容済みリストに無い修正可能なHIGH/CRITICALが出ればCIを失敗させます。`runtime` は `image-digests.lock` のdigest（本番が起動するイメージ）を検査します。開発専用RustFS（`dev`）、修正版の存在しない脆弱性（`unfixed`）、上流タグがlockのdigestから動いたこと（`drift`）は報告のみです。受容の記録は `docs/operations_runbook.md` 7.3節。
+6. `scripts/scan-container-images.sh` がイメージをTrivyでスキャンします。自前ビルドの4イメージ（`app`）と、本番で動くPostgreSQL / Redis（`runtime`）は**ゲート対象**で、受容済みリストに無い修正可能なHIGH/CRITICALが出ればCIを失敗させます。`runtime` は `image-digests.lock` のdigest（本番が起動するイメージ）を検査します。開発専用RustFS（`dev`）、修正版の存在しない脆弱性（`unfixed`）、上流タグの先のimageが変わったこと（`drift`）は報告のみです。受容の記録は `docs/operations_runbook.md` 7.3節。
 
 ## セキュリティと運用上の前提
 

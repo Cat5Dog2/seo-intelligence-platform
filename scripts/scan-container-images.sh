@@ -5,7 +5,7 @@
 #   bash scripts/scan-container-images.sh runtime # postgres / redis at the digests in image-digests.lock
 #   bash scripts/scan-container-images.sh dev     # RustFS, reported only
 #   bash scripts/scan-container-images.sh unfixed # postgres / redis including unfixed, reported only
-#   bash scripts/scan-container-images.sh drift   # have the upstream tags moved off the lock? reported only
+#   bash scripts/scan-container-images.sh drift   # has the image behind the upstream tags changed? reported only
 #
 # Application images are ours to rebuild, so any fixable HIGH or CRITICAL fails.
 #
@@ -20,9 +20,10 @@
 # production carry a fixable HIGH or CRITICAL that nobody has judged? When upstream publishes a fix
 # for one of its findings, the vulnerability database gains a fixed version and this scan fails on
 # its own, without watching the tag. Whether the tag has moved is reported separately by the `drift`
-# mode and never gates: upstream rebuilds these tags every few days, usually without changing a
-# single package this stack runs, and failing on that blocked every pull request until someone
-# re-pinned an identical image.
+# mode, which never gates and tells an index that merely moved from an image that changed for this
+# platform: upstream rebuilds these tags every few days, usually without changing a single byte of
+# the image this stack runs, and failing on that blocked every pull request until someone re-pinned
+# an identical image.
 #
 # Development-only images (the RustFS profile) are reported and never gate: they are opt-in for local
 # storage experiments, no Compose file used on the VPS starts them, and gating on them would block
@@ -158,24 +159,66 @@ pull_reviewed_image() {
   docker image inspect --format '{{.Id}}' "$ref"
 }
 
-# Reports whether an upstream tag still points at the reviewed digest. Returns 2 when it has moved,
-# so a caller can annotate the run; 1 is kept for real errors. Not a finding against anything:
-# production keeps deploying the reviewed digest either way, and what the new image contains is
-# only known once it is pulled into the lock and scanned.
+# The digest a tag resolves to in the registry right now. Asked of the registry, not read off the
+# local image store: RepoDigests accumulate. Once the gate has pulled the reviewed digest, a tag
+# whose index carries the same platform image lands on that same local image, and the first
+# RepoDigest listed is the old one - the check would report "not moved" for a tag that had.
+resolve_tag_digest() {
+  docker buildx imagetools inspect --format '{{.Manifest.Digest}}' "$1"
+}
+
+# The manifest digest of one platform's image inside an index. Equal digests are equal bits for
+# that platform, whatever else in the index changed.
+platform_manifest_of() {
+  local ref="$1" platform="$2"
+  docker buildx imagetools inspect --raw "$ref" | "$python_bin" -c '
+import json
+import sys
+
+os_name, arch = sys.argv[1].split("/", 1)
+index = json.load(sys.stdin)
+for entry in index.get("manifests") or []:
+    platform = entry.get("platform") or {}
+    if platform.get("os") == os_name and platform.get("architecture") == arch:
+        print(entry["digest"])
+        break
+' "$platform"
+}
+
+# Reports whether the image behind an upstream tag still is the reviewed one. Returns 2 when the
+# image for this platform has changed, so a caller can annotate the run; 1 is kept for real errors.
+# Not a finding against anything: production keeps deploying the reviewed digest either way, and
+# what a new image contains is only known once it is pulled into the lock and scanned.
+#
+# The lock pins a multi-platform index, whose digest changes when any platform or attestation in it
+# is rebuilt. Most upstream rebuilds change nothing for the platform this stack runs - the
+# 2026-09-21 rebuilds of both images left the linux/amd64 manifests byte-identical - so an index
+# that moved while this platform's image did not is reported but is nothing to act on.
 report_tag_drift() {
-  local image="$1" reviewed upstream
+  local image="$1" reviewed current platform reviewed_manifest current_manifest
   reviewed="$(reviewed_digest_of "$image")" || return 1
-  docker pull --quiet "$image" > /dev/null || { echo "ERROR: could not pull $image." >&2; return 1; }
-  upstream="$(docker image inspect --format '{{index .RepoDigests 0}}' "$image" | cut -d@ -f2)"
-  if [[ -z "$upstream" ]]; then
-    echo "ERROR: could not read the digest $image currently points at." >&2
-    return 1
-  fi
-  if [[ "$upstream" == "$reviewed" ]]; then
+  current="$(resolve_tag_digest "$image")" || { echo "ERROR: could not resolve what $image points at." >&2; return 1; }
+  if [[ "$current" == "$reviewed" ]]; then
     echo "$image: the tag still points at the reviewed digest $reviewed."
     return 0
   fi
-  echo "$image: the tag has moved to $upstream; the reviewed digest is $reviewed."
+
+  platform="$(docker version --format '{{.Server.Os}}/{{.Server.Arch}}' 2> /dev/null || true)"
+  platform="${platform:-linux/amd64}"
+  reviewed_manifest="$(platform_manifest_of "${image}@${reviewed}" "$platform")"
+  current_manifest="$(platform_manifest_of "${image}@${current}" "$platform")"
+  if [[ -z "$reviewed_manifest" || -z "$current_manifest" ]]; then
+    echo "ERROR: could not find a $platform image in the index of $image." >&2
+    return 1
+  fi
+  if [[ "$reviewed_manifest" == "$current_manifest" ]]; then
+    echo "$image: the tag now resolves to $current (reviewed: $reviewed), but the $platform image is"
+    echo "  identical (manifest $reviewed_manifest). The index changed for another platform or an"
+    echo "  attestation; there is nothing to re-judge."
+    return 0
+  fi
+  echo "$image: the tag has moved to $current; the reviewed digest is $reviewed."
+  echo "  The $platform image differs ($reviewed_manifest -> $current_manifest)."
   echo "  Not a failure - production deploys the reviewed digest. To adopt the new image, follow the"
   echo "  update procedure in docs/operations_runbook.md section 7.3."
   return 2
@@ -418,8 +461,10 @@ case "$mode" in
     done
     ;;
   drift)
-    # Reported, never gated - see the header. Exit 2 means at least one tag has moved; exit 1 is
-    # reserved for errors, so a caller can tell "there is something newer" from "could not check".
+    # Reported, never gated - see the header. Exit 2 means the image behind at least one tag has
+    # changed for this platform; exit 1 is reserved for errors, so a caller can tell "there is
+    # something newer" from "could not check". An index that moved with this platform's image
+    # unchanged is printed and exits 0.
     read_reviewed_digests || exit 1
     moved=0
     for image in "${RUNTIME_IMAGES[@]}"; do
