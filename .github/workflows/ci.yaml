@@ -64,6 +64,7 @@ jobs:
           bash scripts/verify-source-revision.sh
           bash scripts/verify-dockerfile-restore.sh
           bash scripts/verify-scanner-isolation.sh
+          bash scripts/verify-runtime-scan.sh
           bash scripts/verify-development-image-pins.sh
           bash scripts/verify-package-versions.sh
           bash scripts/test-package-version-guard.sh
@@ -72,10 +73,10 @@ jobs:
         run: bash scripts/verify-release-candidate-notify.sh
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Build application containers
-        uses: docker/bake-action@d3418bd7d0e9324001bca92fa8ba175ea7e6dc9b # v7.3.0
+        uses: docker/bake-action@018cb6412ab401ebaa809aa5f85966b74628600f # v7.4.0
         with:
           source: .
           files: compose.yaml
@@ -126,8 +127,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # postgres and redis run in production, so any finding that is not individually accepted
-      # fails the build. Acceptances are per CVE, and the deployed digest is cross-checked against
-      # compose.yaml, so neither a new CVE nor a moved tag can slip through.
+      # fails the build. The scan pulls the digests in image-digests.lock - the images compose.yaml
+      # deploys - so a red here is about production: a new fixable CVE in the deployed image, or an
+      # acceptance that no longer matches anything. Acceptances are per CVE.
       # See docs/operations_runbook.md section 7.3.
       - name: Scan runtime images
         env:
@@ -140,6 +142,25 @@ jobs:
         env:
           TRIVY_CACHE_DIR: ${{ runner.temp }}/trivy-cache
         run: bash scripts/scan-container-images.sh unfixed
+
+      # Not a gate either. The upstream tags moving is a reason to start the update procedure in the
+      # runbook, not a finding against the image that is deployed. It used to fail this required
+      # check, and upstream rebuilds these tags every few days - usually without changing a single
+      # byte of the linux/amd64 image this stack runs - so every pull request was blocked until
+      # someone re-pinned an identical image. Exit 2 means the image behind a tag has changed for
+      # this platform; an index that moved with the image unchanged exits 0 and is only printed.
+      # Anything else non-zero is a real error and still fails.
+      - name: Report upstream tag movement
+        run: |
+          code=0
+          bash scripts/scan-container-images.sh drift > "$RUNNER_TEMP/drift.txt" 2>&1 || code=$?
+          cat "$RUNNER_TEMP/drift.txt"
+          { echo '```'; cat "$RUNNER_TEMP/drift.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          case "$code" in
+            0) ;;
+            2) echo "::warning title=Runtime image changed upstream::The image behind postgres:16-alpine or redis:7-alpine differs from the digest in image-digests.lock. Not a failure; see the step summary and docs/operations_runbook.md section 7.3." ;;
+            *) exit "$code" ;;
+          esac
 
       # RustFS is an opt-in development profile that no production Compose file starts, so its
       # findings are reported without gating.

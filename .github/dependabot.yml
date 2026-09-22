@@ -56,7 +56,8 @@ updates:
 
   # The base images the application is built from. compose.yaml pins postgres and redis by digest
   # and image-digests.lock is their single source of truth, so those are updated deliberately
-  # through docs/operations_runbook.md 7.3 rather than automatically.
+  # through docs/operations_runbook.md 7.3 rather than automatically; the nightly container-scan
+  # run reports (without failing) when the image behind their upstream tags has changed.
   - package-ecosystem: docker
     directory: "/"
     schedule:

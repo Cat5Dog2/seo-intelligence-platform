@@ -2266,6 +2266,54 @@ CI失敗の是正:
 
 - ISSUE-SEC-002 で `runtime` の挙動が変わるので、Trivyの記述はその後に確定させる。認証の記述の訂正は先に単独で行える。
 
+### ISSUE-SEC-006 runtimeスキャンを本番が起動するdigestに向け、上流タグの移動でCIを止めない
+
+参照ドキュメント: `docs/operations_runbook.md` 7.3節, `docs/environment_setup.md` 10章
+
+背景:
+
+- `scan-container-images.sh runtime` は **タグ** を `docker pull` し、その digest が `image-digests.lock` と違えばスキャンせずに exit 1 にしていた。`container-scan` は main の required check なので、上流がタグを再 push するだけで、リポジトリに変更が無くても全 PR がマージ不能になり、`release-candidate-notify` も止まっていた。
+- 2026-08-23 のピン留め以降 4 週間で 2 回発生し、2 回目（2026-09-21）は前回の再ピン（#144, 2026-09-19）の 2 日後だった。Alpine 系公式イメージはこの頻度で再ビルドされる。
+- 2026-09-21 の赤を実測すると、旧ピン（本番が起動しているもの）は当日の Trivy DB でも gated 0 件、新イメージも gated 0 件、パッケージ差分は postgres / redis とも **0 件**だった。セキュリティ情報を何も含まない赤で全 PR が止まっていた。
+- ゲートが答えるべき問いは「本番で動いているイメージに未判断の修正可能な HIGH/CRITICAL があるか」であり、「上流タグが動いたか」ではない。前者はピンを検査していれば、上流が修正版を出した時点で Trivy の FixedVersion 経由で自然に赤になる。後者は更新リマインダーであってセキュリティ失敗ではない。
+- 「受容判断はイメージに紐づく」という根拠は、image/CVE/target/package の 4 つ組一致と、OS パッケージの target に Alpine バージョンが含まれることで既に担保されている。digest 一致チェックが独自に守っていたのは「消えた検出の受容が残り続ける」ことだけで、それはタグ追跡ではなく stale 検出で直接対処できる。
+
+目的:
+
+- [x] `runtime` / `unfixed` が `image-digests.lock` の digest を pull して検査する（タグは見ない）。
+- [x] 上流タグの移動はブロックしない別シグナルにする。
+- [x] どの検出にも一致しなくなった受容を `runtime` の失敗として列挙し、リストが腐らないようにする。
+
+範囲:
+
+- [x] `scripts/scan-container-images.sh`: `assert_reviewed_digest` を廃止し、`reviewed_digest_of` / `pull_reviewed_image` で lock の digest を pull、image ID で `docker save` する。`report()` に stale 受容の検出を追加（`runtime` だけ fail）。`drift` モードを追加（当該プラットフォームの image が変わっていれば exit 2、index だけの移動は exit 0、エラーは 1）。
+- [x] `drift` はローカル image store ではなくレジストリに問い合わせる（`docker buildx imagetools inspect`）。PR #148 の CI で判明: `runtime` が先に lock の digest を pull すると、同じ linux/amd64 image にタグが付いて `RepoDigests` が 2 つ溜まり、`{{index .RepoDigests 0}}` がソート順で旧 digest を返して「動いていない」と誤報した（classic image store の GitHub runner で再現、containerd store の Docker Desktop では再現しない）。あわせて index の移動と image の変更を区別する: 2026-09-21 の再ビルドは postgres / redis とも **linux/amd64 の manifest digest が旧 index と同一**で、旧ポリシーは同一バイトの image に対して CI を止めていた。
+- [x] `.github/workflows/ci.yaml`: `container-scan` に非ゲートの `Report upstream tag movement` step を追加。exit 2 のとき warning annotation と step summary に出す。`verify-runtime-scan.sh` を Validate step に追加。
+- [x] `scripts/verify-runtime-scan.sh`: fake docker で「lock の digest だけを pull しタグを pull しない」「タグが動いても runtime は通る」「stale 受容で失敗し CVE を名指しする」「drift は index 同一 / index 移動かつ image 同一で 0、image 変更で 2 を返し、pull も RepoDigests 参照もスキャンも DB 更新もしない」を固定。
+- [x] `docs/operations_runbook.md` 7.3 のモード表、digest 固定の説明、更新手順を更新。`docs/environment_setup.md`、`README.md`、`.github/dependabot.yml` の記述を合わせる。
+- `image-digests.lock` は正本のまま維持する。`backup-production.sh` / `verify-production-restore.sh` / `verify-production-compose.sh` が参照しており、廃止して `compose.yaml` を正本に寄せ Dependabot（docker-compose）で更新 PR を開かせる案は別 Issue とする。
+
+受入条件:
+
+- [x] 上流タグが lock と異なる状態で `bash scripts/scan-container-images.sh runtime` が exit 0 になる（実測: 2026-09-22、両タグとも移動済みの状態で 22 件受容 / gated 0）。
+- [x] `bash scripts/scan-container-images.sh drift` が、index の移動と当該プラットフォーム image の異同を新旧 digest 付きで出す（実測: 両タグとも index は移動、linux/amd64 image は同一、exit 0）。fake registry で image を変えると exit 2。
+- [x] `RUNTIME_ACCEPTED` からどの検出にも一致しない行を 1 つ作ると `runtime` が失敗し、その CVE を名指しする。
+- [x] 旧スクリプトに対して `verify-runtime-scan.sh` が失敗する（Red: 8 件）。
+
+検証:
+
+- [x] `bash scripts/verify-runtime-scan.sh`（旧スクリプトで Red、新スクリプトで Green）
+- [x] `bash scripts/verify-scanner-isolation.sh`
+- [x] `bash scripts/verify-development-image-pins.sh`
+- [x] `bash scripts/scan-container-images.sh runtime`（実 Docker、exit 0）
+- [x] `bash scripts/scan-container-images.sh drift`（実 Docker、旧 digest を先に pull した状態でも同じ結果）
+- [x] CI の drift step 本体をローカルで `bash -e` 実行し、exit 0 と annotation / summary 出力を確認
+- [ ] main での nightly 1 回目が緑になり、drift の warning が出る
+
+補足:
+
+- 今回は pin を動かしていない。#144 で判定した `3c5c8892…` / `520775a4…` のまま。上流の `721873c3…` / `858f009f…` へ更新するかは 7.3 の更新手順で別途判断する（実測ではパッケージ差分 0 件なので急ぐ理由は無い）。
+
 ## Phase 4
 
 ### ISSUE-P4-001 エンタープライズ拡張を設計する
