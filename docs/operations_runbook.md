@@ -219,7 +219,9 @@ bash scripts/scan-container-images.sh runtime
 
 受容を判断したイメージのdigestは `image-digests.lock` を正本とする。同ファイルは `compose.yaml` が起動するイメージ、`scripts/scan-container-images.sh` が検査するイメージ、本節の受容判断の3者を一致させるための単一の定義であり、値を本書へ複製しない（複製すると更新漏れで食い違う）。
 
-`runtime` / `unfixed` モードはタグではなく同ファイルのdigestを `pull` して検査する。したがってゲートが答える問いは「本番で動いているイメージに、未判断の修正可能なHIGH/CRITICALがあるか」だけである。上流が受容済みCVEの修正版を公開すれば脆弱性DBに修正バージョンが載り、タグを見張らなくてもこのスキャンが失敗して更新を促す。
+`runtime` / `unfixed` モードはタグではなく同ファイルのdigestを `pull` して検査する。したがってゲートが答える問いは「本番で動いているイメージに、未判断の修正可能なHIGH/CRITICALがあるか」だけである。未受容のHIGH/CRITICALについて脆弱性DBに修正バージョンが載れば、タグを見張らなくても `runtime` が失敗して更新や個別判断を促す。
+
+受容済みCVEは4項目が一致する限り、修正バージョンの有無にかかわらず除外される。修正版の公開だけでゲートが失敗することはない。上流イメージの変更は `drift` の報告を契機に手動レビューし、修正内容を確認して新digestの採用を判断する。採用後に検出されなくなったCVEの受容は、以下の更新手順で削除する。
 
 上流タグが動いたこと自体は失敗にしない。lockが固定しているのはマルチプラットフォームのindexのdigestで、他プラットフォームやattestationが再ビルドされるだけで変わる。Alpine系の公式イメージは数日おきに再ビルドされ、その大半はこのスタックが動かすlinux/amd64のimageを1バイトも変えない（2026-09-21の再ビルドはpostgres/redisともlinux/amd64のmanifest digestが旧indexと同一だった）。以前はこれで `container-scan` が失敗し、required checkのため無関係な全PRのマージとリリース候補通知が止まっていた。タグの移動は `drift` モードが報告し、当該プラットフォームのimageが実際に変わった場合だけnightlyのwarning annotationに出る。
 
