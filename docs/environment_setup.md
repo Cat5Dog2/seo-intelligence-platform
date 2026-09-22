@@ -312,7 +312,7 @@ GitHub Actionsは `.github/workflows/ci.yaml` を使う。
 | Job | 実行内容 |
 | --- | --- |
 | `build-test-smoke` | restore、build、test、migration dry-run、包括スモーク（Docker Compose依存サービス起動、依存サービスready待機、DB migration適用、API/Worker/Web起動、ジョブ完了確認）。リポジトリ変数 `RUN_BROWSER_E2E=true` の場合のみPlaywright BrowserE2Eも実行する。 |
-| `container-scan` | PostgreSQL、Redis、RustFSのコンテナイメージをリトライ付きでpullし、Trivyでvuln-only scanする。PostgreSQL/Redisはゲート対象、開発専用RustFSは報告のみとする。 |
+| `container-scan` | PostgreSQL/Redisを `image-digests.lock` のdigest（本番が起動するイメージ）でpullしてTrivyでvuln-only scanし、ゲートする。上流タグがそのdigestから動いたかは報告のみ（warning annotation）で、開発専用RustFSも報告のみとする。詳細は `docs/operations_runbook.md` 7.3節。 |
 
 `build-test-smoke`は開発用/VPS用Composeの構文検証、Web/API/Worker/Migration imageのbuild（GitHub Actionsレイヤーキャッシュ使用）、`scripts/container-smoke.sh`による隔離Compose project上のコンテナ起動スモークも行う。スモークはMigration、HTTP、非root UID、Storage共有、Data Protection keys永続化を確認後、テスト用コンテナとVolumeを削除する。同じスモークはローカルでも `bash scripts/container-smoke.sh` で実行できる。
 

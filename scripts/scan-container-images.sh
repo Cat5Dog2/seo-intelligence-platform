@@ -2,15 +2,27 @@
 # Vulnerability gate for the container images this stack runs.
 #
 #   bash scripts/scan-container-images.sh app     # api / web / worker / migrate (must exist locally)
-#   bash scripts/scan-container-images.sh runtime # postgres / redis (pulled)
+#   bash scripts/scan-container-images.sh runtime # postgres / redis at the digests in image-digests.lock
 #   bash scripts/scan-container-images.sh dev     # RustFS, reported only
 #   bash scripts/scan-container-images.sh unfixed # postgres / redis including unfixed, reported only
+#   bash scripts/scan-container-images.sh drift   # have the upstream tags moved off the lock? reported only
 #
 # Application images are ours to rebuild, so any fixable HIGH or CRITICAL fails.
 #
 # Runtime images are third-party but run in production, so they are gated too, minus the individual
 # findings accepted in docs/operations_runbook.md section 7.3. Acceptances are listed one CVE at a
 # time: excusing a whole component would also hide a future CVE in that component that IS reachable.
+# An acceptance that no longer matches any finding fails the gate as well, so the list is pruned
+# when a finding disappears instead of lying in wait to excuse it if it comes back.
+#
+# Runtime images are scanned at the digest compose.yaml deploys - the one in image-digests.lock -
+# not at whatever the tag points to today. The gate answers one question: does the image running in
+# production carry a fixable HIGH or CRITICAL that nobody has judged? When upstream publishes a fix
+# for one of its findings, the vulnerability database gains a fixed version and this scan fails on
+# its own, without watching the tag. Whether the tag has moved is reported separately by the `drift`
+# mode and never gates: upstream rebuilds these tags every few days, usually without changing a
+# single package this stack runs, and failing on that blocked every pull request until someone
+# re-pinned an identical image.
 #
 # Development-only images (the RustFS profile) are reported and never gate: they are opt-in for local
 # storage experiments, no Compose file used on the VPS starts them, and gating on them would block
@@ -77,8 +89,9 @@ RUNTIME_ACCEPTED=(
 )
 
 # Digests the acceptances above were judged against, read from the lock file that compose.yaml and
-# the runbook also point at. A mismatch means the upstream tag moved and the judgement has to be
-# redone, so the scan fails rather than carrying old acceptances forward.
+# the runbook also point at. The runtime scans pull exactly these, so what is scanned, what was
+# judged and what production deploys are one image by construction rather than three values that
+# have to be kept equal.
 DIGEST_LOCK_FILE="image-digests.lock"
 
 read_reviewed_digests() {
@@ -122,33 +135,50 @@ scratch="artifacts/trivy-scan-$$-${RANDOM}"
 mkdir -p "$scratch"
 trap 'rm -rf "$scratch"' EXIT
 
-assert_reviewed_digest() {
-  local image="$1" actual expected=""
-  actual="$(docker image inspect --format '{{index .RepoDigests 0}}' "$image" 2>/dev/null | cut -d@ -f2 || true)"
-
-  local entry
+# Prints the digest image-digests.lock records for a tag.
+reviewed_digest_of() {
+  local image="$1" entry
   for entry in "${RUNTIME_REVIEWED_DIGESTS[@]}"; do
     if [[ "${entry%%$'\t'*}" == "$image" ]]; then
-      expected="${entry##*$'\t'}"
-      break
+      printf '%s\n' "${entry##*$'\t'}"
+      return 0
     fi
   done
+  echo "ERROR: $image has no reviewed digest recorded. Add one to image-digests.lock and judge its findings per docs/operations_runbook.md section 7.3." >&2
+  return 1
+}
 
-  if [[ -z "$expected" ]]; then
-    echo "ERROR: $image has no reviewed digest recorded. Add one to image-digests.lock and re-judge the acceptances in docs/operations_runbook.md section 7.3." >&2
+# Pulls a runtime image at its reviewed digest and prints the image ID to export. Pulling the
+# digest rather than the tag is what makes "the image that was scanned" and "the image compose.yaml
+# deploys" one claim: a tag can be repointed at anything, a digest cannot.
+pull_reviewed_image() {
+  local image="$1" digest="$2" ref
+  ref="${image}@${digest}"
+  docker pull --quiet "$ref" > /dev/null || { echo "ERROR: could not pull $ref." >&2; return 1; }
+  docker image inspect --format '{{.Id}}' "$ref"
+}
+
+# Reports whether an upstream tag still points at the reviewed digest. Returns 2 when it has moved,
+# so a caller can annotate the run; 1 is kept for real errors. Not a finding against anything:
+# production keeps deploying the reviewed digest either way, and what the new image contains is
+# only known once it is pulled into the lock and scanned.
+report_tag_drift() {
+  local image="$1" reviewed upstream
+  reviewed="$(reviewed_digest_of "$image")" || return 1
+  docker pull --quiet "$image" > /dev/null || { echo "ERROR: could not pull $image." >&2; return 1; }
+  upstream="$(docker image inspect --format '{{index .RepoDigests 0}}' "$image" | cut -d@ -f2)"
+  if [[ -z "$upstream" ]]; then
+    echo "ERROR: could not read the digest $image currently points at." >&2
     return 1
   fi
-
-  if [[ -z "$actual" ]]; then
-    echo "ERROR: could not read the digest of $image." >&2
-    return 1
+  if [[ "$upstream" == "$reviewed" ]]; then
+    echo "$image: the tag still points at the reviewed digest $reviewed."
+    return 0
   fi
-
-  if [[ "$actual" != "$expected" ]]; then
-    echo "ERROR: $image is now $actual but the accepted findings were judged against $expected." >&2
-    echo "       Re-review the acceptances in docs/operations_runbook.md section 7.3, then update image-digests.lock and compose.yaml." >&2
-    return 1
-  fi
+  echo "$image: the tag has moved to $upstream; the reviewed digest is $reviewed."
+  echo "  Not a failure - production deploys the reviewed digest. To adopt the new image, follow the"
+  echo "  update procedure in docs/operations_runbook.md section 7.3."
+  return 2
 }
 
 # Findings without a fix are excluded from the gate: there is nothing to do about them in this
@@ -214,16 +244,22 @@ scan_to_json() {
   rm -rf "$dir"
 }
 
-# Prints the findings that are not accepted, and exits non-zero when there are any.
+# Prints the findings that are not accepted, and exits non-zero when there are any. The gating mode
+# also sets stale_acceptances=fail, so an acceptance for the image that matched no finding is
+# reported and fails the run.
+stale_acceptances=ignore
+
 report() {
   local image="$1" json="$2"
   shift 2
-  "$python_bin" - "$image" "$json" "$@" <<'PY'
+  SCAN_STALE_ACCEPTANCES="$stale_acceptances" "$python_bin" - "$image" "$json" "$@" <<'PY'
 import json
+import os
 import sys
 
 image, path = sys.argv[1], sys.argv[2]
 accepted = {tuple(argument.split("\t", 3)) for argument in sys.argv[3:]}
+fail_on_stale = os.environ.get("SCAN_STALE_ACCEPTANCES") == "fail"
 
 with open(path, encoding="utf-8") as handle:
     report = json.load(handle)
@@ -241,13 +277,15 @@ if not isinstance(report["Results"], list):
     print(f"{image}: the scan report's Results section is not a list.", file=sys.stderr)
     sys.exit(1)
 
-gated, excused = [], []
+gated, excused, matched = [], [], set()
 for result in report["Results"]:
     target = result.get("Target") or ""
     for vulnerability in result.get("Vulnerabilities") or []:
         identifier = vulnerability.get("VulnerabilityID") or ""
         package = vulnerability.get("PkgName") or ""
-        if (image, identifier, target, package) in accepted:
+        key = (image, identifier, target, package)
+        if key in accepted:
+            matched.add(key)
             excused.append(identifier)
             continue
         gated.append((vulnerability.get("Severity"), identifier, target, package))
@@ -255,14 +293,29 @@ for result in report["Results"]:
 if excused:
     print(f"{image}: {len(excused)} finding(s) accepted per the runbook.")
 
-if not gated:
-    print(f"{image}: no gated HIGH or CRITICAL findings.")
-    sys.exit(0)
+# An acceptance that matches nothing is a judgement about a finding that is no longer there. Kept,
+# it would excuse that finding without anyone looking if it came back - a rebuild that reverted a
+# package, a fix that was withdrawn. It goes when the finding goes, together with its entry in the
+# runbook, rather than being carried along in case it is needed again.
+stale = sorted(key for key in accepted if key[0] == image and key not in matched)
+stale_fails = bool(stale) and fail_on_stale
+if stale_fails:
+    print(f"{image}: {len(stale)} acceptance(s) match no finding on this image:", file=sys.stderr)
+    for _, identifier, target, package in stale:
+        print(f"  {identifier} {target} ({package})", file=sys.stderr)
+    print(
+        "  Remove them from RUNTIME_ACCEPTED and from docs/operations_runbook.md section 7.3.",
+        file=sys.stderr,
+    )
 
-print(f"{image}: {len(gated)} gated finding(s):", file=sys.stderr)
-for severity, identifier, target, package in sorted(gated):
-    print(f"  {severity} {identifier} {target} ({package})", file=sys.stderr)
-sys.exit(1)
+if gated:
+    print(f"{image}: {len(gated)} gated finding(s):", file=sys.stderr)
+    for severity, identifier, target, package in sorted(gated):
+        print(f"  {severity} {identifier} {target} ({package})", file=sys.stderr)
+elif not stale_fails:
+    print(f"{image}: no gated HIGH or CRITICAL findings.")
+
+sys.exit(1 if gated or stale_fails else 0)
 PY
 }
 
@@ -274,20 +327,24 @@ PY
 # container. Root only writes into a directory owned by someone else by virtue of DAC_OVERRIDE, so
 # dropping every capability makes the download fail with "mkdir /root/.cache/trivy/db: permission
 # denied". The scans below need no such thing: they mount the same directory read-only.
-docker run --rm \
-  --read-only \
-  --cap-drop ALL \
-  --cap-add DAC_OVERRIDE \
-  --security-opt no-new-privileges \
-  --memory 2g \
-  --memory-swap 2g \
-  --pids-limit 256 \
-  --tmpfs /tmp:rw,nosuid,nodev,size=2g \
-  --volume "$CACHE_DIR:/root/.cache/trivy" \
-  "$TRIVY_IMAGE" image --download-db-only > /dev/null
-
+#
+# Skipped for drift, which compares digests and scans nothing.
 mode="${1:-app}"
 status=0
+
+if [[ "$mode" != drift ]]; then
+  docker run --rm \
+    --read-only \
+    --cap-drop ALL \
+    --cap-add DAC_OVERRIDE \
+    --security-opt no-new-privileges \
+    --memory 2g \
+    --memory-swap 2g \
+    --pids-limit 256 \
+    --tmpfs /tmp:rw,nosuid,nodev,size=2g \
+    --volume "$CACHE_DIR:/root/.cache/trivy" \
+    "$TRIVY_IMAGE" image --download-db-only > /dev/null
+fi
 
 case "$mode" in
   app)
@@ -330,10 +387,12 @@ case "$mode" in
     ;;
   runtime)
     read_reviewed_digests || exit 1
+    stale_acceptances=fail
     for image in "${RUNTIME_IMAGES[@]}"; do
-      docker pull --quiet "$image" > /dev/null
-      assert_reviewed_digest "$image" || { status=1; continue; }
-      scan_to_json "$image" "$scratch/report.json"
+      digest="$(reviewed_digest_of "$image")" || { status=1; continue; }
+      image_id="$(pull_reviewed_image "$image" "$digest")" || { status=1; continue; }
+      echo "$image: scanning the reviewed digest $digest."
+      scan_to_json "$image" "$scratch/report.json" "$image_id"
       report "$image" "$scratch/report.json" "${RUNTIME_ACCEPTED[@]}" || status=1
     done
     ;;
@@ -348,15 +407,36 @@ case "$mode" in
   unfixed)
     # Reported, never gated. The same acceptances are applied so the output is the difference
     # between what is judged and what is merely unfixable, rather than a wall of known findings.
+    # Same digests as the gate: the report is about the image production runs, not about the tag.
+    read_reviewed_digests || exit 1
     ignore_unfixed=()
     for image in "${RUNTIME_IMAGES[@]}"; do
-      docker pull --quiet "$image" > /dev/null
-      scan_to_json "$image" "$scratch/report.json"
+      digest="$(reviewed_digest_of "$image")" || { status=1; continue; }
+      image_id="$(pull_reviewed_image "$image" "$digest")" || { status=1; continue; }
+      scan_to_json "$image" "$scratch/report.json" "$image_id"
       report "$image" "$scratch/report.json" "${RUNTIME_ACCEPTED[@]}" || true
     done
     ;;
+  drift)
+    # Reported, never gated - see the header. Exit 2 means at least one tag has moved; exit 1 is
+    # reserved for errors, so a caller can tell "there is something newer" from "could not check".
+    read_reviewed_digests || exit 1
+    moved=0
+    for image in "${RUNTIME_IMAGES[@]}"; do
+      rc=0
+      report_tag_drift "$image" || rc=$?
+      case "$rc" in
+        0) ;;
+        2) moved=1 ;;
+        *) status=1 ;;
+      esac
+    done
+    if [[ "$status" -eq 0 && "$moved" -eq 1 ]]; then
+      exit 2
+    fi
+    ;;
   *)
-    echo "ERROR: unknown mode '$mode'. Use app, runtime, dev, or unfixed." >&2
+    echo "ERROR: unknown mode '$mode'. Use app, runtime, dev, unfixed, or drift." >&2
     exit 1
     ;;
 esac

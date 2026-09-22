@@ -171,13 +171,15 @@ VPSの初回デプロイ・更新・バックアップの正本手順は `docs/d
 
 ### 7.3 コンテナイメージ脆弱性の扱い
 
-スキャンとゲートは `scripts/scan-container-images.sh` に集約し、CIから3モードで呼ぶ。修正版が存在する（`--ignore-unfixed`）HIGH/CRITICALだけを対象にする。
+スキャンとゲートは `scripts/scan-container-images.sh` に集約し、CIから次のモードで呼ぶ。ゲートは修正版が存在する（`--ignore-unfixed`）HIGH/CRITICALだけを対象にする。
 
 | モード | 対象 | 扱い |
 | --- | --- | --- |
 | `app` | `seo-intelligence-api` / `web` / `worker` / `migrate` | 自前でre-buildできるため、検出があればCIを失敗させる。 |
-| `runtime` | `postgres:16-alpine` / `redis:7-alpine` | 本番で稼働するためゲート対象。下表の除外に該当しない検出があればCIを失敗させる。 |
+| `runtime` | `postgres:16-alpine` / `redis:7-alpine` を `image-digests.lock` のdigestで取得 | 本番で稼働しているイメージそのものを検査するゲート。下表の除外に該当しない検出、またはどの検出にも一致しなくなった受容があればCIを失敗させる。 |
+| `unfixed` | 同上 | 修正版の無いCVEも含めて一覧する。報告のみでゲートしない。 |
 | `dev` | `rustfs/rustfs:1.0.0-rc.6` | 開発専用の任意profileで、本番Composeは起動しない。報告のみでゲートしない。 |
+| `drift` | `postgres:16-alpine` / `redis:7-alpine` のタグ | 上流タグが `image-digests.lock` のdigestから動いたかを報告する。動いていればexit 2で、CIはwarning annotationとstep summaryに出すだけでゲートしない。 |
 
 MinIO CommunityのEOLと公式Docker Hubリポジトリ消失を受け、開発用S3互換環境はRustFSへ移行した。RustFSはまだ安定版前のため、レビュー済みの`1.0.0-rc.6`をmanifest digest `sha256:97171b3d72cd47dc81000f92ea84de25608bfc35a94c965501afaeb5d99f6035`で固定する。これは開発・接続確認専用であり、本番ストレージには使用しない。参照を更新する場合はrelease notesと既知のセキュリティ問題を確認し、`compose.override.yaml`と`scripts/scan-container-images.sh`を同時に変更して、`bash scripts/verify-development-image-pins.sh`で一致と固定形式を検証する。
 
@@ -207,31 +209,36 @@ bash scripts/scan-container-images.sh runtime
 受容を見直す条件:
 
 - `gosu`の用途がentrypointの権限降格以外へ広がった場合。
-- 上流イメージがパッチ済みGoで再ビルドされた場合（受容を解除する）。
+- 上流イメージがパッチ済みGoで再ビルドされ、そのdigestへ更新した場合（受容を解除する）。どの検出にも一致しなくなった受容は `runtime` が失敗として列挙するので、残したままにはできない。
 - 新しいCVEが検出された場合。**自動的には除外されない**ため、CIが失敗して個別判断を促す。特に`os/exec`、ファイルシステム、引数処理など`gosu`から到達し得る領域の脆弱性は受容しない。
 - `uuid-ossp` 拡張を作成した場合。`libuuid` の受容は「読み込まれるELFが無い」ことに依存しており、拡張を作った時点で前提が消える。
 - postgres をホストへ公開した場合、またはPostgreSQLがQUICを使うようになった場合。
-- OSパッケージの受容は `Target` にAlpineのバージョンを含む（`/scan/image.tar (alpine 3.24.1)`）。ベースイメージが上がると一致しなくなり、受容は**自動的に外れて**CIが失敗する。判断を持ち越さないための性質であり、意図した挙動である。
+- OSパッケージの受容は `Target` にAlpineのバージョンを含む（`/scan/image.tar (alpine 3.24.1)`）。digest更新でベースイメージが上がると一致しなくなり、受容は失敗として列挙され、検出が残っていれば未受容として改めてゲートされる。判断を持ち越さないための性質であり、意図した挙動である。
 
 #### digestの固定
 
 受容を判断したイメージのdigestは `image-digests.lock` を正本とする。同ファイルは `compose.yaml` が起動するイメージ、`scripts/scan-container-images.sh` が検査するイメージ、本節の受容判断の3者を一致させるための単一の定義であり、値を本書へ複製しない（複製すると更新漏れで食い違う）。
 
-`scripts/verify-production-compose.sh` が、Composeの**レンダリング結果**を同ファイルと完全一致で照合する。ソースへのgrepではないため、コメント行に期待値があっても通らない。
+`runtime` / `unfixed` モードはタグではなく同ファイルのdigestを `pull` して検査する。したがってゲートが答える問いは「本番で動いているイメージに、未判断の修正可能なHIGH/CRITICALがあるか」だけである。上流が受容済みCVEの修正版を公開すれば脆弱性DBに修正バージョンが載り、タグを見張らなくてもこのスキャンが失敗して更新を促す。
+
+上流タグが動いたこと自体は失敗にしない。Alpine系の公式イメージは数日おきに再ビルドされ、その大半はこのスタックが使うパッケージを1つも変えない（2026-09-21の再ビルドはpostgres/redisともパッケージ差分0件だった）。以前はこれで `container-scan` が失敗し、required checkのため無関係な全PRのマージとリリース候補通知が止まっていた。タグの移動は `drift` モードが報告し、nightlyのwarning annotationとstep summaryに出る。
+
+`scripts/verify-production-compose.sh` が、Composeの**レンダリング結果**を同ファイルと完全一致で照合する。ソースへのgrepではないため、コメント行に期待値があっても通らない。`scripts/verify-runtime-scan.sh` が、`runtime` / `unfixed` がlockのdigestだけをpullすること、タグの移動では失敗しないこと、一致しなくなった受容で失敗することを fake docker で固定する。
 
 更新手順:
 
-1. `image-digests.lock` のdigestを新しい値へ変更する。
-2. `bash scripts/scan-container-images.sh runtime` を実行し、新イメージの検出内容を確認する。
-3. 本節の受容表を再判断し、`RUNTIME_ACCEPTED` を更新する。
-4. `compose.yaml` のimage参照を新digestへ更新する。
-5. `bash scripts/verify-production-compose.sh` で3者一致を確認する。
+1. `bash scripts/scan-container-images.sh drift` で、上流タグが現在指すdigestを確認する。
+2. `image-digests.lock` のdigestを新しい値へ変更する。
+3. `bash scripts/scan-container-images.sh runtime` を実行し、新イメージの検出内容を確認する。どの検出にも一致しなくなった受容は失敗として列挙されるので、`RUNTIME_ACCEPTED` と本節の受容表から削除する。
+4. 新たに検出されたものを本節の受容表で判断し、`RUNTIME_ACCEPTED` を更新する。
+5. `compose.yaml` のimage参照を新digestへ更新する。
+6. `bash scripts/verify-production-compose.sh` で3者一致を確認する。
 
 現在の値は次で確認する。
 
 ```bash
 cat image-digests.lock
-docker image inspect --format '{{index .RepoDigests 0}}' postgres:16-alpine
+bash scripts/scan-container-images.sh drift
 ```
 
 #### スキャナへDockerソケットを渡さない
