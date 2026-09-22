@@ -92,6 +92,20 @@ test "$(curl --silent --output /dev/null --write-out '%{http_code}' "http://127.
 # The Web host sends anonymous visitors to the sign-in page.
 test "$(curl --silent --output /dev/null --write-out '%{http_code}' "http://127.0.0.1:${WEB_PORT}/dashboard")" = "302"
 
+# A rendered login page does not prove that Blazor can start. Project-only restore
+# used to omit the boot script from the image while every HTML/health check passed.
+# Verify the URL the published page actually uses, including its fingerprint.
+login_html="$(curl --fail --silent --show-error "http://127.0.0.1:${WEB_PORT}/login")"
+boot_script_path="$(printf '%s' "$login_html" | grep -oE 'src="_framework/blazor\.web(\.[a-zA-Z0-9]+)?\.js"' | cut -d '"' -f 2)"
+test -n "$boot_script_path"
+test "$(printf '%s\n' "$boot_script_path" | wc -l)" -eq 1
+boot_script_type="$(curl --fail --silent --show-error --output /dev/null \
+  --write-out '%{content_type}' "http://127.0.0.1:${WEB_PORT}/${boot_script_path}")"
+case "$boot_script_type" in
+  text/javascript*|application/javascript*) ;;
+  *) echo "Blazor boot script was not served as JavaScript: $boot_script_type" >&2; exit 1 ;;
+esac
+
 # The download route is how generated files reach the browser, so the image has to carry it and
 # it has to be behind the sign-in. A 404 here would mean the route is missing from the build.
 test "$(curl --silent --output /dev/null --write-out '%{http_code}' \

@@ -18,38 +18,52 @@
 
     <ErrorSummary Errors="@Errors" Message="@Message" />
 
+    @if (!ProjectState.IsLoading && ProjectState.ErrorMessage is null)
+    {
+        <GettingStarted HasProject="@(ProjectState.SelectedProject is not null)" />
+    }
+
     <section class="split-grid">
-        <div class="panel">
+        <div class="panel" id="project-form">
             <div class="section-heading">
                 <h2>@(EditingProjectId.HasValue ? "プロジェクト編集" : "プロジェクト作成")</h2>
                 @if (EditingProjectId.HasValue)
                 {
-                    <button type="button" class="text-button" @onclick="ClearProjectForm">新規</button>
+                    <button type="button" class="text-button" @onclick="ClearProjectForm" disabled="@IsProjectSaving">編集をやめる</button>
                 }
             </div>
-            <div class="form-grid">
-                <label class="field">
-                    <span>名称</span>
-                    <input @bind="ProjectForm.Name" />
+            <form class="form-grid form-columns" @onsubmit="SaveProjectAsync" @onsubmit:preventDefault>
+                <fieldset class="form-fields" disabled="@IsProjectSaving">
+                <label class="field full-width">
+                    <span>プロジェクト名（必須）</span>
+                    <input id="project-name" @bind="ProjectForm.Name" required placeholder="例：自社メディア" />
                 </label>
                 <label class="field">
-                    <span>Location</span>
-                    <input @bind="ProjectForm.DefaultLocation" />
+                    <span>既定の地域</span>
+                    <input @bind="ProjectForm.DefaultLocation" required />
                 </label>
                 <label class="field">
-                    <span>Language</span>
-                    <input @bind="ProjectForm.DefaultLanguage" />
+                    <span>既定の言語</span>
+                    <input @bind="ProjectForm.DefaultLanguage" required />
                 </label>
-                <label class="field">
+                <label class="field full-width">
                     <span>メモ</span>
                     <input @bind="ProjectForm.Memo" />
                 </label>
-                <label class="field">
-                    <span>KPI JSON</span>
+                <details class="advanced-settings full-width" open="@HasProjectJsonError">
+                    <summary>詳細設定</summary>
+                    <p class="field-help">KPIを個別に設定する場合に入力してください。初期値のままでも作成できます。</p>
+                <label class="field json-field">
+                    <span>KPI設定（JSON）</span>
                     <textarea @bind="ProjectForm.KpiJson"></textarea>
                 </label>
-                <button type="button" class="primary-button" @onclick="SaveProjectAsync">保存</button>
-            </div>
+                </details>
+                <div class="form-actions full-width">
+                    <button type="submit" class="primary-button">@(IsProjectSaving ? "保存中…" : EditingProjectId.HasValue ? "プロジェクトを更新" : "プロジェクトを作成")</button>
+                </div>
+                </fieldset>
+                <ActionFeedback IsBusy="@IsProjectSaving" Errors="@ProjectSaveErrors" SuccessMessage="@ProjectSuccess" />
+            </form>
         </div>
 
         <div class="panel">
@@ -64,11 +78,11 @@
                     <button type="button" class="secondary-button" @onclick="LoadProjectsAsync">検索</button>
                 </div>
             </div>
-            <DataTable Items="@Projects" Columns="@ProjectColumns" IsLoading="@IsProjectLoading" EmptyText="プロジェクトはありません。">
+            <DataTable Items="@Projects" Columns="@ProjectColumns" IsLoading="@IsProjectLoading" EmptyText="条件に一致するプロジェクトはありません。新しく作成するか、検索条件を変更してください。">
                 <RowActions Context="project">
                     <div class="row-actions">
                         <button type="button" class="table-action" @onclick="() => SelectProjectAsync(project.ProjectId)">選択</button>
-                        <button type="button" class="table-action" @onclick="() => EditProject(project)">編集</button>
+                        <button type="button" class="table-action" @onclick="() => EditProject(project)" disabled="@IsProjectSaving">編集</button>
                         @if (project.Status == "archived")
                         {
                             <button type="button" class="table-action" @onclick="() => RestoreProjectAsync(project.ProjectId)">復元</button>
@@ -97,37 +111,46 @@
             </div>
         </div>
 
-        <div class="form-grid">
+        @if (ProjectState.SelectedProject is null)
+        {
+            <p class="field-help">先にプロジェクトを作成・選択すると、自社サイトや競合サイトを追加できます。</p>
+        }
+        <form class="form-grid form-columns" @onsubmit="SaveSiteAsync" @onsubmit:preventDefault>
+            <fieldset class="form-fields" disabled="@(ProjectState.SelectedProject is null || IsSiteSaving)">
             <label class="field">
-                <span>Domain</span>
-                <input @bind="SiteForm.Domain" disabled="@(ProjectState.SelectedProject is null)" />
+                <span>ドメイン（必須）</span>
+                <input @bind="SiteForm.Domain" required placeholder="example.com" />
             </label>
             <label class="field">
-                <span>Canonical URL</span>
-                <input @bind="SiteForm.CanonicalUrl" disabled="@(ProjectState.SelectedProject is null)" />
+                <span>正規URL</span>
+                <input @bind="SiteForm.CanonicalUrl" placeholder="https://example.com/" />
             </label>
             <label class="field">
-                <span>Type</span>
-                <select @bind="SiteForm.Type" disabled="@(ProjectState.SelectedProject is null)">
-                    <option value="own">own</option>
-                    <option value="competitor">competitor</option>
+                <span>サイトの種類</span>
+                <select @bind="SiteForm.Type">
+                    <option value="own">自社サイト</option>
+                    <option value="competitor">競合サイト</option>
                 </select>
             </label>
             <label class="field">
                 <span>メモ</span>
                 <input @bind="SiteForm.Memo" disabled="@(ProjectState.SelectedProject is null)" />
             </label>
-            <button type="button" class="primary-button" @onclick="SaveSiteAsync" disabled="@(ProjectState.SelectedProject is null)">保存</button>
+            <div class="form-actions full-width">
+            <button type="submit" class="primary-button">@(IsSiteSaving ? "保存中…" : EditingSiteId.HasValue ? "サイトを更新" : "サイトを追加")</button>
             @if (EditingSiteId.HasValue)
             {
-                <button type="button" class="text-button" @onclick="ClearSiteForm">新規</button>
+                <button type="button" class="text-button" @onclick="ClearSiteForm">編集をやめる</button>
             }
-        </div>
+            </div>
+            </fieldset>
+            <ActionFeedback IsBusy="@IsSiteSaving" Errors="@SiteSaveErrors" SuccessMessage="@SiteSuccess" />
+        </form>
 
         <DataTable Items="@Sites" Columns="@SiteColumns" IsLoading="@IsSiteLoading" EmptyText="サイトはありません。">
             <RowActions Context="site">
                 <div class="row-actions">
-                    <button type="button" class="table-action" @onclick="() => EditSite(site)">編集</button>
+                    <button type="button" class="table-action" @onclick="() => EditSite(site)" disabled="@IsSiteSaving">編集</button>
                     @if (site.Status == "archived")
                     {
                         <button type="button" class="table-action" @onclick="() => RestoreSiteAsync(site.SiteId)">復元</button>
@@ -154,18 +177,18 @@
     private static readonly IReadOnlyList<DataTableColumn<ProjectDetails>> ProjectColumns =
     [
         new("名称", project => project.Name),
-        new("Location", project => project.DefaultLocation),
-        new("Language", project => project.DefaultLanguage),
-        new("状態", project => project.Status),
+        new("地域", project => project.DefaultLocation),
+        new("言語", project => project.DefaultLanguage),
+        new("状態", project => UiText.Status(project.Status)),
         new("更新", project => FormatDateTime(project.UpdatedAt))
     ];
 
     private static readonly IReadOnlyList<DataTableColumn<SiteDetails>> SiteColumns =
     [
-        new("Domain", site => site.Domain),
-        new("Canonical URL", site => site.CanonicalUrl),
-        new("Type", site => site.Type),
-        new("状態", site => site.Status),
+        new("ドメイン", site => site.Domain),
+        new("正規URL", site => site.CanonicalUrl),
+        new("種類", site => site.Type == "own" ? "自社サイト" : site.Type == "competitor" ? "競合サイト" : site.Type),
+        new("状態", site => UiText.Status(site.Status)),
         new("更新", site => FormatDateTime(site.UpdatedAt))
     ];
 
@@ -180,6 +203,14 @@
     private bool IsProjectLoading { get; set; }
 
     private bool IsSiteLoading { get; set; }
+
+    private bool IsProjectSaving { get; set; }
+    private bool IsSiteSaving { get; set; }
+    private bool HasProjectJsonError { get; set; }
+    private IReadOnlyList<ApiError> ProjectSaveErrors { get; set; } = [];
+    private IReadOnlyList<ApiError> SiteSaveErrors { get; set; } = [];
+    private string? ProjectSuccess { get; set; }
+    private string? SiteSuccess { get; set; }
 
     private string ProjectStatus { get; set; } = "active";
 
@@ -256,34 +287,56 @@
 
     private async Task SaveProjectAsync()
     {
-        ClearErrors();
-        var kpi = ParseJson(ProjectForm.KpiJson, "KPI JSON");
-        if (Errors.Count > 0)
+        if (IsProjectSaving)
         {
             return;
         }
-
-        ApiClientResult<ProjectDetails> result = EditingProjectId.HasValue
-            ? await ApiClient.UpdateProjectAsync(
-                EditingProjectId.Value,
-                new ProjectUpdateRequest(ProjectForm.Name, ProjectForm.DefaultLocation, ProjectForm.DefaultLanguage, kpi, ProjectForm.Memo))
-            : await ApiClient.CreateProjectAsync(
-                new ProjectCreateRequest(ProjectForm.Name, ProjectForm.DefaultLocation, ProjectForm.DefaultLanguage, kpi, ProjectForm.Memo));
-
-        if (result.IsSuccess)
+        ClearErrors();
+        ProjectSuccess = null;
+        ProjectSaveErrors = [];
+        HasProjectJsonError = false;
+        var kpi = ParseJson(ProjectForm.KpiJson, "KPI設定");
+        if (Errors.Count > 0)
         {
-            ClearProjectForm();
-            await ProjectState.RefreshAsync();
-            await LoadProjectsAsync();
+            ProjectSaveErrors = Errors;
+            Errors = [];
+            HasProjectJsonError = true;
+            return;
         }
-        else
+
+        IsProjectSaving = true;
+        var isEditing = EditingProjectId.HasValue;
+        try
         {
-            Errors = result.Errors;
+            ApiClientResult<ProjectDetails> result = EditingProjectId.HasValue
+                ? await ApiClient.UpdateProjectAsync(
+                    EditingProjectId.Value,
+                    new ProjectUpdateRequest(ProjectForm.Name, ProjectForm.DefaultLocation, ProjectForm.DefaultLanguage, kpi, ProjectForm.Memo))
+                : await ApiClient.CreateProjectAsync(
+                    new ProjectCreateRequest(ProjectForm.Name, ProjectForm.DefaultLocation, ProjectForm.DefaultLanguage, kpi, ProjectForm.Memo));
+
+            if (result.IsSuccess)
+            {
+                ClearProjectForm();
+                await ProjectState.RefreshAsync();
+                await LoadProjectsAsync();
+                ProjectSuccess = isEditing ? "プロジェクトを更新しました。" : "プロジェクトを作成しました。キーワード探索へ進めます。";
+            }
+            else
+            {
+                ProjectSaveErrors = result.Errors;
+            }
+        }
+        finally
+        {
+            IsProjectSaving = false;
         }
     }
 
     private void EditProject(ProjectDetails project)
     {
+        ProjectSuccess = null;
+        ProjectSaveErrors = [];
         EditingProjectId = project.ProjectId;
         ProjectForm = new ProjectFormModel
         {
@@ -329,35 +382,53 @@
 
     private async Task SaveSiteAsync()
     {
+        if (IsSiteSaving)
+        {
+            return;
+        }
         ClearErrors();
+        SiteSuccess = null;
+        SiteSaveErrors = [];
         if (ProjectState.SelectedProject is not { } project)
         {
             Message = "プロジェクトを選択してください。";
             return;
         }
 
-        ApiClientResult<SiteDetails> result = EditingSiteId.HasValue
-            ? await ApiClient.UpdateSiteAsync(
-                project.ProjectId,
-                EditingSiteId.Value,
-                new SiteUpdateRequest(SiteForm.Domain, SiteForm.CanonicalUrl, SiteForm.Type, SiteForm.Memo))
-            : await ApiClient.CreateSiteAsync(
-                project.ProjectId,
-                new SiteCreateRequest(SiteForm.Domain, SiteForm.CanonicalUrl, SiteForm.Type, SiteForm.Memo));
+        IsSiteSaving = true;
+        var isEditing = EditingSiteId.HasValue;
+        try
+        {
+            ApiClientResult<SiteDetails> result = EditingSiteId.HasValue
+                ? await ApiClient.UpdateSiteAsync(
+                    project.ProjectId,
+                    EditingSiteId.Value,
+                    new SiteUpdateRequest(SiteForm.Domain, SiteForm.CanonicalUrl, SiteForm.Type, SiteForm.Memo))
+                : await ApiClient.CreateSiteAsync(
+                    project.ProjectId,
+                    new SiteCreateRequest(SiteForm.Domain, SiteForm.CanonicalUrl, SiteForm.Type, SiteForm.Memo));
 
-        if (result.IsSuccess)
-        {
-            ClearSiteForm();
-            await LoadSitesAsync();
+            if (result.IsSuccess)
+            {
+                ClearSiteForm();
+                await LoadSitesAsync();
+                SiteSuccess = isEditing ? "サイトを更新しました。" : "サイトを追加しました。";
+            }
+            else
+            {
+                SiteSaveErrors = result.Errors;
+            }
         }
-        else
+        finally
         {
-            Errors = result.Errors;
+            IsSiteSaving = false;
         }
     }
 
     private void EditSite(SiteDetails site)
     {
+        SiteSuccess = null;
+        SiteSaveErrors = [];
         EditingSiteId = site.SiteId;
         SiteForm = new SiteFormModel
         {
@@ -425,12 +496,17 @@
 
     private void ClearProjectForm()
     {
+        ProjectSuccess = null;
+        ProjectSaveErrors = [];
+        HasProjectJsonError = false;
         EditingProjectId = null;
         ProjectForm = new ProjectFormModel();
     }
 
     private void ClearSiteForm()
     {
+        SiteSuccess = null;
+        SiteSaveErrors = [];
         EditingSiteId = null;
         SiteForm = new SiteFormModel();
     }
@@ -453,9 +529,9 @@
             using var document = JsonDocument.Parse(json);
             return document.RootElement.Clone();
         }
-        catch (JsonException exception)
+        catch (JsonException)
         {
-            Errors = [new ApiError("Validation.Json.Invalid", exception.Message, target)];
+            Errors = [new ApiError("Validation.Json.Invalid", "JSONの形式を確認してください。プロパティ名は二重引用符で囲んでください。", target)];
             return null;
         }
     }

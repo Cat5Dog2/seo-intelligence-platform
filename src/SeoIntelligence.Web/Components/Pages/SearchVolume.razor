@@ -23,6 +23,10 @@
     </header>
 
     <ErrorSummary Errors="@Errors" />
+    @if (!ProjectState.IsLoading && ProjectState.SelectedProject is null && ProjectState.ErrorMessage is null)
+    {
+        <GettingStarted />
+    }
     @if (!string.IsNullOrWhiteSpace(Message))
     {
         <div class="state-row" data-testid="search-volume-status-message">@Message</div>
@@ -44,11 +48,11 @@
                     <input id="@CsvInputId" type="file" accept=".csv,text/csv,text/plain" @onchange="ReadCsvFileAsync" disabled="@(ProjectState.SelectedProject is null)" />
                 </label>
                 <label class="field">
-                    <span>Location</span>
+                    <span>地域</span>
                     <input data-testid="search-volume-location-input" @bind="SearchVolumeForm.Location" disabled="@(ProjectState.SelectedProject is null)" />
                 </label>
                 <label class="field">
-                    <span>Language</span>
+                    <span>言語</span>
                     <input data-testid="search-volume-language-input" @bind="SearchVolumeForm.Language" disabled="@(ProjectState.SelectedProject is null)" />
                 </label>
                 <label class="field">
@@ -61,7 +65,7 @@
                 </label>
             </div>
             <div class="button-row">
-                <button type="button" class="primary-button" data-testid="search-volume-register-button" @onclick="RegisterJobAsync" disabled="@(!CanRegister)">登録</button>
+                <button type="button" class="primary-button" data-testid="search-volume-register-button" @onclick="RegisterJobAsync" disabled="@(!CanRegister)">検索ボリュームを調べる</button>
                 <button type="button" class="text-button" @onclick="ClearInput">入力クリア</button>
             </div>
         </div>
@@ -76,7 +80,7 @@
             </div>
             <div class="form-grid dense-form">
                 <label class="field wide-field">
-                    <span>Job Id</span>
+                    <span>ジョブID</span>
                     <input data-testid="search-volume-job-id-input" @bind="JobIdText" />
                 </label>
                 <button type="button" class="secondary-button" @onclick="RefreshJobAsync" disabled="@(!HasCurrentJob)">読み込み</button>
@@ -90,7 +94,7 @@
             {
                 <div class="job-status-card">
                     <span>@CurrentJob.JobType</span>
-                    <strong>@CurrentJob.Status</strong>
+                    <strong>@UiText.Status(CurrentJob.Status)</strong>
                     <progress max="100" value="@CurrentJob.Progress"></progress>
                     <span>@CurrentJob.Progress%</span>
                     <span class="muted">@FormatDateTime(CurrentJob.UpdatedAt)</span>
@@ -108,20 +112,20 @@
                     <input @bind="ResultQuery" @bind:event="oninput" disabled="@(!HasCurrentJob)" />
                 </label>
                 <label class="field-inline">
-                    <span>sortBy</span>
+                    <span>並べ替え項目</span>
                     <select @bind="ResultSortBy" disabled="@(!HasCurrentJob)">
-                        <option value="keyword">keyword</option>
-                        <option value="searchVolume">searchVolume</option>
-                        <option value="seoDifficulty">seoDifficulty</option>
-                        <option value="cpc">cpc</option>
-                        <option value="competition">competition</option>
+                        <option value="keyword">キーワード</option>
+                        <option value="searchVolume">検索ボリューム</option>
+                        <option value="seoDifficulty">SEO難易度</option>
+                        <option value="cpc">CPC</option>
+                        <option value="competition">広告競合性</option>
                     </select>
                 </label>
                 <label class="field-inline">
-                    <span>orderBy</span>
+                    <span>並び順</span>
                     <select @bind="ResultOrderBy" disabled="@(!HasCurrentJob)">
-                        <option value="asc">asc</option>
-                        <option value="desc">desc</option>
+                        <option value="asc">昇順</option>
+                        <option value="desc">降順</option>
                     </select>
                 </label>
                 <button type="button" class="secondary-button" @onclick="LoadResultsAsync" disabled="@(!HasCurrentJob)">検索</button>

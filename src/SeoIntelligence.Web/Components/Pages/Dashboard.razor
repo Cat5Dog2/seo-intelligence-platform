@@ -34,7 +34,7 @@
 
     @if (ProjectState.SelectedProject is null)
     {
-        <div class="state-row">プロジェクトを選択してください。</div>
+        <GettingStarted />
     }
     else if (IsLoading)
     {
@@ -46,6 +46,10 @@
     }
     else
     {
+        @if (Snapshot.KeywordDiscoveryCount == 0 && Snapshot.SearchVolumeJobCount == 0)
+        {
+            <GettingStarted HasProject="true" />
+        }
         <section class="metric-strip dashboard-metrics" aria-label="MVP指標">
             <div class="metric">
                 <span>キーワード探索</span>

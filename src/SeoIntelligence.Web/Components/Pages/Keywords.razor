@@ -22,6 +22,10 @@
     </header>
 
     <ErrorSummary Errors="@Errors" />
+    @if (!ProjectState.IsLoading && ProjectState.SelectedProject is null && ProjectState.ErrorMessage is null)
+    {
+        <GettingStarted />
+    }
     @if (!string.IsNullOrWhiteSpace(Message))
     {
         <div class="state-row" data-testid="keyword-status-message">@Message</div>
@@ -38,26 +42,26 @@
                 <input data-testid="keyword-seed-input" @bind="DiscoveryForm.SeedKeyword" @bind:event="oninput" disabled="@(ProjectState.SelectedProject is null)" />
             </label>
             <label class="field">
-                <span>limit</span>
+                <span>取得件数の上限</span>
                 <input data-testid="keyword-limit-input" type="number" min="1" max="25000" @bind="DiscoveryForm.Limit" disabled="@(ProjectState.SelectedProject is null)" />
             </label>
             <label class="field">
-                <span>sortBy</span>
+                <span>並べ替え項目</span>
                 <select @bind="DiscoveryForm.SortBy" disabled="@(ProjectState.SelectedProject is null)">
-                    <option value="searchVolume">searchVolume</option>
-                    <option value="seoDifficulty">seoDifficulty</option>
-                    <option value="cpc">cpc</option>
-                    <option value="competition">competition</option>
-                    <option value="firstSeenRange">firstSeenRange</option>
-                    <option value="keyword">keyword</option>
-                    <option value="suggestClass">suggestClass</option>
+                    <option value="searchVolume">検索ボリューム</option>
+                    <option value="seoDifficulty">SEO難易度</option>
+                    <option value="cpc">CPC</option>
+                    <option value="competition">広告競合性</option>
+                    <option value="firstSeenRange">出現時期</option>
+                    <option value="keyword">キーワード</option>
+                    <option value="suggestClass">候補の種類</option>
                 </select>
             </label>
             <label class="field">
-                <span>orderBy</span>
+                <span>並び順</span>
                 <select @bind="DiscoveryForm.OrderBy" disabled="@(ProjectState.SelectedProject is null)">
-                    <option value="desc">desc</option>
-                    <option value="asc">asc</option>
+                    <option value="desc">降順</option>
+                    <option value="asc">昇順</option>
                 </select>
             </label>
             <label class="check-option compact-check">
@@ -95,27 +99,27 @@
 
         <div class="form-grid dense-form">
             <label class="field">
-                <span>Volume min</span>
+                <span>検索ボリュームの下限</span>
                 <input type="number" step="1" @bind="DiscoveryForm.MinSearchVolume" disabled="@(ProjectState.SelectedProject is null)" />
             </label>
             <label class="field">
-                <span>Volume max</span>
+                <span>検索ボリュームの上限</span>
                 <input type="number" step="1" @bind="DiscoveryForm.MaxSearchVolume" disabled="@(ProjectState.SelectedProject is null)" />
             </label>
             <label class="field">
-                <span>Difficulty min</span>
+                <span>SEO難易度の下限</span>
                 <input type="number" step="0.1" @bind="DiscoveryForm.MinSeoDifficulty" disabled="@(ProjectState.SelectedProject is null)" />
             </label>
             <label class="field">
-                <span>Difficulty max</span>
+                <span>SEO難易度の上限</span>
                 <input type="number" step="0.1" @bind="DiscoveryForm.MaxSeoDifficulty" disabled="@(ProjectState.SelectedProject is null)" />
             </label>
             <label class="field">
-                <span>CPC min</span>
+                <span>CPCの下限</span>
                 <input type="number" step="0.01" @bind="DiscoveryForm.MinCpc" disabled="@(ProjectState.SelectedProject is null)" />
             </label>
             <label class="field">
-                <span>Competition max</span>
+                <span>広告競合性の上限</span>
                 <input type="number" step="0.1" @bind="DiscoveryForm.MaxCompetition" disabled="@(ProjectState.SelectedProject is null)" />
             </label>
             <label class="field">
@@ -123,7 +127,7 @@
                 <input @bind="DiscoveryForm.FirstSeenRange" disabled="@(ProjectState.SelectedProject is null)" />
             </label>
             <label class="field">
-                <span>Suggest class</span>
+                <span>候補の種類</span>
                 <input @bind="DiscoveryForm.SuggestClass" disabled="@(ProjectState.SelectedProject is null)" />
             </label>
             <label class="field">
@@ -146,7 +150,7 @@
             </div>
             <div class="job-status-card">
                 <span>@DiscoveryJob.JobType</span>
-                <strong>@DiscoveryJob.Status</strong>
+                <strong>@UiText.Status(DiscoveryJob.Status)</strong>
                 <progress max="100" value="@DiscoveryJob.Progress"></progress>
                 <span>@DiscoveryJob.Progress%</span>
             </div>

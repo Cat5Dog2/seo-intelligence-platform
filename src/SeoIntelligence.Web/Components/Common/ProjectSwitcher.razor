@@ -2,7 +2,7 @@
 @inject ProjectSelectionState ProjectState
 
 <label class="project-switcher">
-    <span>Project</span>
+    <span>選択中のプロジェクト</span>
     @if (ProjectState.IsLoading)
     {
         <select data-testid="project-switcher" disabled>

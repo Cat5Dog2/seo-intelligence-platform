@@ -1,0 +1,19 @@
+@if (IsBusy)
+{
+    <div class="action-feedback" role="status">保存中です。しばらくお待ちください。</div>
+}
+else if (Errors.Count > 0 || !string.IsNullOrWhiteSpace(ErrorMessage))
+{
+    <ErrorSummary Title="保存できませんでした" Errors="@Errors" Message="@ErrorMessage" />
+}
+else if (!string.IsNullOrWhiteSpace(SuccessMessage))
+{
+    <div class="action-feedback success-feedback" role="status">@SuccessMessage</div>
+}
+
+@code {
+    [Parameter] public bool IsBusy { get; set; }
+    [Parameter] public string? SuccessMessage { get; set; }
+    [Parameter] public string? ErrorMessage { get; set; }
+    [Parameter] public IReadOnlyList<ApiError> Errors { get; set; } = [];
+}

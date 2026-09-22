@@ -8,6 +8,24 @@ html {
 
 body {
     margin: 0;
+    overflow-wrap: anywhere;
+}
+
+* {
+
+    box-sizing: border-box;
+
+}
+
+a {
+
+    color: #126f83;
+
+}
+
+:is(a, button, input, select, textarea, summary):focus-visible {
+    outline: 3px solid #237fbc;
+    outline-offset: 3px;
 }
 
 button,
@@ -71,6 +89,7 @@ h3 {
 .toolbar,
 .section-heading {
     justify-content: space-between;
+    flex-wrap: wrap;
 }
 
 .section-heading {
@@ -129,6 +148,7 @@ h3 {
     border: 1px solid #d7dde6;
     border-radius: 8px;
     padding: 1rem;
+    min-width: 0;
 }
 
 .split-grid {
@@ -140,6 +160,146 @@ h3 {
 .form-grid {
     align-items: end;
     flex-wrap: wrap;
+}
+
+.form-grid > .field {
+    flex: 1 1 200px;
+    min-width: 0;
+}
+
+.page-header > *,
+.section-heading > * {
+    min-width: 0;
+    max-width: 100%;
+}
+.form-grid > .field.wide-field {
+    flex-basis: 320px;
+}
+.field input, .field select, .field textarea {
+    width: 100%;
+    min-width: 0;
+}
+.form-columns {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+.form-fields {
+    border: 0;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+    min-width: 0;
+}
+.form-fields > .field {
+    min-width: 0;
+}
+.panel-group {
+    border: 0;
+    padding: 0;
+    min-width: 0;
+}
+.panel-group:disabled {
+    opacity: 0.75;
+}
+.location-language-selector {
+    flex-wrap: wrap;
+}
+.header-settings-content .action-feedback, .header-settings-content .error-summary {
+    margin-top: 0.75rem;
+}
+.full-width {
+    grid-column: 1 / -1;
+}
+.form-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+}
+.field-help {
+    color: #5a6575;
+    font-size: 0.85rem;
+    line-height: 1.6;
+    margin: 0.25rem 0 0.75rem;
+}
+.advanced-settings {
+    border: 1px solid #d7dde6;
+    border-radius: 6px;
+    padding: 0.75rem;
+    min-width: 0;
+}
+.advanced-settings summary {
+    cursor: pointer;
+    color: #475364;
+    font-weight: 600;
+}
+.advanced-settings[open] summary {
+    margin-bottom: 0.75rem;
+}
+.advanced-settings .field + .field {
+    margin-top: 1rem;
+}
+.action-feedback {
+    padding: 0.75rem 1rem;
+    border-radius: 6px;
+    background: #edf4f8;
+    color: #334b60;
+}
+.success-feedback {
+    background: #eefaf3;
+    border: 1px solid #92c7a6;
+    color: #205b37;
+}
+.getting-started {
+    background: #edf6f8;
+    border: 1px solid #b9d9df;
+    border-radius: 8px;
+    padding: 1.25rem;
+}
+.getting-started h2 {
+    font-size: 1.05rem;
+}
+.getting-started p {
+    color: #475364;
+    font-size: 0.85rem;
+    line-height: 1.6;
+    margin: 0.35rem 0 0.75rem;
+}
+.getting-started-steps {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1rem;
+    padding: 0;
+    margin: 1rem 0 0;
+    list-style: none;
+}
+.getting-started-steps li {
+    display: flex;
+    gap: 0.65rem;
+}
+.getting-started-steps a {
+    font-weight: 600;
+}
+.getting-started-steps .muted {
+    font-size: 0.8rem;
+}
+.step-number {
+    background: #126f83;
+    color: white;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 1.65rem;
+    height: 1.65rem;
+    font-size: 0.85rem;
+}
+#project-form {
+    scroll-margin-top: 110px;
 }
 
 .field,
@@ -183,6 +343,19 @@ textarea {
 
 .project-switcher {
     min-width: 220px;
+    flex: 0 1 280px;
+}
+
+.project-switcher select {
+
+    border-color: #126f83;
+
+    background: #f3fafb;
+
+    font-weight: 600;
+
+    width: 100%;
+
 }
 
 .location-language-selector {
@@ -225,6 +398,8 @@ textarea {
 
 .data-table-wrap {
     overflow-x: auto;
+    min-width: 0;
+    overscroll-behavior-x: contain;
     width: 100%;
 }
 
@@ -479,6 +654,31 @@ legend {
     .project-switcher {
         min-width: 0;
     }
+
+    .getting-started-steps {
+
+        grid-template-columns: 1fr;
+
+    }
+    .form-grid > .field,
+    .form-grid > .field.wide-field {
+        flex-basis: auto;
+    }
+    #project-form {
+        scroll-margin-top: 1rem;
+    }
+}
+
+@media (max-width: 560px) {
+    .form-fields {
+        grid-template-columns: 1fr;
+    }
+    .wide-field {
+        flex-basis: auto;
+    }
+    .form-actions > button {
+        width: 100%;
+    }
 }
 
 .valid.modified:not([type=checkbox]) {
@@ -608,6 +808,74 @@ legend {
 
 .account-summary {
     margin-bottom: 2rem;
+}
+
+.table-scroll-hint {
+    display: none;
+}
+
+@media (max-width: 560px) {
+    .table-scroll-hint {
+        color: #5a6575;
+        display: block;
+        font-size: 0.8rem;
+        margin: 0.75rem 0 0.4rem;
+    }
+
+    .data-table-wrap:focus-visible {
+        outline: 3px solid #237fbc;
+        outline-offset: 2px;
+    }
+
+    input,
+    select,
+    textarea,
+    .auth-form input[type="email"],
+    .auth-form input[type="password"] {
+        font-size: 16px;
+        max-width: 100%;
+        min-width: 0;
+    }
+
+    button,
+    .tab-button,
+    .primary-button,
+    .secondary-button,
+    .table-action,
+    .text-button,
+    select,
+    input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),
+    .check-option,
+    .auth-form .form-row-inline,
+    .advanced-settings summary,
+    .getting-started-steps a {
+        min-height: 44px;
+    }
+
+    .advanced-settings summary {
+        align-content: center;
+    }
+
+    .getting-started-steps a {
+        align-items: center;
+        display: inline-flex;
+    }
+
+    .auth-form .form-row-inline label {
+        align-content: center;
+        min-height: 44px;
+    }
+
+    .data-table .table-action,
+    .data-table .audit-link {
+        align-items: center;
+        display: inline-flex;
+        min-height: 44px;
+    }
+
+    .auth-shell {
+        padding: 1.5rem;
+    }
 }
 
     .account-summary dt {

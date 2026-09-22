@@ -1,6 +1,10 @@
 @typeparam TItem
 
-<div class="data-table-wrap">
+@if (HasVisibleTable)
+{
+    <p class="table-scroll-hint">表は横にスクロールできます。@(RowActions is null ? "" : "右端に操作ボタンがあります。")</p>
+}
+<div class="data-table-wrap" tabindex="@(HasVisibleTable ? 0 : -1)" role="region" aria-label="データ一覧">
     @if (IsLoading)
     {
         <div class="state-row">読み込み中</div>
@@ -48,6 +52,8 @@
 </div>
 
 @code {
+    private bool HasVisibleTable => !IsLoading && string.IsNullOrWhiteSpace(ErrorMessage) && Items.Count > 0;
+
     [Parameter]
     public IReadOnlyList<TItem> Items { get; set; } = [];
 

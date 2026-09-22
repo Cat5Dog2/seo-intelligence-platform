@@ -5,8 +5,11 @@
         <a class="brand" href="/">SEO Intelligence</a>
         <div class="header-controls">
             <ProjectSwitcher />
-            <LocationLanguageSelector />
-            <CreditBadge />
+            <details class="header-settings">
+                <summary>地域・言語の設定</summary>
+                <div class="header-settings-content"><LocationLanguageSelector /></div>
+            </details>
+            <div class="header-usage"><CreditBadge /></div>
             <AuthorizeView>
                 <Authorized>
                     <a class="account-link" href="/account">@context.User.Identity?.Name</a>
@@ -20,22 +23,37 @@
     </header>
 
     <div class="app-frame">
-        <aside class="side-nav" aria-label="Primary">
+        <button type="button" class="mobile-nav-toggle" aria-expanded="@IsMenuOpen.ToString().ToLowerInvariant()" aria-controls="main-navigation" @onclick="() => IsMenuOpen = !IsMenuOpen">@(IsMenuOpen ? "メニューを閉じる" : "メニューを開く")</button>
+        <nav id="main-navigation" class="side-nav @(IsMenuOpen ? "is-open" : "")" aria-label="メインメニュー" @onclick="() => IsMenuOpen = false">
+            <div class="nav-group">
             <NavLink href="/" Match="NavLinkMatch.All">プロジェクト</NavLink>
             <NavLink href="/dashboard">ダッシュボード</NavLink>
+            </div>
+            <div class="nav-group" aria-labelledby="nav-research">
+            <h2 id="nav-research">調査・分析</h2>
             <NavLink href="/keywords">キーワード</NavLink>
             <NavLink href="/search-volume">検索ボリューム</NavLink>
-            <NavLink href="/clusters">トピッククラスター</NavLink>
             <NavLink href="/competitors">競合分析</NavLink>
             <NavLink href="/influx">獲得語/ページ</NavLink>
             <NavLink href="/content-analysis">コンテンツ分析</NavLink>
+            </div>
+            <div class="nav-group" aria-labelledby="nav-content">
+            <h2 id="nav-content">コンテンツ</h2>
+            <NavLink href="/clusters">トピッククラスター</NavLink>
             <NavLink href="/briefs">記事ブリーフ</NavLink>
-            <NavLink href="/rank-monitoring">順位監視</NavLink>
             <NavLink href="/rewrite">リライト管理</NavLink>
-            <NavLink href="/reports">レポート</NavLink>
             <NavLink href="/ai-assistant">AIアシスタント</NavLink>
+            </div>
+            <div class="nav-group" aria-labelledby="nav-monitoring">
+            <h2 id="nav-monitoring">監視・レポート</h2>
+            <NavLink href="/rank-monitoring">順位監視</NavLink>
+            <NavLink href="/reports">レポート</NavLink>
+            </div>
+            <div class="nav-group" aria-labelledby="nav-admin">
+            <h2 id="nav-admin">管理</h2>
             <NavLink href="/admin">管理</NavLink>
-        </aside>
+            </div>
+        </nav>
 
         <main class="main-content">
             @Body
@@ -43,8 +61,12 @@
     </div>
 </div>
 
+@code {
+    private bool IsMenuOpen { get; set; }
+}
+
 <div id="blazor-error-ui" data-nosnippet>
-    An unhandled error has occurred.
-    <a href="." class="reload">Reload</a>
+    接続または処理に問題が発生しました。
+    <a href="." class="reload">再読み込み</a>
     <span class="dismiss">🗙</span>
 </div>
