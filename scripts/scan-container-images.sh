@@ -17,9 +17,10 @@
 #
 # Runtime images are scanned at the digest compose.yaml deploys - the one in image-digests.lock -
 # not at whatever the tag points to today. The gate answers one question: does the image running in
-# production carry a fixable HIGH or CRITICAL that nobody has judged? When upstream publishes a fix
-# for one of its findings, the vulnerability database gains a fixed version and this scan fails on
-# its own, without watching the tag. Whether the tag has moved is reported separately by the `drift`
+# production carry a fixable HIGH or CRITICAL that nobody has judged? When the vulnerability
+# database gains a fixed version for an unaccepted HIGH or CRITICAL finding, this scan fails without
+# watching the tag. Accepted findings remain excluded even when a fix is available; adopting an
+# upstream update requires manual review prompted by drift. Tag movement is reported by the `drift`
 # mode, which never gates and tells an index that merely moved from an image that changed for this
 # platform: upstream rebuilds these tags every few days, usually without changing a single byte of
 # the image this stack runs, and failing on that blocked every pull request until someone re-pinned

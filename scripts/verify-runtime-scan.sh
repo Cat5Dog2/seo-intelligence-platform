@@ -121,9 +121,43 @@ pass() {
 
 # The acceptances the script carries, as <image>\t<CVE>\t<target>\t<package>. Read from the script
 # rather than duplicated here, so the fixtures follow the list as it is judged and re-judged.
+extract_acceptances() {
+  sed -n '/^RUNTIME_ACCEPTED=(/,/^)/p' "$1" \
+    | sed -nE 's/^[[:space:]]*"(.*)"$/\1/p'
+}
+
+# Updating to an image with every accepted finding fixed leaves a valid empty list.
+cat > "$work/empty-acceptances.sh" <<'ACCEPTANCES'
+RUNTIME_ACCEPTED=(
+  # All accepted findings have been fixed.
+)
+ACCEPTANCES
+if ! extract_acceptances "$work/empty-acceptances.sh" > "$work/empty.tsv"; then
+  fail "extracting an empty acceptance list failed"
+elif [ -s "$work/empty.tsv" ]; then
+  fail "an empty acceptance list produced fixture rows"
+else
+  pass "an empty acceptance list produces no fixture rows and succeeds"
+fi
+
+expected_acceptance=$'postgres:16-alpine\tCVE-2025-61726\tusr/local/bin/gosu\tstdlib'
+printf 'RUNTIME_ACCEPTED=(\n  "%s"\n)\n' "$expected_acceptance" > "$work/one-acceptance.sh"
+if ! actual_acceptance="$(extract_acceptances "$work/one-acceptance.sh")"; then
+  fail "extracting a populated acceptance list failed"
+elif [ "$actual_acceptance" != "$expected_acceptance" ]; then
+  fail "acceptance extraction did not preserve all four tab-separated fields"
+else
+  pass "acceptance extraction preserves all four tab-separated fields"
+fi
+
+if extract_acceptances "$work/missing-acceptances.sh" > /dev/null 2>&1; then
+  fail "acceptance extraction succeeded for a missing source file"
+else
+  pass "acceptance extraction fails for a missing source file"
+fi
+
 accepted_tsv="$work/accepted.tsv"
-sed -n '/^RUNTIME_ACCEPTED=(/,/^)/p' scripts/scan-container-images.sh \
-  | grep -E '^[[:space:]]*"' | sed -E 's/^[[:space:]]*"//; s/"$//' > "$accepted_tsv"
+extract_acceptances scripts/scan-container-images.sh > "$accepted_tsv"
 
 # Two fixture sets: every acceptance present as a finding, and the same minus the first acceptance
 # - which is then stale. Prints the CVE that was dropped.
