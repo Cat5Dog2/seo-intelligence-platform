@@ -1,12 +1,27 @@
 @inject ISeoIntelligenceApiClient ApiClient
 
-<div class="credit-badge @CreditState" title="API消費クレジット">
-    <span>Credit</span>
+<div class="credit-badge @CreditState" title="取得した直近200件のAPI呼び出しに基づく消費クレジット">
+    <span>API使用量</span>
+    @if (IsLoading)
+    {
+        <span>読み込み中</span>
+    }
+    else if (HasError)
+    {
+        <span>取得できませんでした</span>
+    }
+    else
+    {
     <strong>日 @TodayCredit.ToString("0.##")</strong>
     <strong>月 @MonthCredit.ToString("0.##")</strong>
+    }
 </div>
 
 @code {
+    private bool IsLoading { get; set; } = true;
+
+    private bool HasError { get; set; }
+
     private decimal TodayCredit { get; set; }
 
     private decimal MonthCredit { get; set; }
@@ -16,8 +31,10 @@
     protected override async Task OnInitializedAsync()
     {
         var result = await ApiClient.SearchExternalApiCallsAsync(pageSize: 200);
+        IsLoading = false;
         if (!result.IsSuccess || result.Data is null)
         {
+            HasError = true;
             CreditState = "warning";
             return;
         }

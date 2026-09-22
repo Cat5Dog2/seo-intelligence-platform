@@ -7,33 +7,41 @@
                 <button type="button" class="secondary-button" @onclick="ReloadAsync">再読み込み</button>
             </div>
         </div>
-        <div class="form-grid">
+        <div class="form-columns">
+          <div class="form-fields">
             <label class="field">
                 <span>名称</span>
                 <input @bind="ChannelForm.Name" />
             </label>
             <label class="field">
-                <span>Channel Type</span>
+                <span>通知先の種類</span>
                 <input @bind="ChannelForm.ChannelType" />
             </label>
+            <details class="advanced-settings full-width">
+                <summary>詳細設定</summary>
+                <p class="field-help">登録済みの認証情報を使う場合に、参照名と連携条件を設定してください。</p>
             <label class="field">
-                <span>Webhook Secret Ref</span>
+                <span>Webhook参照名</span>
                 <input @bind="ChannelForm.WebhookSecretRef" />
             </label>
             <label class="field">
-                <span>Project Id</span>
+                <span>プロジェクトID</span>
                 <input @bind="ChannelForm.ProjectId" />
             </label>
             <label class="field">
-                <span>Event Types</span>
+                <span>通知イベント（カンマ区切り）</span>
                 <input @bind="ChannelForm.EventTypes" />
             </label>
-            <button type="button" class="primary-button" @onclick="SaveChannelAsync">保存</button>
+            </details>
+            <div class="form-actions full-width">
+            <button type="button" class="primary-button" @onclick="SaveChannelAsync">通知設定を保存</button>
             @if (EditingChannelId.HasValue)
             {
                 <button type="button" class="text-button" @onclick="ClearChannelAsync">新規</button>
             }
+            </div>
         </div>
+          </div>
 
         <DataTable Items="@Channels" Columns="@ChannelColumns" IsLoading="@IsChannelLoading" EmptyText="通知設定はありません。">
             <RowActions Context="channel">

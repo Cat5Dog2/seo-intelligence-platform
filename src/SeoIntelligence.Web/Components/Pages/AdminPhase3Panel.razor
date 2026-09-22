@@ -8,41 +8,49 @@
                 <button type="button" class="secondary-button" @onclick="ReloadAsync">再読み込み</button>
             </div>
         </div>
-        <div class="form-grid dense-form">
+        <div class="form-columns">
+          <div class="form-fields">
             <label class="field">
-                <span>connector_type</span>
+                <span>連携サービス</span>
                 <select @bind="ConnectorForm.ConnectorType" disabled="@IsProjectUnavailable">
-                    <option value="gsc">gsc</option>
-                    <option value="ga4">ga4</option>
-                    <option value="cms">cms</option>
-                    <option value="bi">bi</option>
+                    <option value="gsc">Google Search Console</option>
+                    <option value="ga4">Google Analytics 4</option>
+                    <option value="cms">CMS</option>
+                    <option value="bi">BIツール</option>
                 </select>
             </label>
             <label class="field">
                 <span>名称</span>
                 <input @bind="ConnectorForm.Name" disabled="@IsProjectUnavailable" />
             </label>
+            <details class="advanced-settings full-width">
+                <summary>詳細設定</summary>
+                <p class="field-help">登録済みの認証情報を使う場合に、参照名と連携条件を設定してください。</p>
             <label class="field">
-                <span>auth_ref</span>
+                <span>認証情報の参照名</span>
                 <input @bind="ConnectorForm.AuthRef" disabled="@IsProjectUnavailable" />
             </label>
             <label class="field">
-                <span>status</span>
+                <span>状態</span>
                 <select @bind="ConnectorForm.Status" disabled="@IsProjectUnavailable">
-                    <option value="active">active</option>
-                    <option value="disabled">disabled</option>
+                    <option value="active">有効</option>
+                    <option value="disabled">無効</option>
                 </select>
             </label>
             <label class="field wide-field json-field">
-                <span>settings JSON</span>
+                <span>連携設定（JSON）</span>
                 <textarea @bind="ConnectorForm.SettingsJson" disabled="@IsProjectUnavailable"></textarea>
             </label>
-            <button type="button" class="primary-button" @onclick="SaveConnectorAsync" disabled="@IsProjectUnavailable">保存</button>
+            </details>
+            <div class="form-actions full-width">
+            <button type="button" class="primary-button" @onclick="SaveConnectorAsync" disabled="@IsProjectUnavailable">連携設定を保存</button>
             @if (EditingConnectorId.HasValue)
             {
                 <button type="button" class="text-button" @onclick="ClearConnectorAsync">新規</button>
             }
+            </div>
         </div>
+          </div>
 
         <DataTable Items="@Connectors" Columns="@ConnectorColumns" IsLoading="@IsConnectorLoading" EmptyText="外部連携スタブ設定はありません。">
             <RowActions Context="connector">
@@ -63,7 +71,7 @@
     <section class="panel">
         <div class="section-heading">
             <h2>外部連携スタブ実行履歴</h2>
-            <span class="muted">connector_id: @(SelectedConnectorId?.ToString("D") ?? "-")</span>
+            <span class="muted">連携ID: @(SelectedConnectorId?.ToString("D") ?? "-")</span>
         </div>
         <DataTable Items="@ConnectorRuns" Columns="@ConnectorRunColumns" IsLoading="@IsConnectorRunLoading" EmptyText="外部連携スタブ実行履歴はありません。">
             <RowActions Context="run">

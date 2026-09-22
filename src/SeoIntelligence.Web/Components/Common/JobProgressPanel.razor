@@ -33,7 +33,7 @@
     private static readonly IReadOnlyList<DataTableColumn<JobDetails>> JobColumns =
     [
         new("種別", job => job.JobType),
-        new("状態", job => job.Status),
+        new("状態", job => UiText.Status(job.Status)),
         new("進捗", job => $"{job.Progress}%"),
         new("再試行", job => job.RetryCount.ToString()),
         new("更新", job => FormatDateTime(job.UpdatedAt))

@@ -12,27 +12,29 @@
     <header class="page-header">
         <div>
             <h1>管理</h1>
-            <p>Workspace、API認証情報、通知、ジョブ、監査ログ</p>
+            <p>ワークスペース、API認証情報、通知、ジョブ、監査ログ</p>
         </div>
-        <button type="button" class="secondary-button" @onclick="LoadAllAsync">更新</button>
+        <button type="button" class="secondary-button" @onclick="LoadAllAsync" disabled="@IsSaving">更新</button>
     </header>
 
-    <ErrorSummary Errors="@Errors" Message="@Message" />
-
     <nav class="tab-bar" aria-label="管理メニュー">
-        <button type="button" class="@TabClass(WorkspaceTab)" @onclick="@(() => SetTab(WorkspaceTab))">Workspace</button>
-        <button type="button" class="@TabClass(CredentialTab)" data-testid="admin-credentials-tab" @onclick="@(() => SetTab(CredentialTab))">APIキー</button>
-        <button type="button" class="@TabClass(CreditTab)" @onclick="@(() => SetTab(CreditTab))">クレジット</button>
-        <button type="button" class="@TabClass(NotificationTab)" @onclick="@(() => SetTab(NotificationTab))">Discord通知</button>
-        <button type="button" class="@TabClass(JobTab)" @onclick="@(() => SetTab(JobTab))">ジョブ</button>
-        <button type="button" class="@TabClass(Phase2Tab)" @onclick="@(() => SetTab(Phase2Tab))">Phase 2運用</button>
-        <button type="button" class="@TabClass(Phase3Tab)" @onclick="@(() => SetTab(Phase3Tab))">Phase 3連携</button>
-        <button type="button" class="@TabClass(AuditTab)" @onclick="@(() => SetTab(AuditTab))">監査ログ</button>
+        <button type="button" disabled="@IsSaving" class="@TabClass(WorkspaceTab)" @onclick="@(() => SetTab(WorkspaceTab))">ワークスペース</button>
+        <button type="button" disabled="@IsSaving" class="@TabClass(CredentialTab)" data-testid="admin-credentials-tab" @onclick="@(() => SetTab(CredentialTab))">APIキー</button>
+        <button type="button" disabled="@IsSaving" class="@TabClass(CreditTab)" @onclick="@(() => SetTab(CreditTab))">クレジット</button>
+        <button type="button" disabled="@IsSaving" class="@TabClass(NotificationTab)" @onclick="@(() => SetTab(NotificationTab))">Discord通知</button>
+        <button type="button" disabled="@IsSaving" class="@TabClass(JobTab)" @onclick="@(() => SetTab(JobTab))">ジョブ</button>
+        <button type="button" disabled="@IsSaving" class="@TabClass(Phase2Tab)" @onclick="@(() => SetTab(Phase2Tab))">監視・アラート</button>
+        <button type="button" disabled="@IsSaving" class="@TabClass(Phase3Tab)" @onclick="@(() => SetTab(Phase3Tab))">外部サービス連携</button>
+        <button type="button" disabled="@IsSaving" class="@TabClass(AuditTab)" @onclick="@(() => SetTab(AuditTab))">監査ログ</button>
     </nav>
+
+    <ErrorSummary Errors="@Errors" />
+    <ActionFeedback IsBusy="@IsSaving" SuccessMessage="@Message" />
+    <fieldset class="panel-group" disabled="@IsSaving" aria-busy="@IsSaving.ToString().ToLowerInvariant()">
 
     @if (ActiveTab == WorkspaceTab)
     {
-        <AdminWorkspacePanel WorkspaceForm="@WorkspaceForm" WorkspaceStatus="@WorkspaceStatus" OnSave="SaveWorkspaceAsync" />
+        <AdminWorkspacePanel WorkspaceForm="@WorkspaceForm" WorkspaceStatus="@WorkspaceStatus" OnSave='() => SaveSettingsAsync(SaveWorkspaceAsync, "ワークスペース設定を保存しました。")' />
     }
     else if (ActiveTab == CredentialTab)
     {
@@ -48,9 +50,9 @@
             IsCredentialLoading="@IsCredentialLoading"
             OnStatusChanged="OnCredentialStatusChanged"
             OnReload="LoadCredentialsAsync"
-            OnSave="SaveCredentialAsync"
+            OnSave='() => SaveSettingsAsync(SaveCredentialAsync, "API認証情報を保存しました。")'
             OnClear="ClearCredentialForm"
-            OnRotate="RotateCredentialAsync"
+            OnRotate='() => SaveSettingsAsync(RotateCredentialAsync, "APIキーを更新しました。")'
             OnClearRotate="ClearRotateForm"
             OnEdit="EditCredential"
             OnStartRotate="StartRotateCredential"
@@ -83,7 +85,7 @@
             OnChannelStatusChanged="OnChannelStatusChanged"
             OnDeliveryStatusChanged="OnDeliveryStatusChanged"
             OnReload="LoadNotificationsAsync"
-            OnSaveChannel="SaveChannelAsync"
+            OnSaveChannel='() => SaveSettingsAsync(SaveChannelAsync, "通知設定を保存しました。")'
             OnClearChannel="ClearChannelForm"
             OnEditChannel="EditChannel"
             OnTestChannel="TestChannelAsync"
@@ -130,7 +132,7 @@
             IsConnectorRunLoading="@IsConnectorRunLoading"
             OnConnectorStatusChanged="OnConnectorStatusChanged"
             OnReload="LoadPhase3OperationsAsync"
-            OnSaveConnector="SaveConnectorAsync"
+            OnSaveConnector='() => SaveSettingsAsync(SaveConnectorAsync, "外部連携設定を保存しました。")'
             OnClearConnector="ClearConnectorForm"
             OnEditConnector="EditConnector"
             OnTestConnector="TestConnectorAsync"
@@ -146,9 +148,28 @@
             IsAuditLoading="@IsAuditLoading"
             OnSearch="LoadAuditLogsAsync" />
     }
+    </fieldset>
 </div>
 
 @code {
+    private bool IsSaving { get; set; }
+
+    private async Task SaveSettingsAsync(Func<Task> save, string successMessage)
+    {
+        if (IsSaving) return;
+        IsSaving = true;
+        ClearErrors();
+        try
+        {
+            await save();
+            Message = Errors.Count == 0 ? successMessage : null;
+        }
+        finally
+        {
+            IsSaving = false;
+        }
+    }
+
     private const string WorkspaceTab = "workspace";
     private const string CredentialTab = "credential";
     private const string CreditTab = "credit";
@@ -189,84 +210,84 @@
 
     private static readonly IReadOnlyList<DataTableColumn<ApiCredentialDetails>> CredentialColumns =
     [
-        new("Provider", credential => credential.Provider),
-        new("Key Ref", credential => credential.KeyRef),
-        new("状態", credential => credential.Status),
+        new("サービス", credential => credential.Provider),
+        new("キー参照名", credential => credential.KeyRef),
+        new("状態", credential => UiText.Status(credential.Status)),
         new("更新", credential => FormatDateTime(credential.UpdatedAt))
     ];
 
     private static readonly IReadOnlyList<DataTableColumn<ExternalApiCallDetails>> ExternalCallColumns =
     [
-        new("Provider", call => call.Provider),
-        new("Endpoint", call => call.Endpoint),
-        new("Status", call => call.StatusCode.ToString()),
-        new("Credit", call => call.ConsumedCredit.ToString("0.##")),
-        new("Cache", call => call.CacheHit ? "hit" : "miss"),
-        new("Created", call => FormatDateTime(call.CreatedAt))
+        new("サービス", call => call.Provider),
+        new("APIエンドポイント", call => call.Endpoint),
+        new("状態", call => call.StatusCode.ToString()),
+        new("消費クレジット", call => call.ConsumedCredit.ToString("0.##")),
+        new("キャッシュ", call => call.CacheHit ? "利用あり" : "利用なし"),
+        new("作成日時", call => FormatDateTime(call.CreatedAt))
     ];
 
     private static readonly IReadOnlyList<DataTableColumn<NotificationChannelDetails>> ChannelColumns =
     [
         new("名称", channel => channel.Name),
-        new("Type", channel => channel.ChannelType),
-        new("Webhook Ref", channel => channel.WebhookSecretRef),
-        new("Events", channel => string.Join(", ", channel.EventTypes)),
-        new("状態", channel => channel.Status)
+        new("種類", channel => channel.ChannelType),
+        new("Webhook参照名", channel => channel.WebhookSecretRef),
+        new("通知イベント", channel => string.Join(", ", channel.EventTypes)),
+        new("状態", channel => UiText.Status(channel.Status))
     ];
 
     private static readonly IReadOnlyList<DataTableColumn<NotificationDeliveryDetails>> DeliveryColumns =
     [
-        new("Event", delivery => delivery.EventType),
-        new("状態", delivery => delivery.Status),
-        new("Retry", delivery => delivery.RetryCount.ToString()),
-        new("Error", delivery => delivery.ErrorMessage),
-        new("Created", delivery => FormatDateTime(delivery.CreatedAt))
+        new("イベント", delivery => delivery.EventType),
+        new("状態", delivery => UiText.Status(delivery.Status)),
+        new("再試行回数", delivery => delivery.RetryCount.ToString()),
+        new("エラー", delivery => delivery.ErrorMessage),
+        new("作成日時", delivery => FormatDateTime(delivery.CreatedAt))
     ];
 
     private static readonly IReadOnlyList<DataTableColumn<AuditLogDetails>> AuditColumns =
     [
-        new("Action", audit => audit.Action),
-        new("Resource", audit => $"{audit.ResourceType}:{audit.ResourceId}"),
-        new("Actor", audit => audit.Actor),
-        new("Correlation", audit => audit.CorrelationId),
-        new("Created", audit => FormatDateTime(audit.CreatedAt))
+        new("操作", audit => audit.Action),
+        new("対象", audit => $"{audit.ResourceType}:{audit.ResourceId}"),
+        new("実行者", audit => audit.Actor),
+        new("追跡ID", audit => audit.CorrelationId),
+        new("作成日時", audit => FormatDateTime(audit.CreatedAt))
     ];
 
     private static readonly IReadOnlyList<DataTableColumn<RankAlertDetails>> Phase2AlertColumns =
     [
-        new("Type", alert => alert.AlertType),
-        new("Status", alert => alert.Status),
-        new("Channel", alert => alert.NotificationChannelId?.ToString("D")),
-        new("Last Triggered", alert => alert.LastTriggeredAt.HasValue ? FormatDateTime(alert.LastTriggeredAt.Value) : "-"),
-        new("Updated", alert => FormatDateTime(alert.UpdatedAt))
+        new("種類", alert => alert.AlertType),
+        new("状態", alert => UiText.Status(alert.Status)),
+        new("通知先", alert => alert.NotificationChannelId?.ToString("D")),
+        new("最終検知", alert => alert.LastTriggeredAt.HasValue ? FormatDateTime(alert.LastTriggeredAt.Value) : "-"),
+        new("更新日時", alert => FormatDateTime(alert.UpdatedAt))
     ];
 
     private static readonly IReadOnlyList<DataTableColumn<RankAlertEventDetails>> Phase2AlertEventColumns =
     [
-        new("Event", alertEvent => alertEvent.EventType),
-        new("Keyword", alertEvent => alertEvent.Keyword),
-        new("Job", alertEvent => alertEvent.JobId?.ToString("D")),
-        new("Delivery", alertEvent => alertEvent.NotificationDeliveryId?.ToString("D")),
-        new("Triggered", alertEvent => FormatDateTime(alertEvent.TriggeredAt))
+        new("イベント", alertEvent => alertEvent.EventType),
+        new("キーワード", alertEvent => alertEvent.Keyword),
+        new("ジョブ", alertEvent => alertEvent.JobId?.ToString("D")),
+        new("通知", alertEvent => alertEvent.NotificationDeliveryId?.ToString("D")),
+        new("検知日時", alertEvent => FormatDateTime(alertEvent.TriggeredAt))
     ];
 
     private static readonly IReadOnlyList<DataTableColumn<ConnectorSettingsDetails>> ConnectorColumns =
     [
-        new("Type", connector => connector.ConnectorType),
+        new("種類", connector => connector.ConnectorType),
         new("名称", connector => connector.Name),
-        new("Auth Ref", connector => connector.AuthRef),
-        new("状態", connector => connector.Status),
-        new("Updated", connector => FormatDateTime(connector.UpdatedAt))
+        new("認証情報の参照名", connector => connector.AuthRef),
+        new("状態", connector => UiText.Status(connector.Status)),
+        new("更新日時", connector => FormatDateTime(connector.UpdatedAt))
     ];
 
     private static readonly IReadOnlyList<DataTableColumn<ConnectorRunDetails>> ConnectorRunColumns =
     [
-        new("Run Type", run => run.RunType),
-        new("状態", run => run.Status),
-        new("Started", run => FormatDateTime(run.StartedAt)),
-        new("Completed", run => run.CompletedAt.HasValue ? FormatDateTime(run.CompletedAt.Value) : "-"),
-        new("Summary", run => JsonSummary(run.ResultSummary)),
-        new("Error", run => run.Error.HasValue ? JsonSummary(run.Error.Value) : "-")
+        new("実行種別", run => run.RunType),
+        new("状態", run => UiText.Status(run.Status)),
+        new("開始日時", run => FormatDateTime(run.StartedAt)),
+        new("完了日時", run => run.CompletedAt.HasValue ? FormatDateTime(run.CompletedAt.Value) : "-"),
+        new("概要", run => JsonSummary(run.ResultSummary)),
+        new("エラー", run => run.Error.HasValue ? JsonSummary(run.Error.Value) : "-")
     ];
 
     private string ActiveTab { get; set; } = WorkspaceTab;
@@ -407,8 +428,8 @@
     private async Task SaveWorkspaceAsync()
     {
         ClearErrors();
-        var retention = ParseJson(WorkspaceForm.RetentionSettingsJson, "Retention JSON");
-        var notificationDefaults = ParseJson(WorkspaceForm.NotificationDefaultsJson, "Notification Defaults JSON");
+        var retention = ParseJson(WorkspaceForm.RetentionSettingsJson, "データ保持設定");
+        var notificationDefaults = ParseJson(WorkspaceForm.NotificationDefaultsJson, "通知の既定設定");
         if (Errors.Count > 0)
         {
             return;
@@ -824,7 +845,7 @@
             return;
         }
 
-        var settings = ParseJson(ConnectorForm.SettingsJson, "settings JSON");
+        var settings = ParseJson(ConnectorForm.SettingsJson, "連携設定");
         if (Errors.Count > 0)
         {
             return;
@@ -932,7 +953,11 @@
     }
 
     private void SetTab(string tab)
-        => ActiveTab = tab;
+    {
+        if (IsSaving) return;
+        ActiveTab = tab;
+        ClearErrors();
+    }
 
     private void SetPhase2JobType(string jobType)
         => Phase2JobType = jobType;
@@ -982,9 +1007,9 @@
             using var document = JsonDocument.Parse(json);
             return document.RootElement.Clone();
         }
-        catch (JsonException exception)
+        catch (JsonException)
         {
-            Errors = [new ApiError("Validation.Json.Invalid", exception.Message, target)];
+            Errors = [new ApiError("Validation.Json.Invalid", "JSONの形式を確認してください。プロパティ名は二重引用符で囲んでください。", target)];
             return null;
         }
     }

@@ -1,30 +1,36 @@
 <section class="panel">
     <div class="section-heading">
         <h2>ワークスペース設定</h2>
-        <span class="muted">@WorkspaceStatus</span>
+        <span class="muted">@UiText.Status(WorkspaceStatus)</span>
     </div>
-    <div class="form-grid">
-        <label class="field">
+    <div class="form-columns">
+      <div class="form-fields">
+        <label class="field full-width">
             <span>名称</span>
             <input @bind="WorkspaceForm.Name" />
         </label>
         <label class="field">
-            <span>Default Location</span>
+            <span>既定の地域</span>
             <input @bind="WorkspaceForm.DefaultLocation" />
         </label>
         <label class="field">
-            <span>Default Language</span>
+            <span>既定の言語</span>
             <input @bind="WorkspaceForm.DefaultLanguage" />
         </label>
-        <label class="field">
-            <span>Retention JSON</span>
+        <details class="advanced-settings full-width">
+          <summary>詳細設定</summary>
+          <p class="field-help">データの保持期間と通知の既定値を設定します。</p>
+        <label class="field json-field">
+            <span>データ保持設定（JSON）</span>
             <textarea @bind="WorkspaceForm.RetentionSettingsJson"></textarea>
         </label>
-        <label class="field">
-            <span>Notification Defaults JSON</span>
+        <label class="field json-field">
+            <span>通知の既定設定（JSON）</span>
             <textarea @bind="WorkspaceForm.NotificationDefaultsJson"></textarea>
         </label>
-        <button type="button" class="primary-button" @onclick="SaveAsync">保存</button>
+        </details>
+        <div class="form-actions full-width"><button type="button" class="primary-button" @onclick="SaveAsync">ワークスペース設定を保存</button></div>
+      </div>
     </div>
 </section>
 

@@ -55,6 +55,10 @@ docker compose --project-name seo-intelligence-prod --env-file .env.production -
 
 ローカル手順の正本は [`environment_setup.md`](environment_setup.md) 3.3節。コンテナスモークは `bash scripts/container-smoke.sh`（隔離projectで実行され、開発スタックへ影響しない）。
 
+Dockerのrestoreは、プロジェクトファイルだけで行うキャッシュ準備と、`COPY src/`後のWebプロジェクトのrestoreに分ける。Blazorの起動スクリプトはRazorコンポーネントが存在する場合にSDKが追加する暗黙パッケージに含まれるため、後者を省略して`--no-restore`でbuildすると、HTMLは表示できても`_framework/blazor.web.js`がpublish成果物から欠落する。API/WorkerのrestoreやMigration方針は変更しない。
+
+`container-smoke.sh`はログインHTMLが参照するBlazorスクリプト（fingerprint付きURLを含む）をGETし、JavaScriptのContent-Typeで取得できることも確認する。デプロイ後に「ログインできるが保存・タブ切替が反応しない」場合は、ブラウザのNetworkでこの要求のstatus/Content-Typeと`/_blazor`接続を確認する。スクリプトが404の場合はブラウザの保護機能を無効化せず、修正済みDockerfileでimageを再ビルドし、通常の検証・デプロイ手順で反映する。
+
 ## 3. VPSの初回デプロイ
 
 ### 3.1 設定ファイルと共通network

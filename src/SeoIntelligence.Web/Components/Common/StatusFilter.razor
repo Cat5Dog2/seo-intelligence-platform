@@ -3,7 +3,7 @@
     <select value="@Value" @onchange="OnChanged">
         @foreach (var status in Statuses)
         {
-            <option value="@status.Value">@status.Label</option>
+            <option value="@status.Value">@UiText.Status(status.Label)</option>
         }
     </select>
 </label>

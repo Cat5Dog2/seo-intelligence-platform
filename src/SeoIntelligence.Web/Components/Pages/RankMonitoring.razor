@@ -20,6 +20,10 @@
     </header>
 
     <ErrorSummary Errors="@Errors" />
+    @if (!ProjectState.IsLoading && ProjectState.SelectedProject is null && ProjectState.ErrorMessage is null)
+    {
+        <GettingStarted />
+    }
     @if (!string.IsNullOrWhiteSpace(Message))
     {
         <div class="state-row" data-testid="rank-status-message">@Message</div>

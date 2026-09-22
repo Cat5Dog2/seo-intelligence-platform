@@ -158,6 +158,15 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 
 ローカルとCIの最小確認は以下を使う。
 
+Blazor起動スクリプトの配信は`WebStaticAssetTests`で、ログインHTML内の参照先をGETし、200・JavaScriptのContent-Type・スクリプト本文を確認する。コンテナのpublishでのみ起きる欠落はソース実行のテストでは検出できないため、`scripts/container-smoke.sh`でも実imageのログインHTMLが参照するスクリプトを取得する。HTMLやヘルスチェックの成功だけでは、保存・管理タブ等の対話機能の起動を検証したことにはしない。
+
+```text
+dotnet test tests/IntegrationTests/IntegrationTests.csproj --filter FullyQualifiedName~WebStaticAssetTests
+bash scripts/container-smoke.sh
+```
+
+ブラウザではプロジェクト保存後の一覧反映、管理のAPIキータブへの切替、左ナビゲーションの通常・選択状態を確認する。`NavLink`が生成するリンクには親レイアウトのCSS isolation属性が付かないため、子要素に届くスコープ指定も実表示で確認する。
+
 ```text
 dotnet build
 dotnet test
@@ -243,6 +252,29 @@ BrowserE2Eは代表的なユーザーフローの疎通確認に限定し、全A
 Integration/Contract/E2Eの正式な実行条件、テストDB初期化、外部API Mockの固定データは各実装Issueで追記する。
 
 ## 11. 完了条件
+
+### UI/UX改善の回帰確認
+
+```text
+dotnet test tests/E2ETests/E2ETests.csproj --no-restore --filter FullyQualifiedName~Blazor
+dotnet test tests/IntegrationTests/IntegrationTests.csproj --no-restore --filter "FullyQualifiedName~WebStaticAssetTests|FullyQualifiedName~WebAuthenticationTests|FullyQualifiedName~WebAccountAuthorizationTests"
+```
+
+`BlazorUsabilityTests`は実コンポーネントを描画し、プロジェクト有無に応じた調査リンク、成功通知とエラー通知の区別、保存中に前回結果を表示しないこと、日本語の状態ラベルと元のAPI値の維持、API使用量の取得失敗を検証する。
+
+ブラウザでは、空のプロジェクト状態からの作成、必須入力、重複名、不正なKPI JSON、成功後の一覧反映、サイト追加、管理設定の保存、通信待ちの二重送信防止を確認する。APIの失敗や遅延はローカルのテスト用HTTPハンドラーで再現し、本番データや外部APIクレジットを使わない。デスクトップと375×667 CSS pxに加え、Android向けの360×640・393×851・412×915 CSS pxで、メニューの開閉、遷移後の閉鎖、詳細設定、フォームと表の横はみ出しを確認する。
+
+`BrowserMobileLayoutTests`は上記4サイズそれぞれのタッチ有効Chromiumで、長い英数字名のプロジェクトを作成し、業務14画面、管理8タブ、ログイン/アカウント/権限不足/404/エラー画面を確認する。Androidの3ケースはPlaywrightのPixel 7プロファイル（AndroidのUser-Agent・画面倍率等）を使い、ビューポートを各サイズに上書きする。これらはレイアウトの検証条件であり、特定実機の完全な再現を意味しない。ページ全体の横はみ出し、入力欄とボタンの画面外配置、44px未満の操作領域、16px未満の入力文字を検出する。ログイン・作成・管理タブ・詳細設定・メニューをタップで操作し、表内のキーボード横スクロールも検証する。ページが縦に長いことや、入力欄内の長い値のスクロールは不具合とみなさない。
+
+```text
+dotnet test tests/E2ETests/E2ETests.csproj --no-restore --filter FullyQualifiedName~BrowserMobileLayoutTests
+```
+
+上記は既存の`E2E_BROWSER_ENABLED=true`、`E2E_WEB_URL`、`E2E_ADMIN_EMAIL`、`E2E_ADMIN_PASSWORD`とPlaywright Chromiumを使用する。合成プロジェクトを作成するため、隔離したローカル/CI環境で実行する。外部APIジョブや通知は実行しない。エミュレーションは実機iOS Safari/Android Chrome検証を代替しない。実機ではソフトウェアキーボード表示中の入力・保存、日本語IME、表のスワイプ、画面回転、ブラウザの戻る操作を別途確認する。Samsung Internetやアプリ内WebViewはこの自動テストの検証対象に含めない。
+
+APIキーを実値で登録するBrowserE2Eは、空のキー参照名を入力するために詳細設定を開く必要はない。参照名を指定する経路を試す場合だけ詳細設定を開く。
+
+### フェーズごとの完了条件
 
 | フェーズ | 完了条件 |
 | --- | --- |

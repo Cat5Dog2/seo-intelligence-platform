@@ -4,7 +4,7 @@
 
 <div class="location-language-selector">
     <label>
-        <span>Location</span>
+        <span>地域</span>
         <select value="@SelectedLocation" @onchange="OnLocationChanged" disabled="@(!CanEdit)">
             <option value="@SelectedLocation">@SelectedLocation</option>
             @foreach (var location in Locations.Where(location => !string.Equals(location.Code, SelectedLocation, StringComparison.OrdinalIgnoreCase)))
@@ -14,7 +14,7 @@
         </select>
     </label>
     <label>
-        <span>Language</span>
+        <span>言語</span>
         <select value="@SelectedLanguage" @onchange="OnLanguageChanged" disabled="@(!CanEdit)">
             <option value="@SelectedLanguage">@SelectedLanguage</option>
             @foreach (var language in Languages.Where(language => !string.Equals(language.Code, SelectedLanguage, StringComparison.OrdinalIgnoreCase)))
@@ -23,8 +23,9 @@
             }
         </select>
     </label>
-    <button type="button" class="icon-button text-button" title="地域と言語を更新" disabled="@(!CanSave)" @onclick="SaveAsync">保存</button>
+    <button type="button" class="icon-button text-button" disabled="@(!CanSave)" @onclick="SaveAsync">@(IsSaving ? "保存中…" : "設定を反映")</button>
 </div>
+<ActionFeedback IsBusy="@IsSaving" Errors="@SaveErrors" SuccessMessage="@SuccessMessage" />
 
 @code {
     private IReadOnlyList<LocationSummary> Locations { get; set; } = [];
@@ -36,6 +37,8 @@
     private string SelectedLanguage { get; set; } = "Japanese";
 
     private bool IsSaving { get; set; }
+    private IReadOnlyList<ApiError> SaveErrors { get; set; } = [];
+    private string? SuccessMessage { get; set; }
 
     private bool CanEdit => ProjectState.SelectedProject is not null && !IsSaving;
 
@@ -63,32 +66,54 @@
     }
 
     private void OnLocationChanged(ChangeEventArgs args)
-        => SelectedLocation = args.Value?.ToString() ?? SelectedLocation;
+    {
+        SuccessMessage = null;
+        SaveErrors = [];
+        SelectedLocation = args.Value?.ToString() ?? SelectedLocation;
+    }
 
     private void OnLanguageChanged(ChangeEventArgs args)
-        => SelectedLanguage = args.Value?.ToString() ?? SelectedLanguage;
+    {
+        SuccessMessage = null;
+        SaveErrors = [];
+        SelectedLanguage = args.Value?.ToString() ?? SelectedLanguage;
+    }
 
     private async Task SaveAsync()
     {
-        if (ProjectState.SelectedProject is not { } project)
+        if (!CanSave || ProjectState.SelectedProject is not { } project)
         {
             return;
         }
 
         IsSaving = true;
-        var result = await ApiClient.UpdateProjectAsync(
-            project.ProjectId,
-            new ProjectUpdateRequest(project.Name, SelectedLocation, SelectedLanguage, project.Kpi, project.Memo));
-        if (result.IsSuccess)
+        SaveErrors = [];
+        SuccessMessage = null;
+        try
         {
-            await ProjectState.RefreshAsync();
+            var result = await ApiClient.UpdateProjectAsync(
+                project.ProjectId,
+                new ProjectUpdateRequest(project.Name, SelectedLocation, SelectedLanguage, project.Kpi, project.Memo));
+            if (result.IsSuccess)
+            {
+                await ProjectState.RefreshAsync();
+                SuccessMessage = "地域と言語を更新しました。";
+            }
+            else
+            {
+                SaveErrors = result.Errors;
+            }
         }
-
-        IsSaving = false;
+        finally
+        {
+            IsSaving = false;
+        }
     }
 
     private void OnProjectStateChanged()
     {
+        SuccessMessage = null;
+        SaveErrors = [];
         SyncFromProject();
         _ = InvokeAsync(StateHasChanged);
     }

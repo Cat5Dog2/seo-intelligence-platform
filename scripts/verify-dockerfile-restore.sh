@@ -4,8 +4,9 @@
 #
 #   bash scripts/verify-dockerfile-restore.sh
 #
-# The restore stage runs `dotnet tool restore` and `dotnet restore`; every stage after it runs
-# --no-restore or --no-build and reads the result. A cache mount is not part of any layer, so it is
+# The restore stage runs `dotnet tool restore` and `dotnet restore`. Web restores again with its
+# Razor sources present; the other builds and publish stages consume the saved packages/tools.
+# A cache mount is not part of any layer, so it is
 # not carried by a registry or GitHub Actions layer cache. A build that restores its layers from a
 # remote cache and then re-executes one of the later stages finds nothing there:
 #

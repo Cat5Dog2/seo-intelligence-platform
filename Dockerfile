@@ -21,10 +21,9 @@ COPY src/SeoIntelligence.Worker/SeoIntelligence.Worker.csproj src/SeoIntelligenc
 # Restored into the image layer rather than a BuildKit cache mount.
 #
 # A cache mount is not part of any layer, so it is not carried by a registry or a
-# GitHub Actions layer cache. Every later stage here runs --no-restore or --no-build
-# and reads what this stage produced, so a build that restores its layers from a
-# remote cache and then re-executes one of those stages finds the packages and the
-# local tools gone:
+# GitHub Actions layer cache. The later builds/publishes consume the saved packages
+# and tools (Web also restores its source-dependent assets below). Restoring layers
+# from a remote cache and then re-executing those stages would find them gone:
 #
 #   Run "dotnet tool restore" to make the "dotnet-ef" command available.
 #   MSB3030: Could not copy the file ".../dapper/2.0.123/lib/net5.0/Dapper.dll"
@@ -45,8 +44,12 @@ COPY src/ src/
 # and are reused by every publish target and the migration bundle.
 FROM restore AS build
 ARG BUILD_CONFIGURATION=Release
+# The Web SDK adds its Blazor boot assets only when Razor components are present.
+# The project-only restore above warms the cache but cannot resolve that implicit
+# reference. Restore Web again after COPY src/ or publish silently omits blazor.web.js.
 RUN \
-    dotnet build src/SeoIntelligence.Api/SeoIntelligence.Api.csproj --configuration ${BUILD_CONFIGURATION} --no-restore \
+    dotnet restore src/SeoIntelligence.Web/SeoIntelligence.Web.csproj \
+    && dotnet build src/SeoIntelligence.Api/SeoIntelligence.Api.csproj --configuration ${BUILD_CONFIGURATION} --no-restore \
     && dotnet build src/SeoIntelligence.Web/SeoIntelligence.Web.csproj --configuration ${BUILD_CONFIGURATION} --no-restore \
     && dotnet build src/SeoIntelligence.Worker/SeoIntelligence.Worker.csproj --configuration ${BUILD_CONFIGURATION} --no-restore
 

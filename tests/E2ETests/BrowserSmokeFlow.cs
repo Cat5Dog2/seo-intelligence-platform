@@ -111,7 +111,6 @@ internal sealed class BrowserSmokeFlow(
         await NavigateAsync($"{webUrl}/admin");
         await page.GetByTestId("admin-credentials-tab").ClickAsync();
         await page.GetByTestId("admin-credential-provider-input").FillAsync(provider);
-        await page.GetByTestId("admin-credential-key-ref-input").FillAsync(string.Empty);
         await page.GetByTestId("admin-credential-secret-input").FillAsync(secret);
         await WaitForEnabledAsync("admin-credential-save-button");
         await page.GetByTestId("admin-credential-save-button").ClickAsync();

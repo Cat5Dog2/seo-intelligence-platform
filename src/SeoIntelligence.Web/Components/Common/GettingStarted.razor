@@ -1,0 +1,33 @@
+<section class="getting-started" aria-labelledby="getting-started-title">
+    <div>
+        <h2 id="getting-started-title">SEO調査を始めましょう</h2>
+        <p>プロジェクトを用意して、キーワード候補と検索需要を調べます。</p>
+    </div>
+    <ol class="getting-started-steps">
+        <li>
+            <span class="step-number" aria-hidden="true">1</span>
+            <div><strong>プロジェクト作成</strong><p>サイトやテーマごとに調査をまとめます。</p>
+                <a href="/#project-form">@(HasProject ? "プロジェクトを管理" : "プロジェクトを作成")</a>
+            </div>
+        </li>
+        <li>
+            <span class="step-number" aria-hidden="true">2</span>
+            <div><strong>キーワード探索</strong><p>軸になる言葉から候補を見つけます。</p>
+                @if (HasProject) { <a href="/keywords">キーワードを探す</a> }
+                else { <span class="muted">プロジェクト作成後に利用できます</span> }
+            </div>
+        </li>
+        <li>
+            <span class="step-number" aria-hidden="true">3</span>
+            <div><strong>検索ボリューム調査</strong><p>候補の検索需要を比較します。</p>
+                @if (HasProject) { <a href="/search-volume">検索ボリュームを調べる</a> }
+                else { <span class="muted">プロジェクト作成後に利用できます</span> }
+            </div>
+        </li>
+    </ol>
+</section>
+
+@code {
+    [Parameter]
+    public bool HasProject { get; set; }
+}
