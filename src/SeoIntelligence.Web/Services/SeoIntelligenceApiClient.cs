@@ -206,6 +206,12 @@ public sealed partial class SeoIntelligenceApiClient : ISeoIntelligenceApiClient
         CancellationToken cancellationToken = default)
         => SendAsync<ArticleBriefDetails>(HttpMethod.Put, $"/api/projects/{projectId:D}/briefs/{briefId:D}", request, cancellationToken);
 
+    public Task<ApiClientResult<AiChatResponse>> GetAiMessageAsync(
+        Guid projectId,
+        Guid messageId,
+        CancellationToken cancellationToken = default)
+        => SendAsync<AiChatResponse>(HttpMethod.Get, $"/api/projects/{projectId:D}/ai/messages/{messageId:D}", cancellationToken: cancellationToken);
+
     public Task<ApiClientResult<AiChatResponse>> ChatWithAiAsync(
         Guid projectId,
         AiChatRequest request,
@@ -513,6 +519,12 @@ public sealed partial class SeoIntelligenceApiClient : ISeoIntelligenceApiClient
                 ("page", page),
                 ("pageSize", pageSize)),
             cancellationToken: cancellationToken);
+
+    public Task<ApiClientResult<KeywordDiscoveryResult>> GetKeywordDiscoveryResultsAsync(
+        Guid projectId,
+        Guid jobId,
+        CancellationToken cancellationToken = default)
+        => SendAsync<KeywordDiscoveryResult>(HttpMethod.Get, $"/api/projects/{projectId:D}/keyword-discovery/jobs/{jobId:D}/results", cancellationToken: cancellationToken);
 
     public Task<ApiClientResult<KeywordDiscoveryResult>> DiscoverKeywordsAsync(
         Guid projectId,

@@ -58,6 +58,11 @@ public sealed class AiAssistantIntegrationTests
         Assert.Equal(StatusValues.Pending, data.GetProperty("reviewStatus").GetString());
         Assert.Contains("queued", data.GetProperty("response").GetString(), StringComparison.OrdinalIgnoreCase);
 
+        using (var pending = await client.GetAsync($"/api/projects/{projectId}/ai/messages/{messageId}"))
+        {
+            Assert.Equal(HttpStatusCode.OK, pending.StatusCode);
+        }
+
         await DispatchAsync(factory, jobId);
 
         await using var scope = factory.Services.CreateAsyncScope();
@@ -76,6 +81,26 @@ public sealed class AiAssistantIntegrationTests
         Assert.Equal("redacted", message.RedactionStatus);
         Assert.Equal(StatusValues.Pending, message.ReviewStatus);
         Assert.Contains("Draft AI response", message.Response, StringComparison.Ordinal);
+        using (var completed = await client.GetAsync($"/api/projects/{projectId}/ai/messages/{messageId}"))
+        using (var completedJson = await ReadJsonAsync(completed))
+        {
+            Assert.Equal(HttpStatusCode.OK, completed.StatusCode);
+            var completedData = completedJson.RootElement.GetProperty("data");
+            Assert.Equal(message.Response, completedData.GetProperty("response").GetString());
+            Assert.True(completedData.GetProperty("tokenUsage").GetProperty("totalTokens").GetInt32() > 0);
+            Assert.Equal(jobId, completedData.GetProperty("jobId").GetGuid());
+            Assert.Equal("succeeded", completedData.GetProperty("jobStatus").GetString());
+            Assert.DoesNotContain("rk_live_123456789", completedJson.RootElement.GetRawText());
+        }
+
+        var otherProjectId = await SeedProjectWithAiReferenceDataAsync(factory);
+        using (var wrongProject = await client.GetAsync($"/api/projects/{otherProjectId}/ai/messages/{messageId}"))
+        using (var missing = await client.GetAsync($"/api/projects/{projectId}/ai/messages/{Guid.NewGuid()}"))
+        {
+            Assert.Equal(HttpStatusCode.NotFound, wrongProject.StatusCode);
+            Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+        }
+        Assert.Equal(1, await dbContext.Jobs.CountAsync(entity => entity.ProjectId == projectId && entity.JobType == "AiAssistantJob"));
         Assert.DoesNotContain("rk_live_123456789", message.Prompt, StringComparison.Ordinal);
         Assert.DoesNotContain("owner@example.com", message.Prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(StatusValues.Pending, version.ReviewStatus);
@@ -140,6 +165,35 @@ public sealed class AiAssistantIntegrationTests
         Assert.Contains(errors, error => error.GetProperty("target").GetString() == "message");
         Assert.Contains(errors, error => error.GetProperty("target").GetString() == "allowedTools");
         Assert.All(errors, error => Assert.Equal("Validation.Failed", error.GetProperty("code").GetString()));
+    }
+
+    [Theory]
+    [Trait("Category", "Integration")]
+    [InlineData("failed_fatal")]
+    [InlineData("canceled")]
+    public async Task ReadMessageReportsTerminalJobStatusWithoutGeneratingAnAnswer(string status)
+    {
+        await using var factory = new AiAssistantApiFactory();
+        using var client = CreateClient(factory);
+        var projectId = await SeedProjectWithAiReferenceDataAsync(factory);
+        using var queued = await client.PostAsJsonAsync($"/api/projects/{projectId}/ai/chat", new { message = "Summarize." });
+        Assert.Equal(HttpStatusCode.Accepted, queued.StatusCode);
+        using var queuedJson = await ReadJsonAsync(queued);
+        var messageId = queuedJson.RootElement.GetProperty("data").GetProperty("messageId").GetGuid();
+        var jobId = queuedJson.RootElement.GetProperty("data").GetProperty("jobId").GetGuid();
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<SeoIntelligenceDbContext>();
+        var job = await db.Jobs.SingleAsync(entity => entity.Id == jobId);
+        job.Status = status;
+        await db.SaveChangesAsync();
+
+        using var result = await client.GetAsync($"/api/projects/{projectId}/ai/messages/{messageId}");
+        Assert.Equal(HttpStatusCode.OK, result.StatusCode);
+        using var json = await ReadJsonAsync(result);
+        var data = json.RootElement.GetProperty("data");
+        Assert.Equal(status, data.GetProperty("jobStatus").GetString());
+        Assert.Equal("{}", data.GetProperty("tokenUsage").GetRawText());
+        Assert.False(await db.ArtifactVersions.AnyAsync(entity => entity.ArtifactId == messageId));
     }
 
     private static async Task DispatchAsync(AiAssistantApiFactory factory, Guid jobId)

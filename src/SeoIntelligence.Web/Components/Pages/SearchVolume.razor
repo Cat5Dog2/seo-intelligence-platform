@@ -133,6 +133,12 @@
         </div>
         <DataTable Items="@Results" Columns="@ResultColumns" IsLoading="@IsResultLoading" EmptyText="検索ボリューム結果はありません。" />
     </section>
+    @if (ProjectState.SelectedProject is not null)
+    {
+        <section class="panel">
+            <JobProgressPanel Title="CSV出力ジョブ" ProjectScoped="true" JobType="DataExportJob" />
+        </section>
+    }
 </div>
 
 @code {

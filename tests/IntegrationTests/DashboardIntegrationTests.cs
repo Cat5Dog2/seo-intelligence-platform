@@ -20,8 +20,16 @@ public sealed class DashboardIntegrationTests
     [Fact]
     [Trait("Category", "Integration")]
     public async Task DashboardIncludesPhase2CompetitorContentBriefRankAndAlertSummaries()
+        => await VerifyDashboardAsync(usePostgreSql: false);
+
+    [PostgreSqlFact]
+    [Trait("Category", "Integration")]
+    public async Task PostgreSqlDashboardSupportsPopulatedAndEmptyProjects()
+        => await VerifyDashboardAsync(usePostgreSql: true);
+
+    private static async Task VerifyDashboardAsync(bool usePostgreSql)
     {
-        await using var factory = new DashboardApiFactory();
+        await using var factory = new DashboardApiFactory(usePostgreSql);
         using var client = CreateClient(factory);
         var projectId = await SeedProjectAsync(factory, "Dashboard Phase2");
         var noisyProjectId = await SeedProjectAsync(factory, "Dashboard Phase2 Other");
@@ -42,6 +50,10 @@ public sealed class DashboardIntegrationTests
                 Assert.Equal(1, data.GetProperty("runningJobCount").GetInt32());
                 Assert.Equal(1, data.GetProperty("failedJobCount").GetInt32());
                 Assert.Equal(1, data.GetProperty("notificationFailureCount").GetInt32());
+                var scores = data.GetProperty("topOpportunityScores").EnumerateArray().ToArray();
+                Assert.Equal(10, scores.Length);
+                Assert.Equal(Enumerable.Range(3, 10).Reverse().Select(value => (decimal)value),
+                    scores.Select(row => row.GetProperty("opportunityScore").GetDecimal()));
 
                 var competitors = data.GetProperty("competitorSummary");
                 Assert.Equal(2, competitors.GetProperty("competitorCount").GetInt32());
@@ -92,6 +104,7 @@ public sealed class DashboardIntegrationTests
                 Assert.Equal(HttpStatusCode.OK, emptyResponse.StatusCode);
                 var emptyData = emptyDocument.RootElement.GetProperty("data");
                 Assert.Equal(0, emptyData.GetProperty("competitorSummary").GetProperty("competitorCount").GetInt32());
+                Assert.Empty(emptyData.GetProperty("topOpportunityScores").EnumerateArray());
                 Assert.Equal(0, emptyData.GetProperty("contentAnalysisSummary").GetProperty("keywordCount").GetInt32());
                 Assert.Equal(0, emptyData.GetProperty("briefSummary").GetProperty("briefCount").GetInt32());
                 Assert.Equal(0, emptyData.GetProperty("rankSummary").GetProperty("rankResultCount").GetInt32());
@@ -149,16 +162,26 @@ public sealed class DashboardIntegrationTests
         await using var scope = factory.Services.CreateAsyncScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<SeoIntelligenceDbContext>();
         var now = DateTime.UtcNow;
-        var influxKeywordId = Keyword("phase2 influx keyword", now);
-        var ownKeywordId = Keyword("phase2 own keyword", now);
-        var contentKeywordId = Keyword("phase2 content keyword", now);
-        var rankKeywordId = Keyword("phase2 rank keyword", now);
+        var influxKeywordId = Keyword($"phase2 influx keyword {projectId:N}", now);
+        var ownKeywordId = Keyword($"phase2 own keyword {projectId:N}", now);
+        var contentKeywordId = Keyword($"phase2 content keyword {projectId:N}", now);
+        var rankKeywordId = Keyword($"phase2 rank keyword {projectId:N}", now);
         var rankJobId = Guid.NewGuid();
         var rankChannelId = Guid.NewGuid();
         var rankAlertId = Guid.NewGuid();
         var rankDeliveryId = Guid.NewGuid();
 
         dbContext.Keywords.AddRange(influxKeywordId, ownKeywordId, contentKeywordId, rankKeywordId);
+        for (var score = 1; score <= 12; score++)
+        {
+            var keyword = Keyword($"dashboard score {score} {projectId:N}", now);
+            dbContext.Keywords.Add(keyword);
+            dbContext.ProjectKeywordScores.Add(new ProjectKeywordScoreEntity
+            {
+                Id = Guid.NewGuid(), ProjectId = projectId, KeywordId = keyword.Id,
+                Location = "JP", Language = "ja", OpportunityScore = score, ScoredAt = now
+            });
+        }
         dbContext.Sites.Add(new SiteEntity
         {
             Id = Guid.NewGuid(),
@@ -558,7 +581,7 @@ public sealed class DashboardIntegrationTests
     private static string HashText(string value)
         => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
 
-    private sealed class DashboardApiFactory : ServiceKeyApiFactory
+    private sealed class DashboardApiFactory(bool usePostgreSql = false) : ServiceKeyApiFactory
     {
         private readonly string databaseName = Guid.NewGuid().ToString("N");
 
@@ -587,12 +610,20 @@ public sealed class DashboardIntegrationTests
             builder.ConfigureServices(services =>
             {
                 services.AddDbContext<SeoIntelligenceDbContext>(options =>
-                    options.UseInMemoryDatabase(databaseName));
+                {
+                    if (usePostgreSql)
+                    {
+                        options.UseNpgsql(Environment.GetEnvironmentVariable("TEST_POSTGRES_CONNECTION"));
+                    }
+                    else
+                    {
+                        options.UseInMemoryDatabase(databaseName);
+                    }
+                });
 
                 using var provider = services.BuildServiceProvider();
                 using var scope = provider.CreateScope();
                 var context = scope.ServiceProvider.GetRequiredService<SeoIntelligenceDbContext>();
-                context.Database.EnsureDeleted();
                 context.Database.EnsureCreated();
             });
         }

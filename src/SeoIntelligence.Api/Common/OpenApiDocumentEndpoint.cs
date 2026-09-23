@@ -34,6 +34,7 @@ internal static class OpenApiDocumentEndpoint
         new("/api/projects/{projectId}/sites/{siteId}", Get: "Get site", Put: "Update site", Delete: "Archive site"),
         new("/api/projects/{projectId}/sites/{siteId}/restore", Post: "Restore site"),
         new("/api/projects/{projectId}/keyword-discovery/suggest", UseKeywordDiscoveryResponses: true),
+        new("/api/projects/{projectId}/keyword-discovery/jobs/{jobId}/results", Get: "Get stored keyword discovery results"),
         new("/api/projects/{projectId}/search-volume/jobs", Post: "Register search volume job", PostSuccessCode: "202"),
         new("/api/projects/{projectId}/search-volume/jobs/{jobId}", Get: "Get search volume job"),
         new("/api/projects/{projectId}/search-volume/jobs/{jobId}/results", Get: "List search volume results"),
@@ -82,7 +83,8 @@ internal static class OpenApiDocumentEndpoint
         new("/api/projects/{projectId}/connectors/{connectorId}", Put: "Update external connector stub", Delete: "Disable external connector stub"),
         new("/api/projects/{projectId}/connectors/{connectorId}/test", Post: "Run external connector connection test stub"),
         new("/api/projects/{projectId}/connectors/{connectorId}/runs", Get: "List external connector stub runs"),
-        new("/api/projects/{projectId}/ai/chat", Post: "Register AI assistant generation job", PostSuccessCode: "202")
+        new("/api/projects/{projectId}/ai/chat", Post: "Register AI assistant generation job", PostSuccessCode: "202"),
+        new("/api/projects/{projectId}/ai/messages/{messageId}", Get: "Get stored AI response and job status")
     ];
 
     public static IResult GetV1(HttpContext context)

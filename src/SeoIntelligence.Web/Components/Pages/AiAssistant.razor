@@ -57,6 +57,7 @@
             <div class="panel">
                 <div class="section-heading">
                     <h2>応答</h2>
+                    <button type="button" class="secondary-button" @onclick="RefreshResponseAsync" disabled="@(Response is null || IsRefreshing || IsSending)">応答を更新</button>
                 </div>
                 @if (Response is null)
                 {
@@ -68,6 +69,7 @@
                         <div><span>session_id</span><strong>@Response.SessionId</strong></div>
                         <div><span>message_id</span><strong>@Response.MessageId</strong></div>
                         <div><span>job_id</span><strong>@Response.JobId</strong></div>
+                        <div><span>状態</span><strong>@UiText.Status(Response.JobStatus)</strong></div>
                         <div><span>review_status</span><strong>@Response.ReviewStatus</strong></div>
                         <div><span>redaction</span><strong>@Response.RedactionStatus</strong></div>
                     </div>
@@ -94,7 +96,14 @@
         </section>
 
         <section class="panel">
-            <JobProgressPanel Title="AIジョブ" ProjectScoped="true" JobType="AiAssistantJob" />
+            <JobProgressPanel Title="AIジョブ" ProjectScoped="true" JobType="AiAssistantJob" OnRefreshed="RefreshResponseAsync">
+                <ResultActions Context="job">
+                    @if (job.ResultResource is { ResourceType: "ai_message" } resource)
+                    {
+                        <button type="button" class="table-action" @onclick="() => LoadResponseAsync(resource.ResourceId)" disabled="@(IsRefreshing || IsSending)">応答を表示</button>
+                    }
+                </ResultActions>
+            </JobProgressPanel>
         </section>
     }
 </div>
@@ -115,6 +124,10 @@
 
     private bool IsSending { get; set; }
 
+    private bool IsRefreshing { get; set; }
+
+    private int RequestVersion { get; set; }
+
     private bool CanSend
         => ProjectState.SelectedProject is not null && !IsSending;
 
@@ -126,7 +139,7 @@
 
     private async Task SendAsync()
     {
-        if (ProjectState.SelectedProject is not { } project)
+        if (IsSending || ProjectState.SelectedProject is not { } project)
         {
             return;
         }
@@ -147,6 +160,8 @@
         }
 
         IsSending = true;
+        IsRefreshing = false;
+        var requestVersion = ++RequestVersion;
         var result = await ApiClient.ChatWithAiAsync(
             project.ProjectId,
             new AiChatRequest(
@@ -154,6 +169,10 @@
                 conversationId,
                 ParseAllowedTools(Form.AllowedTools),
                 referenceScope));
+        if (requestVersion != RequestVersion || project.ProjectId != ProjectState.SelectedProject?.ProjectId)
+        {
+            return;
+        }
         if (result.IsSuccess && result.Data is { } response)
         {
             Response = response;
@@ -167,6 +186,40 @@
         }
 
         IsSending = false;
+    }
+
+    private Task RefreshResponseAsync()
+        => Response is { } response && !IsSending && !IsRefreshing
+            ? LoadResponseAsync(response.MessageId)
+            : Task.CompletedTask;
+
+    private async Task LoadResponseAsync(Guid messageId)
+    {
+        if (IsSending || ProjectState.SelectedProject is not { } project)
+        {
+            return;
+        }
+
+        var requestVersion = ++RequestVersion;
+        IsRefreshing = true;
+        Errors = [];
+        Message = null;
+        var result = await ApiClient.GetAiMessageAsync(project.ProjectId, messageId);
+        if (requestVersion != RequestVersion || project.ProjectId != ProjectState.SelectedProject?.ProjectId)
+        {
+            return;
+        }
+
+        IsRefreshing = false;
+        if (result.IsSuccess && result.Data is { } response)
+        {
+            Response = response;
+            Form.ConversationId = response.SessionId.ToString("D");
+        }
+        else
+        {
+            Errors = result.Errors;
+        }
     }
 
     private Guid? ParseNullableGuid(string? value, string target)
@@ -208,7 +261,13 @@
     {
         await InvokeAsync(() =>
         {
+            RequestVersion++;
             Response = null;
+            Form.ConversationId = null;
+            Errors = [];
+            Message = null;
+            IsSending = false;
+            IsRefreshing = false;
             StateHasChanged();
         });
     }
@@ -232,7 +291,10 @@
         => JsonSerializer.Serialize(elements, JsonOptions);
 
     public void Dispose()
-        => ProjectState.Changed -= OnProjectStateChanged;
+    {
+        RequestVersion++;
+        ProjectState.Changed -= OnProjectStateChanged;
+    }
 
     private sealed class AiAssistantFormModel
     {
@@ -240,7 +302,7 @@
 
         public string? ConversationId { get; set; }
 
-        public string? AllowedTools { get; set; } = "keyword.research, brief.generate, rewrite.plan, report.summarize";
+        public string? AllowedTools { get; set; } = "keyword-discovery, brief-generation, rewrite-analysis, report-summary";
 
         public string? ReferenceScopeJson { get; set; } = "{}";
     }

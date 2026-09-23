@@ -217,6 +217,11 @@ public interface ISeoIntelligenceApiClient
         ArticleBriefUpdateRequest request,
         CancellationToken cancellationToken = default);
 
+    Task<ApiClientResult<AiChatResponse>> GetAiMessageAsync(
+        Guid projectId,
+        Guid messageId,
+        CancellationToken cancellationToken = default);
+
     Task<ApiClientResult<AiChatResponse>> ChatWithAiAsync(
         Guid projectId,
         AiChatRequest request,
@@ -406,6 +411,11 @@ public interface ISeoIntelligenceApiClient
         string orderBy = "desc",
         int page = 1,
         int pageSize = 50,
+        CancellationToken cancellationToken = default);
+
+    Task<ApiClientResult<KeywordDiscoveryResult>> GetKeywordDiscoveryResultsAsync(
+        Guid projectId,
+        Guid jobId,
         CancellationToken cancellationToken = default);
 
     Task<ApiClientResult<KeywordDiscoveryResult>> DiscoverKeywordsAsync(

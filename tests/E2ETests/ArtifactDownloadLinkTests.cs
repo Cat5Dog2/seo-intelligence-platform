@@ -14,6 +14,7 @@ public sealed class ArtifactDownloadLinkTests
 
     [Theory]
     [Trait("Category", "E2E")]
+    [InlineData("csv_export", "/downloads/projects/11111111-1111-1111-1111-111111111111/exports/22222222-2222-2222-2222-222222222222")]
     [InlineData("data_export", "/downloads/projects/11111111-1111-1111-1111-111111111111/exports/22222222-2222-2222-2222-222222222222")]
     [InlineData("article_brief_export", "/downloads/projects/11111111-1111-1111-1111-111111111111/exports/22222222-2222-2222-2222-222222222222")]
     [InlineData("report", "/downloads/projects/11111111-1111-1111-1111-111111111111/reports/22222222-2222-2222-2222-222222222222")]

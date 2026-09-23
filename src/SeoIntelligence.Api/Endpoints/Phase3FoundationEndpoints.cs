@@ -105,6 +105,7 @@ internal static class Phase3FoundationEndpoints
 
         var ai = project.MapGroup(Phase3EndpointRoutes.Ai);
         ai.MapPost("/chat", ChatWithAiAsync);
+        ai.MapGet("/messages/{messageId:guid}", GetAiMessageAsync);
         var reportShares = app.MapGroup(Phase3EndpointRoutes.ReportShares);
 
         // Report share links are handed to people outside the application, so these two endpoints
@@ -503,6 +504,16 @@ internal static class Phase3FoundationEndpoints
                 CreateSearchQuery(q, status, sortBy, orderBy, page, pageSize),
                 cancellationToken));
     }
+
+    private static async Task<IResult> GetAiMessageAsync(
+        Guid projectId,
+        Guid messageId,
+        [FromServices] IAiAssistantService service,
+        [FromServices] IProjectContextService contextService,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+        => ApiResponseResults.FromResult(httpContext,
+            await service.GetMessageAsync(CreateContext(contextService, httpContext, projectId), messageId, cancellationToken));
 
     private static async Task<IResult> ChatWithAiAsync(
         Guid projectId,
