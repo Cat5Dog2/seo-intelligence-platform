@@ -19,6 +19,55 @@ namespace ContractTests;
 
 public sealed class RakkoKeywordClientContractTests
 {
+    [Theory]
+    [Trait("Category", "Contract")]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task SlowOtherKeywordsUsesLongDeadlineWhileSuggestKeepsNormalDeadline(bool otherKeywords)
+    {
+        using var http = new HttpClient(new SlowCandidateHandler()) { BaseAddress = new Uri("https://api.example.test") };
+        var recorder = new CapturingRecorder();
+        var client = new RakkoKeywordRealClient(http, new FakeSecretStore("test-key"), recorder,
+            Options.Create(new RakkoKeywordOptions { TimeoutSeconds = 1, LongTimeoutSeconds = 5 }),
+            NullLogger<RakkoKeywordRealClient>.Instance);
+
+        var result = otherKeywords
+            ? await client.GetOtherKeywordsAsync(CreateContext(), new RakkoOtherKeywordsRequest("SEO"))
+            : await client.GetSuggestKeywordsAsync(CreateContext(), new RakkoSuggestKeywordsRequest("SEO"));
+
+        Assert.Equal(otherKeywords, result.IsSuccess);
+        Assert.Equal(otherKeywords ? 200 : 503, result.StatusCode);
+    }
+
+    private sealed class SlowCandidateHandler : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(1400), cancellationToken);
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("""{"result":true,"meta":{"consumedCredit":0},"data":{"items":[]},"errors":[]}""")
+            };
+        }
+    }
+
+    [Fact]
+    [Trait("Category", "Contract")]
+    public async Task RankResultsWireRequestOmitsAbsentOptionalFilter()
+    {
+        using var handler = new CapturingHandler("""{"result":true,"meta":{"consumedCredit":0},"data":{"items":[]},"errors":[]}""");
+        using var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.example.test") };
+        var client = new RakkoKeywordRealClient(http, new FakeSecretStore("test-key"), new CapturingRecorder(),
+            Options.Create(new RakkoKeywordOptions()), NullLogger<RakkoKeywordRealClient>.Instance);
+
+        await client.GetSearchRankResultsAsync(CreateContext(), "rank-qa", new RakkoSearchRankResultsRequest(WithAggregation: false));
+
+        using var body = JsonDocument.Parse(handler.RequestBody);
+        Assert.False(body.RootElement.TryGetProperty("filter", out _));
+        Assert.False(body.RootElement.GetProperty("withAggregation").GetBoolean());
+        Assert.Equal("keyword", body.RootElement.GetProperty("sortBy").GetString());
+    }
+
     public static TheoryData<string> InvalidSearchVolumeRequestIdResponses =>
         new()
         {

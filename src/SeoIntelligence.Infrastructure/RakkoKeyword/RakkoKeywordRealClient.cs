@@ -60,7 +60,7 @@ internal sealed class RakkoKeywordRealClient(
             HttpMethod.Post,
             RakkoKeywordDtoMapper.ToDto(request),
             requiresApiKey: true,
-            useLongTimeout: false,
+            useLongTimeout: true,
             RakkoKeywordDtoMapper.ToApplication,
             cancellationToken);
 
@@ -552,7 +552,7 @@ internal sealed class RakkoKeywordRealClient(
         var request = new HttpRequestMessage(method, new Uri(baseUri, path));
         if (requestBody is not null)
         {
-            var json = JsonSerializer.Serialize(requestBody, RakkoKeywordJson.SerializerOptions);
+            var json = JsonSerializer.Serialize(requestBody, RakkoKeywordJson.RequestSerializerOptions);
             request.Content = new StringContent(json, Encoding.UTF8, "application/json");
         }
 

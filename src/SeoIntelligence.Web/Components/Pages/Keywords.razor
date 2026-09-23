@@ -147,6 +147,10 @@
             <div class="section-heading">
                 <h2>探索ジョブ</h2>
                 <button type="button" class="secondary-button" @onclick="RefreshDiscoveryJobAsync">状態更新</button>
+                @if (DiscoveryJob.Status == "failed_retryable")
+                {
+                    <button type="button" class="secondary-button" @onclick="RetryDiscoveryJobAsync">失敗したソースを再試行</button>
+                }
             </div>
             <div class="job-status-card">
                 <span>@DiscoveryJob.JobType</span>
@@ -333,6 +337,16 @@
         }
     }
 
+    private async Task RetryDiscoveryJobAsync()
+    {
+        if (DiscoveryJob is not { Status: "failed_retryable" } job || job.ProjectId != ProjectState.SelectedProject?.ProjectId) return;
+        var requestVersion = RequestVersion;
+        var result = await ApiClient.RetryJobAsync(job.JobId);
+        if (requestVersion != RequestVersion) return;
+        if (result.IsSuccess) await LoadDiscoveryJobAsync(job.JobId);
+        else Errors = result.Errors;
+    }
+
     private async Task LoadDiscoveryJobAsync(Guid jobId)
     {
         if (ProjectState.SelectedProject is not { } project)
@@ -348,7 +362,7 @@
         if (result.IsSuccess)
         {
             DiscoveryJob = result.Data;
-            if (DiscoveryJob is { Status: "succeeded" } && DiscoveryJob.ProjectId == project.ProjectId)
+            if (DiscoveryJob is { Status: "succeeded" or "failed_retryable" or "failed_fatal" } && DiscoveryJob.ProjectId == project.ProjectId)
             {
                 var results = await ApiClient.GetKeywordDiscoveryResultsAsync(project.ProjectId, jobId);
                 if (requestVersion != RequestVersion || project.ProjectId != ProjectState.SelectedProject?.ProjectId)

@@ -21,7 +21,7 @@ public sealed class KeywordDiscoveryIntegrationTests
 {
     [Fact]
     [Trait("Category", "Integration")]
-    public async Task KeywordDiscoverySyncCollectsSavesAndFiltersCandidates()
+    public async Task MultiSourceDiscoveryQueuesEvenWhenSyncPreferredAndSavesFilteredCandidates()
     {
         await using var factory = new KeywordDiscoveryApiFactory();
         using var client = CreateClient(factory);
@@ -53,8 +53,18 @@ public sealed class KeywordDiscoveryIntegrationTests
             using var response = await client.SendAsync(request);
             using var document = await ReadJsonAsync(response);
 
-            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-            var data = document.RootElement.GetProperty("data");
+            Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+            var jobId = document.RootElement.GetProperty("data").GetProperty("jobId").GetGuid();
+            await using (var dispatchScope = factory.Services.CreateAsyncScope())
+            {
+                var db = dispatchScope.ServiceProvider.GetRequiredService<SeoIntelligenceDbContext>();
+                Assert.Empty(await db.ExternalApiCalls.ToListAsync());
+                await dispatchScope.ServiceProvider.GetRequiredService<IJobDispatcher>().DispatchAsync(jobId);
+            }
+            using var resultResponse = await client.GetAsync($"/api/projects/{projectId}/keyword-discovery/jobs/{jobId}/results");
+            using var resultDocument = await ReadJsonAsync(resultResponse);
+            Assert.Equal(HttpStatusCode.OK, resultResponse.StatusCode);
+            var data = resultDocument.RootElement.GetProperty("data");
             Assert.False(data.GetProperty("isAccepted").GetBoolean());
             Assert.Equal("SEO", data.GetProperty("seedKeyword").GetString());
             var candidate = Assert.Single(data.GetProperty("candidates").EnumerateArray());
@@ -186,7 +196,7 @@ public sealed class KeywordDiscoveryIntegrationTests
                 new
                 {
                     seedKeyword = "technical seo",
-                    sources = new[] { "suggest", "related" },
+                    sources = new[] { "suggest", "related", "other" },
                     engines = new[] { "google" },
                     limit = 10,
                     syncPreferred = false,
@@ -229,6 +239,8 @@ public sealed class KeywordDiscoveryIntegrationTests
             Assert.Equal("technical seo guide", Assert.Single(partialData.GetProperty("candidates").EnumerateArray()).GetProperty("keyword").GetString());
             Assert.Contains(partialData.GetProperty("sourceStatuses").EnumerateArray(), source =>
                 source.GetProperty("source").GetString() == "suggest" && source.GetProperty("candidateCount").GetInt32() == 1);
+            Assert.Contains(partialData.GetProperty("sourceStatuses").EnumerateArray(), source =>
+                source.GetProperty("source").GetString() == "other" && source.GetProperty("status").GetString() == "succeeded");
         }
         finally
         {

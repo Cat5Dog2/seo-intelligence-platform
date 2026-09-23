@@ -239,7 +239,8 @@ internal sealed class KeywordDiscoveryService(
 
             if (outcome.Failure is not null)
             {
-                firstFailure = outcome.Failure;
+                // An unavailable source must not discard successful sources or prevent independent ones.
+                firstFailure = outcome.Failure.Retryable ? firstFailure ?? outcome.Failure : outcome.Failure;
                 statuses.Add(new KeywordDiscoverySourceStatus(
                     source,
                     outcome.Failure.Retryable ? StatusValues.FailedRetryable : StatusValues.FailedFatal,
@@ -248,7 +249,8 @@ internal sealed class KeywordDiscoveryService(
                     outcome.Failure.StatusCode,
                     outcome.Failure.ErrorCode,
                     outcome.Failure.Message));
-                break;
+                if (!outcome.Failure.Retryable) break;
+                continue;
             }
 
             var candidates = await SaveSourceResultAsync(
@@ -712,7 +714,7 @@ internal sealed class KeywordDiscoveryService(
     }
 
     private static bool ShouldRunAsync(NormalizedKeywordDiscoveryRequest request)
-        => !request.SyncPreferred || request.Limit > 50;
+        => !request.SyncPreferred || request.Limit > 50 || request.Sources.Count > 1 || request.Sources.Contains("other");
 
     private static KeywordDiscoveryResult AcceptedResult(
         NormalizedKeywordDiscoveryRequest request,

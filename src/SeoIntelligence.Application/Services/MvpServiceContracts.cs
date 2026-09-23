@@ -876,7 +876,7 @@ public sealed record DashboardSnapshot(
     int KeywordCandidateCount,
     int RunningJobCount,
     int FailedJobCount,
-    int ConsumedCredit,
+    decimal ConsumedCredit,
     int KeywordDiscoveryCount = 0,
     int SearchVolumeJobCount = 0,
     int SearchVolumeResultCount = 0,

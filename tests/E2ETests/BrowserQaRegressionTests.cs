@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.JSInterop;
 using SeoIntelligence.Application.Jobs;
 using SeoIntelligence.Application.Services;
 using SeoIntelligence.Contracts.Api;
@@ -18,6 +19,136 @@ namespace E2ETests;
 
 public sealed class BrowserQaRegressionTests
 {
+    [Theory]
+    [Trait("Category", "UI")]
+    [InlineData("LoadResultsAsync", "IsResultLoading")]
+    [InlineData("CreateResultsExportAsync", "IsExporting")]
+    public async Task SearchVolumeInvalidatedRequestDoesNotLeaveLoadingState(string operation, string loadingProperty)
+    {
+        using var fixture = new UiFixture();
+        await fixture.RenderSearchVolumeAsync(async (page, state) =>
+        {
+            Set(page, "JobIdText", fixture.JobId.ToString());
+            var response = new TaskCompletionSource<HttpResponseMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+            fixture.PendingResponse = response;
+            var pending = InvokeAsync(page, operation);
+            Assert.True((bool)Get(page, loadingProperty)!);
+            if (operation == "LoadResultsAsync") await InvokeAsync(page, "RefreshJobAsync");
+            else Set(page, "JobIdText", Guid.NewGuid().ToString());
+            response.SetResult(operation == "LoadResultsAsync"
+                ? UiFixture.Reply(new[] { new SearchVolumeResultRow("stale", 99, null, null, null) })
+                : UiFixture.Reply(new JobReference(fixture.JobId, "queued")));
+            await pending;
+            Assert.False((bool)Get(page, loadingProperty)!);
+            Assert.Empty((IReadOnlyList<SearchVolumeResultRow>)Get(page, "Results")!);
+            Assert.Null(Get(page, "Message"));
+        });
+    }
+
+    [Theory]
+    [Trait("Category", "UI")]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task BriefProjectChangeClearsEditorAndDiscardsLateDetails(bool delayDetails)
+    {
+        using var fixture = new UiFixture();
+        await fixture.RenderAsync<ArticleBriefs>(async (page, state) =>
+        {
+            var response = new TaskCompletionSource<HttpResponseMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+            if (delayDetails) fixture.PendingResponse = response;
+            var pending = InvokeAsync(page, "SelectBriefAsync", fixture.BriefId);
+            if (!delayDetails)
+            {
+                await pending;
+                Assert.NotNull(Get(page, "SelectedBrief"));
+            }
+            await state.SelectAsync(fixture.OtherProjectId);
+            await state.SelectAsync(fixture.ProjectId);
+            if (delayDetails)
+            {
+                response.SetResult(UiFixture.Reply(fixture.Brief()));
+                await pending;
+            }
+            Assert.Null(Get(page, "SelectedBrief"));
+            Assert.Empty((IReadOnlyList<ArticleBriefVersionDetails>)Get(page, "Versions")!);
+            Assert.Null(Get(Get(page, "EditForm")!, "Title"));
+            await InvokeAsync(page, "SaveAsync");
+            Assert.Empty(fixture.Posts);
+        });
+    }
+
+    [Fact]
+    [Trait("Category", "UI")]
+    public async Task SearchVolumeProjectChangeClearsJobResultsInputAndExportState()
+    {
+        using var fixture = new UiFixture();
+        await fixture.RenderSearchVolumeAsync(async (page, state) =>
+        {
+            Set(page, "JobIdText", fixture.JobId.ToString());
+            Set(page, "KeywordsText", "private project keywords");
+            Set(page, "Message", "old export");
+            await InvokeAsync(page, "RefreshJobAsync");
+            await InvokeAsync(page, "LoadResultsAsync");
+            Assert.Single((IReadOnlyList<SearchVolumeResultRow>)Get(page, "Results")!);
+
+            await state.SelectAsync(fixture.OtherProjectId);
+
+            Assert.Null(Get(page, "CurrentJob"));
+            Assert.Null(Get(page, "JobIdText"));
+            Assert.Null(Get(page, "KeywordsText"));
+            Assert.Null(Get(page, "Message"));
+            Assert.Empty((IReadOnlyList<SearchVolumeResultRow>)Get(page, "Results")!);
+        });
+    }
+
+    [Theory]
+    [Trait("Category", "UI")]
+    [InlineData("LoadResultsAsync", "results")]
+    [InlineData("RefreshJobAsync", "job")]
+    [InlineData("RegisterJobAsync", "register")]
+    public async Task SearchVolumeDiscardsResponsesAfterSwitchingAwayAndBack(string method, string operation)
+    {
+        using var fixture = new UiFixture();
+        await fixture.RenderSearchVolumeAsync(async (page, state) =>
+        {
+            Set(page, "JobIdText", fixture.JobId.ToString());
+            Set(page, "KeywordsText", "private project keywords");
+            var response = new TaskCompletionSource<HttpResponseMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+            fixture.PendingResponse = response;
+            var pending = InvokeAsync(page, method);
+            await state.SelectAsync(fixture.OtherProjectId);
+            await state.SelectAsync(fixture.ProjectId);
+            response.SetResult(operation switch
+            {
+                "results" => UiFixture.Reply(new[] { new SearchVolumeResultRow("private result", 900, null, null, null) }),
+                "register" => UiFixture.Reply(new JobReference(fixture.JobId, "queued")),
+                _ => UiFixture.Reply(fixture.Job())
+            });
+            await pending;
+            Assert.Null(Get(page, "CurrentJob"));
+            Assert.Null(Get(page, "JobIdText"));
+            Assert.Null(Get(page, "Message"));
+            Assert.Empty((IReadOnlyList<SearchVolumeResultRow>)Get(page, "Results")!);
+        });
+    }
+
+    [Fact]
+    [Trait("Category", "UI")]
+    public async Task SearchVolumeRejectsAnotherProjectsJobAndCannotCancelIt()
+    {
+        using var fixture = new UiFixture();
+        await fixture.RenderSearchVolumeAsync(async (page, state) =>
+        {
+            await state.SelectAsync(fixture.OtherProjectId);
+            Set(page, "JobIdText", fixture.JobId.ToString());
+            await InvokeAsync(page, "RefreshJobAsync");
+            Assert.Null(Get(page, "CurrentJob"));
+            Assert.NotEmpty((IReadOnlyList<ApiError>)Get(page, "Errors")!);
+            await InvokeAsync(page, "CancelJobAsync");
+            Assert.Empty(fixture.Posts);
+        });
+    }
+
     [Theory]
     [Trait("Category", "UI")]
     [InlineData(true)]
@@ -124,11 +255,15 @@ public sealed class BrowserQaRegressionTests
         });
     }
 
-    [Fact]
+    [Theory]
     [Trait("Category", "UI")]
-    public async Task CompletedKeywordDiscoveryRefreshLoadsCandidatesWithoutRunningAnotherSearch()
+    [InlineData("succeeded")]
+    [InlineData("failed_retryable")]
+    [InlineData("failed_fatal")]
+    public async Task CompletedKeywordDiscoveryRefreshLoadsCandidatesWithoutRunningAnotherSearch(string status)
     {
         using var fixture = new UiFixture();
+        fixture.JobStatus = status;
         var page = await fixture.CreateAsync<Keywords>();
         Set(Get(page, "DiscoveryForm")!, "SeedKeyword", "QA search");
         await InvokeAsync(page, "DiscoverAsync");
@@ -175,13 +310,45 @@ public sealed class BrowserQaRegressionTests
         public List<JsonElement> Posts { get; } = [];
         public List<string> GetPaths { get; } = [];
         private readonly Guid sessionId = Guid.NewGuid();
-        private readonly Guid jobId = Guid.NewGuid();
+        public Guid JobId { get; } = Guid.NewGuid();
+        private Guid jobId => JobId;
+        public TaskCompletionSource<HttpResponseMessage>? PendingResponse { get; set; }
+        public string JobStatus { get; set; } = "succeeded";
+        public Guid BriefId { get; } = Guid.NewGuid();
+        public ArticleBriefDetails Brief() => new(BriefId, ProjectId, null, "Private brief", null, "SEO", 1,
+            JsonSerializer.SerializeToElement(new { title = "Private brief" }), "pending", "draft", DateTime.UtcNow, DateTime.UtcNow);
         private readonly HttpClient http;
 
         public UiFixture() => http = new HttpClient(this, disposeHandler: false) { BaseAddress = new Uri("https://localhost") };
 
         public SeoIntelligenceApiClient CreateClient()
             => new(http, NullLogger<SeoIntelligenceApiClient>.Instance);
+
+        public JobDetails Job() => new(jobId, Guid.NewGuid(), ProjectId, "RegisterSearchVolumeJob", JobStatus, 100,
+            $"/api/jobs/{jobId:D}", null, null, 0, null, null, "developer", DateTime.UtcNow, DateTime.UtcNow, DateTime.UtcNow);
+
+        public Task RenderSearchVolumeAsync(Func<SearchVolume, ProjectSelectionState, Task> action)
+            => RenderAsync(action);
+
+        public async Task RenderAsync<T>(Func<T, ProjectSelectionState, Task> action) where T : IComponent
+        {
+            var api = CreateClient();
+            var state = new ProjectSelectionState(api);
+            await state.LoadAsync();
+            var activator = new CapturingActivator();
+            var services = new ServiceCollection().AddLogging();
+            services.AddSingleton<ISeoIntelligenceApiClient>(api);
+            services.AddSingleton(state);
+            services.AddSingleton<IComponentActivator>(activator);
+            services.AddSingleton<IJSRuntime, UnusedJsRuntime>();
+            await using var provider = services.BuildServiceProvider();
+            await using var renderer = new HtmlRenderer(provider, provider.GetRequiredService<ILoggerFactory>());
+            await renderer.Dispatcher.InvokeAsync(async () =>
+            {
+                await renderer.RenderComponentAsync<T>();
+                await action(Assert.Single(activator.Components.OfType<T>()), state);
+            });
+        }
 
         public async Task<T> CreateAsync<T>() where T : new()
         {
@@ -197,6 +364,11 @@ public sealed class BrowserQaRegressionTests
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             var path = request.RequestUri!.AbsolutePath;
+            if (PendingResponse is { } pending && path != "/api/jobs")
+            {
+                PendingResponse = null;
+                return await pending.Task;
+            }
             if (request.Method == HttpMethod.Get)
             {
                 GetPaths.Add(path);
@@ -207,10 +379,16 @@ public sealed class BrowserQaRegressionTests
                             JsonSerializer.SerializeToElement(new { }), null, "active", DateTime.UtcNow, DateTime.UtcNow, null)).ToArray());
                 }
                 if (path == "/api/jobs") return Reply(Array.Empty<JobDetails>());
+                if (path.EndsWith("/briefs", StringComparison.Ordinal)) return Reply(Array.Empty<ArticleBriefSummary>());
+                if (path.EndsWith($"/briefs/{BriefId:D}", StringComparison.Ordinal)) return Reply(Brief());
+                if (path.EndsWith($"/briefs/{BriefId:D}/versions", StringComparison.Ordinal)) return Reply(Array.Empty<ArticleBriefVersionDetails>());
                 if (path == $"/api/jobs/{jobId:D}")
                 {
-                    return Reply(new JobDetails(jobId, Guid.NewGuid(), ProjectId, "KeywordDiscoveryJob", "succeeded", 100,
-                        $"/api/jobs/{jobId:D}", null, null, 0, null, null, "developer", DateTime.UtcNow, DateTime.UtcNow, DateTime.UtcNow));
+                    return Reply(Job());
+                }
+                if (path.EndsWith($"/search-volume/jobs/{jobId:D}/results", StringComparison.Ordinal))
+                {
+                    return Reply(new[] { new SearchVolumeResultRow("QA volume", 900, null, null, null) });
                 }
                 if (path.EndsWith($"/keyword-discovery/jobs/{jobId:D}/results", StringComparison.Ordinal))
                 {
@@ -241,7 +419,7 @@ public sealed class BrowserQaRegressionTests
             => new(sessionId, MessageId, jobId, response, [], JsonSerializer.SerializeToElement(new { }),
                 JsonSerializer.SerializeToElement(tokenUsage), "not_required", "pending");
 
-        private static HttpResponseMessage Reply<T>(T data)
+        public static HttpResponseMessage Reply<T>(T data)
             => new(HttpStatusCode.OK) { Content = JsonContent.Create(ApiResponseEnvelope<T>.Success("qa", data)) };
 
         protected override void Dispose(bool disposing)
@@ -249,5 +427,11 @@ public sealed class BrowserQaRegressionTests
             if (disposing) http.Dispose();
             base.Dispose(disposing);
         }
+    }
+
+    private sealed class UnusedJsRuntime : IJSRuntime
+    {
+        public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args) => throw new NotSupportedException();
+        public ValueTask<TValue> InvokeAsync<TValue>(string identifier, CancellationToken token, object?[]? args) => throw new NotSupportedException();
     }
 }

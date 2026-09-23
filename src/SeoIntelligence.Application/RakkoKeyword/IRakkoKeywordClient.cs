@@ -185,7 +185,7 @@ public sealed record RakkoInfluxKeywordsRequest(
     IReadOnlyList<RakkoApiTargetRequest> Targets,
     bool KeywordCollapse = true,
     IReadOnlyDictionary<string, object?>? Filter = null,
-    string SortBy = "estimatedTraffic",
+    string SortBy = "etv",
     string OrderBy = "desc",
     int? Limit = 100);
 
@@ -193,7 +193,7 @@ public sealed record RakkoInfluxPagesRequest(
     IReadOnlyList<RakkoApiTargetRequest> Targets,
     bool TopKeywordCollapse = true,
     IReadOnlyDictionary<string, object?>? Filter = null,
-    string SortBy = "estimatedTraffic",
+    string SortBy = "totalEtv",
     string OrderBy = "desc",
     int? Limit = 100);
 
@@ -204,7 +204,7 @@ public sealed record RakkoCompetitiveRequest(
 
 public sealed record RakkoContentSearchRequest(
     string Keyword,
-    string SearchTarget = "google",
+    string SearchTarget = "titleAndKeywordAndDescription",
     bool IsAdvancedSearch = false,
     bool TopKeywordCollapse = true,
     IReadOnlyDictionary<string, object?>? Filter = null,
@@ -222,7 +222,7 @@ public sealed record RakkoHeadlineRequest(
     bool H4 = true,
     bool H5 = true,
     bool H6 = true,
-    string SortBy = "rank",
+    string SortBy = "position",
     string OrderBy = "asc",
     int? Limit = 10);
 
