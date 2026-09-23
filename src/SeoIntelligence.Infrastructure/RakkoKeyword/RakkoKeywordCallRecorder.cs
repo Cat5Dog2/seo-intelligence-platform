@@ -52,7 +52,7 @@ internal sealed class RakkoKeywordCallRecorder(
             request.Endpoint,
             request.RequestPath ?? request.Endpoint,
             request.RequestBody);
-        var requestBytes = JsonSerializer.SerializeToUtf8Bytes(requestEnvelope, RakkoKeywordJson.SerializerOptions);
+        var requestBytes = JsonSerializer.SerializeToUtf8Bytes(requestEnvelope, RakkoKeywordJson.RequestSerializerOptions);
         var compressedRequest = Compress(requestBytes);
         var requestHash = ComputeSha256Hex(compressedRequest);
         var requestReference = await storage.PutAsync(
@@ -202,6 +202,29 @@ internal sealed class OptionalEfExternalApiCallStore(IServiceProvider servicePro
         };
 
         dbContext.ExternalApiCalls.Add(entity);
+        dbContext.AuditLogs.Add(new AuditLogEntity
+        {
+            Id = Guid.NewGuid(),
+            WorkspaceId = entity.WorkspaceId,
+            Actor = entity.Actor,
+            Action = "external_api.executed",
+            ResourceType = "external_api_call",
+            ResourceId = entity.Id.ToString("D"),
+            CorrelationId = entity.CorrelationId,
+            BeforeAfterJson = JsonSerializer.Serialize(new
+            {
+                entity.ProjectId,
+                entity.JobId,
+                entity.Endpoint,
+                entity.StatusCode,
+                entity.ConsumedCredit,
+                entity.CacheHit,
+                entity.ErrorCode,
+                entity.RequestHash,
+                entity.ResponseHash
+            }, RakkoKeywordJson.SerializerOptions),
+            CreatedAt = now
+        });
         await dbContext.SaveChangesAsync(cancellationToken);
         return entity.Id;
     }

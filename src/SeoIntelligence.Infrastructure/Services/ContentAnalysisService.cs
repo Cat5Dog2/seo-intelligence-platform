@@ -178,7 +178,7 @@ internal sealed class ContentAnalysisService(
             Id = UuidV7.New(),
             ProjectId = context.ProjectId!.Value,
             ClusterId = briefRequest.ClusterId,
-            Title = briefRequest.Title ?? $"Article brief: {briefRequest.TargetKeyword}",
+            Title = briefRequest.Title ?? $"{briefRequest.TargetKeyword}の記事ブリーフ",
             TargetKeywordId = briefRequest.TargetKeywordId,
             CurrentVersion = 0,
             ContentJson = content.GetRawText(),
@@ -430,7 +430,7 @@ internal sealed class ContentAnalysisService(
         {
             var headlines = await rakkoKeywordClient.GetHeadlinesAsync(
                 clientContext,
-                new RakkoHeadlineRequest(keyword.NormalizedText, Limit: options.Limit),
+                new RakkoHeadlineRequest(keyword.NormalizedText, Limit: Math.Min(options.Limit, 20)),
                 cancellationToken);
             if (!headlines.IsSuccess || headlines.Data is null)
             {
@@ -462,6 +462,7 @@ internal sealed class ContentAnalysisService(
     public async Task<Result<ArticleBriefDetails>> ExecuteGenerateBriefAsync(
         ProjectExecutionContext context,
         Guid briefId,
+        Guid jobId,
         CancellationToken cancellationToken = default)
     {
         var brief = await FindBriefAsync(context, briefId, asTracking: true, cancellationToken);
@@ -483,7 +484,26 @@ internal sealed class ContentAnalysisService(
             return Failure<ArticleBriefDetails>(ErrorCode.NotFound, "Target keyword was not found.");
         }
 
+        var missingContent = !await dbContext.ContentSearchResults.AnyAsync(
+            row => row.ProjectId == brief.ProjectId && row.KeywordId == keyword.Id, cancellationToken);
+        var missingHeadlines = !await dbContext.SerpHeadlinePages.AnyAsync(
+            row => row.ProjectId == brief.ProjectId && row.KeywordId == keyword.Id, cancellationToken);
+        var missingCoOccurrences = !await dbContext.CoOccurrenceWords.AnyAsync(
+            row => row.ProjectId == brief.ProjectId && row.KeywordId == keyword.Id, cancellationToken);
+        if (missingContent || missingHeadlines || missingCoOccurrences)
+        {
+            var analysis = await ExecuteContentAnalyzeAsync(context, jobId, keyword.Id,
+                new ContentAnalyzeJobOptions(missingContent, missingHeadlines, missingCoOccurrences, 10), cancellationToken);
+            if (!analysis.IsSuccess) return Result<ArticleBriefDetails>.Failure(analysis.Error!);
+        }
+
         var document = await BuildBriefDocumentAsync(context, brief, keyword, cancellationToken);
+        if (document.Evidence.ContentResults.Count == 0 && document.Evidence.HeadlinePages.Count == 0 &&
+            document.Evidence.CoOccurrenceWords.Count == 0)
+        {
+            return Failure<ArticleBriefDetails>(ErrorCode.Conflict,
+                "記事ブリーフの根拠データを取得できませんでした。キーワードを見直してコンテンツ分析を実行してください。");
+        }
         var contentJson = JsonSerializer.Serialize(document, JsonOptions);
         brief.Title = document.Title;
         brief.ContentJson = contentJson;
@@ -1018,8 +1038,8 @@ internal sealed class ContentAnalysisService(
         var requiredTerms = coWords.Select(entity => entity.Word).Distinct(StringComparer.OrdinalIgnoreCase).Take(20).ToArray();
 
         return new BriefDocument(
-            Title: string.IsNullOrWhiteSpace(brief.Title) || brief.CurrentVersion == 0
-                ? $"{keyword.NormalizedText} content brief"
+            Title: string.IsNullOrWhiteSpace(brief.Title)
+                ? $"{keyword.NormalizedText}の記事ブリーフ"
                 : brief.Title,
             TargetKeyword: keyword.NormalizedText,
             SearchIntent: InferSearchIntent(keyword.NormalizedText, headlines),
@@ -1059,10 +1079,10 @@ internal sealed class ContentAnalysisService(
         return sections.Length > 0
             ? sections
             : [
-                new BriefOutlineSection(2, $"What is {keyword}?"),
-                new BriefOutlineSection(2, "Key comparison points"),
-                new BriefOutlineSection(2, "Implementation steps"),
-                new BriefOutlineSection(2, "FAQ")
+                new BriefOutlineSection(2, $"{keyword}とは"),
+                new BriefOutlineSection(2, "比較・検討するポイント"),
+                new BriefOutlineSection(2, "実践の手順"),
+                new BriefOutlineSection(2, "よくある質問")
             ];
     }
 
@@ -2148,7 +2168,7 @@ internal sealed class GenerateBriefJob(
         await using var lease = start.Value!;
         try
         {
-            var result = await contentAnalysisService.ExecuteGenerateBriefAsync(context, job.ResultResourceId.Value);
+            var result = await contentAnalysisService.ExecuteGenerateBriefAsync(context, job.ResultResourceId.Value, jobId);
             if (result.IsSuccess)
             {
                 await jobService.CompleteAsync(
@@ -2160,7 +2180,11 @@ internal sealed class GenerateBriefJob(
                 return;
             }
 
-            await jobService.RecordFailureAsync(context, jobId, new JobFailure(JobFailureKind.Unexpected, null, result.Error!.Code.ToString(), result.Error.Message));
+            var error = result.Error!;
+            var statusCode = error.Details is not null && error.Details.TryGetValue("statusCode", out var values) &&
+                int.TryParse(values.FirstOrDefault(), out var externalStatus) ? externalStatus : 400;
+            await jobService.RecordFailureAsync(context, jobId,
+                JobFailure.FromHttpStatusCode(statusCode, error.Code.ToString(), error.Message));
         }
         catch (DbUpdateException exception)
         {

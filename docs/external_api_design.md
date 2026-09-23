@@ -152,6 +152,12 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 
 ## 12. テスト観点
 
+LSI/PAA（`other-keywords`）には重い取得用の`LongTimeoutSeconds`（既定60秒）を適用する。通常サジェスト等は`TimeoutSeconds`（既定30秒）のままとし、時間切れは再試行可能な503として監査する。
+
+実リクエストの既定値は同梱OpenAPIのenumと照合する。獲得語は`sortBy=etv`、獲得ページは`sortBy=totalEtv`、集客コンテンツは`searchTarget=titleAndKeywordAndDescription`、見出しは`sortBy=position`とする。見出し取得件数は外部APIの上限20に収める。省略可能なnullプロパティは送信せず、順位結果の`withAggregation`は登録時の`withMetrics`に合わせる。
+
+外部API呼び出しの保存時に、同一トランザクションで`external_api.executed`の監査要約を作成する。`resource_type=external_api_call`と呼び出しIDで画面の監査リンクから検索できる。要約にはHTTP状態、消費量、関連ID、ハッシュだけを含め、APIキー・本文を含めない。過去の呼び出しへの監査ログ補完は行わない。
+
 | 観点 | 確認 |
 | --- | --- |
 | 認証 | APIキー実値がログ/DB/APIレスポンスに出ない。 |

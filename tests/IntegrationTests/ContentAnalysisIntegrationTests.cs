@@ -6,6 +6,12 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Logging.Abstractions;
+using SeoIntelligence.Application.Configuration;
+using SeoIntelligence.Application.RakkoKeyword;
+using SeoIntelligence.Application.Secrets;
+using SeoIntelligence.Infrastructure.RakkoKeyword;
 using SeoIntelligence.Domain.Common;
 using SeoIntelligence.Infrastructure.Persistence;
 using SeoIntelligence.Infrastructure.Persistence.Entities;
@@ -17,6 +23,86 @@ namespace IntegrationTests;
 
 public sealed class ContentAnalysisIntegrationTests
 {
+    [Theory]
+    [Trait("Category", "Integration")]
+    [InlineData(200, "failed_fatal")]
+    [InlineData(402, "failed_fatal")]
+    [InlineData(403, "failed_fatal")]
+    [InlineData(429, "failed_retryable")]
+    [InlineData(500, "failed_retryable")]
+    [InlineData(503, "failed_retryable")]
+    public async Task BriefDoesNotSaveTemplateWhenEvidenceIsEmptyOrUnavailable(int statusCode, string expectedStatus)
+    {
+        await using var factory = new ContentAnalysisApiFactory(statusCode);
+        using var client = CreateClient(factory);
+        var projectId = await SeedProjectAsync(factory, "Brief failure");
+        try
+        {
+            using var response = await client.PostAsJsonAsync($"/api/projects/{projectId}/briefs/generate", new { targetKeyword = "SEO" });
+            using var json = await ReadJsonAsync(response);
+            var jobId = json.RootElement.GetProperty("data").GetProperty("jobId").GetGuid();
+            await DispatchAsync(factory, jobId);
+            await using var scope = factory.Services.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<SeoIntelligenceDbContext>();
+            var job = await db.Jobs.SingleAsync(job => job.Id == jobId);
+            Assert.Equal(expectedStatus, job.Status);
+            Assert.Equal(0, (await db.ArticleBriefs.SingleAsync(brief => brief.ProjectId == projectId)).CurrentVersion);
+            Assert.Empty(await db.ArtifactVersions.Where(version => version.ProjectId == projectId).ToArrayAsync());
+            var calls = await db.ExternalApiCalls.Where(call => call.ProjectId == projectId).ToArrayAsync();
+            Assert.Equal(statusCode == 200 ? 3 : 1, calls.Length);
+            foreach (var call in calls)
+            {
+                var audit = await db.AuditLogs.SingleAsync(row => row.ResourceType == "external_api_call" && row.ResourceId == call.Id.ToString());
+                Assert.DoesNotContain("test-rakko-key", audit.BeforeAfterJson);
+                Assert.Equal(statusCode, call.StatusCode);
+            }
+        }
+        finally { DeleteTempStoragePath(factory.StoragePath); }
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task BriefWithoutEvidenceCollectsProjectScopedSourcesAndKeepsRequestedTitle()
+    {
+        await using var factory = new ContentAnalysisApiFactory();
+        using var client = CreateClient(factory);
+        var projectId = await SeedProjectAsync(factory, "Brief evidence");
+        try
+        {
+            using var response = await client.PostAsJsonAsync($"/api/projects/{projectId}/briefs/generate",
+                new { targetKeyword = "SEO", title = "SEOの調査に基づく記事ブリーフ" });
+            Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+            using var responseJson = await ReadJsonAsync(response);
+            var jobId = responseJson.RootElement.GetProperty("data").GetProperty("jobId").GetGuid();
+            await DispatchAsync(factory, jobId);
+
+            await using var scope = factory.Services.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<SeoIntelligenceDbContext>();
+            Assert.Equal(StatusValues.Succeeded, (await db.Jobs.SingleAsync(job => job.Id == jobId)).Status);
+            var brief = await db.ArticleBriefs.SingleAsync(brief => brief.ProjectId == projectId);
+            Assert.Equal("SEOの調査に基づく記事ブリーフ", brief.Title);
+            using var content = JsonDocument.Parse(brief.ContentJson);
+            Assert.NotEmpty(content.RootElement.GetProperty("evidence").GetProperty("headlinePages").EnumerateArray());
+            Assert.NotEmpty(content.RootElement.GetProperty("requiredTerms").EnumerateArray());
+            Assert.NotEmpty(content.RootElement.GetProperty("competitorUrls").EnumerateArray());
+            var calls = await db.ExternalApiCalls.Where(call => call.ProjectId == projectId).ToArrayAsync();
+            Assert.Equal(3, calls.Length);
+            Assert.All(calls, call => Assert.Equal(jobId, call.JobId));
+
+            // A second brief reuses the same project's evidence; another project cannot reuse it.
+            using var second = await client.PostAsJsonAsync($"/api/projects/{projectId}/briefs/generate", new { targetKeyword = "SEO" });
+            using var secondJson = await ReadJsonAsync(second);
+            await DispatchAsync(factory, secondJson.RootElement.GetProperty("data").GetProperty("jobId").GetGuid());
+            Assert.Equal(3, await db.ExternalApiCalls.CountAsync(call => call.ProjectId == projectId));
+            var otherId = await SeedProjectAsync(factory, "Other brief");
+            using var other = await client.PostAsJsonAsync($"/api/projects/{otherId}/briefs/generate", new { targetKeyword = "SEO" });
+            using var otherJson = await ReadJsonAsync(other);
+            await DispatchAsync(factory, otherJson.RootElement.GetProperty("data").GetProperty("jobId").GetGuid());
+            Assert.Equal(3, await db.ExternalApiCalls.CountAsync(call => call.ProjectId == otherId));
+        }
+        finally { DeleteTempStoragePath(factory.StoragePath); }
+    }
+
     [Fact]
     [Trait("Category", "Integration")]
     public async Task ContentAnalyzeAndBriefGenerationPersistEvidenceVersionsAndExport()
@@ -36,7 +122,7 @@ public sealed class ContentAnalysisIntegrationTests
                     includeContentSearch = true,
                     includeHeadline = true,
                     includeCoOccurrence = true,
-                    limit = 5
+                    limit = 100
                 });
             using var analyzeDocument = await ReadJsonAsync(analyzeResponse);
 
@@ -54,6 +140,10 @@ public sealed class ContentAnalysisIntegrationTests
                 Assert.Equal(2, await dbContext.SerpHeadlines.CountAsync());
                 Assert.Equal(1, await dbContext.CoOccurrenceWords.CountAsync(entity => entity.ProjectId == projectId));
                 Assert.Equal(1, await dbContext.CoOccurrencePageDetails.CountAsync());
+                var headlineCall = await dbContext.ExternalApiCalls.SingleAsync(call =>
+                    call.JobId == analyzeJobId && call.Endpoint == "/v1/headline");
+                using var headlinePayload = await RakkoCallPayload.ReadRequestAsync(scope.ServiceProvider, headlineCall);
+                Assert.Equal(20, headlinePayload.RootElement.GetProperty("body").GetProperty("limit").GetInt32());
             }
 
             using (var analysesResponse = await client.GetAsync(
@@ -287,7 +377,7 @@ public sealed class ContentAnalysisIntegrationTests
         }
     }
 
-    private sealed class ContentAnalysisApiFactory : ServiceKeyApiFactory
+    private sealed class ContentAnalysisApiFactory(int? externalStatus = null) : ServiceKeyApiFactory
     {
         private readonly string databaseName = Guid.NewGuid().ToString("N");
 
@@ -309,12 +399,22 @@ public sealed class ContentAnalysisIntegrationTests
                     ["SecretStore:ConfigurationPrefix"] = "Secrets",
                     ["Hangfire:Storage"] = "PostgreSQL",
                     ["OpenTelemetry:ServiceName"] = "IntegrationTests",
-                    ["RakkoKeyword:Mode"] = "Mock"
+                    ["RakkoKeyword:Mode"] = "Mock",
+                    ["Secrets:rakko-keyword-api-key-dev"] = "test-rakko-key"
                 });
             });
 
             builder.ConfigureServices(services =>
             {
+                if (externalStatus.HasValue)
+                {
+                    services.AddScoped<IRakkoKeywordClient>(provider => new RakkoKeywordRealClient(
+                        new HttpClient(new EmptyEvidenceHandler(externalStatus.Value)),
+                        provider.GetRequiredService<ISecretStore>(),
+                        provider.GetRequiredService<IRakkoKeywordCallRecorder>(),
+                        provider.GetRequiredService<IOptions<RakkoKeywordOptions>>(),
+                        NullLogger<RakkoKeywordRealClient>.Instance));
+                }
                 services.AddDbContext<SeoIntelligenceDbContext>(options =>
                     options.UseInMemoryDatabase(databaseName));
 
@@ -325,5 +425,16 @@ public sealed class ContentAnalysisIntegrationTests
                 context.Database.EnsureCreated();
             });
         }
+    }
+
+    private sealed class EmptyEvidenceHandler(int status) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            => Task.FromResult(new HttpResponseMessage((HttpStatusCode)status)
+            {
+                Content = new StringContent(status == 200
+                    ? """{"result":true,"meta":{"consumedCredit":0},"data":{"items":[]},"errors":[]}"""
+                    : """{"result":false,"errors":["Upstream request failed."]}""")
+            });
     }
 }

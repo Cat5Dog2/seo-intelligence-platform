@@ -192,6 +192,14 @@ public sealed class InfrastructureCommonFoundationTests
             Assert.StartsWith("storage://local/raw/rakko-keyword/", call.RequestUri, StringComparison.Ordinal);
             Assert.StartsWith("storage://local/raw/rakko-keyword/", call.ResponseUri, StringComparison.Ordinal);
 
+            var audit = await dbContext.AuditLogs.AsNoTracking().SingleAsync(entity =>
+                entity.ResourceType == "external_api_call" && entity.ResourceId == call.Id.ToString("D"));
+            Assert.Equal("external_api.executed", audit.Action);
+            Assert.Equal(call.Actor, audit.Actor);
+            Assert.Equal(call.CorrelationId, audit.CorrelationId);
+            Assert.Contains("consumedCredit", audit.BeforeAfterJson);
+            Assert.DoesNotContain("seo", audit.BeforeAfterJson, StringComparison.OrdinalIgnoreCase);
+
             var storage = scope.ServiceProvider.GetRequiredService<IObjectStorage>();
             Assert.True(await storage.ExistsAsync(ToStorageKey(call.RequestUri)));
             Assert.True(await storage.ExistsAsync(ToStorageKey(call.ResponseUri!)));

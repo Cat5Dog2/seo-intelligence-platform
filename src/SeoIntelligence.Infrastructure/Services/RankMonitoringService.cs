@@ -648,7 +648,7 @@ internal sealed class RankMonitoringService(
         var result = await rakkoKeywordClient.GetSearchRankResultsAsync(
             CreateClientContext(context, jobId),
             externalRequest.ExternalRequestId,
-            new RakkoSearchRankResultsRequest(Limit: ExternalResultLimit, WithAggregation: true),
+            new RakkoSearchRankResultsRequest(Limit: ExternalResultLimit, WithAggregation: request.WithMetrics),
             cancellationToken);
         if (!result.IsSuccess || result.Data is null)
         {

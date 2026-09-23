@@ -32,8 +32,9 @@
     <section class="panel">
         <div class="section-heading">
             <h2>生成条件</h2>
-            <span class="muted">AI再生成はPhase 3</span>
+            <span class="muted">根拠データに基づく下書き</span>
         </div>
+        <p class="muted">未取得の集客コンテンツ・見出し・共起語を外部APIから取得します。APIクレジットを消費する場合があります。生成後は内容を確認して保存してください。</p>
         <div class="form-grid dense-form">
             <label class="field wide-field">
                 <span>target keyword</span>
@@ -54,6 +55,8 @@
             <button type="button" class="primary-button" @onclick="GenerateAsync" disabled="@(!CanOperate)">生成ジョブ登録</button>
         </div>
     </section>
+
+    <JobProgressPanel Title="ブリーフ生成ジョブ" JobType="GenerateBriefJob" OnRefreshed="LoadAsync" />
 
     <section class="split-grid">
         <div class="panel">
@@ -218,6 +221,11 @@
 
     private string? ReviewStatusFilter { get; set; }
 
+    private Guid? SelectedProjectId { get; set; }
+    private int ProjectVersion { get; set; }
+    private int ListVersion { get; set; }
+    private int SelectionVersion { get; set; }
+
     private bool CanOperate
         => ProjectState.SelectedProject is not null && !IsGenerating;
 
@@ -225,6 +233,7 @@
     {
         ProjectState.Changed += OnProjectStateChanged;
         await ProjectState.LoadAsync();
+        SelectedProjectId = ProjectState.SelectedProject?.ProjectId;
         await LoadAsync();
     }
 
@@ -248,6 +257,7 @@
         }
 
         IsGenerating = true;
+        var projectVersion = ProjectVersion;
         Errors = [];
         Message = null;
         var result = await ApiClient.GenerateBriefAsync(
@@ -257,6 +267,7 @@
                 ClusterId: clusterId,
                 Title: Optional(GenerateForm.Title),
                 CompetitorUrls: ParseLines(GenerateForm.CompetitorUrls)));
+        if (!IsCurrentProject(projectVersion, project.ProjectId)) return;
         if (result.IsSuccess && result.Data is { } job)
         {
             Message = $"記事ブリーフ生成ジョブを登録しました: {job.JobId:D}";
@@ -281,12 +292,15 @@
         }
 
         IsLoading = true;
+        var projectVersion = ProjectVersion;
+        var listVersion = ++ListVersion;
         Errors = [];
         var result = await ApiClient.GetBriefsAsync(
             project.ProjectId,
             Query,
             reviewStatus: ReviewStatusFilter,
             pageSize: 100);
+        if (!IsCurrentProject(projectVersion, project.ProjectId) || listVersion != ListVersion) return;
         if (result.IsSuccess)
         {
             Briefs = result.Data ?? [];
@@ -308,7 +322,15 @@
         }
 
         Errors = [];
+        SelectedBrief = null;
+        Versions = [];
+        AiRegeneration = null;
+        IsAiRegenerating = false;
+        IsVersionLoading = false;
+        var projectVersion = ProjectVersion;
+        var selectionVersion = ++SelectionVersion;
         var result = await ApiClient.GetBriefAsync(project.ProjectId, briefId);
+        if (!IsCurrentProject(projectVersion, project.ProjectId) || selectionVersion != SelectionVersion) return;
         if (result.IsSuccess && result.Data is { } brief)
         {
             SelectedBrief = brief;
@@ -333,7 +355,7 @@
 
     private async Task SaveAsync()
     {
-        if (ProjectState.SelectedProject is not { } project || SelectedBrief is null)
+        if (ProjectState.SelectedProject is not { } project || SelectedBrief is null || SelectedBrief.ProjectId != project.ProjectId)
         {
             return;
         }
@@ -347,6 +369,8 @@
 
         Errors = [];
         Message = null;
+        var projectVersion = ProjectVersion;
+        var selectionVersion = SelectionVersion;
         var result = await ApiClient.UpdateBriefAsync(
             project.ProjectId,
             SelectedBrief.BriefId,
@@ -356,13 +380,15 @@
                 EditForm.ReviewStatus,
                 EditForm.Status,
                 EditForm.ChangeSummary));
+        if (!IsCurrentProject(projectVersion, project.ProjectId) || selectionVersion != SelectionVersion) return;
         if (result.IsSuccess && result.Data is { } updated)
         {
             Message = "保存しました。";
             SelectedBrief = updated;
             EditForm.ContentJson = FormatJson(updated.Content);
             await LoadAsync();
-            await LoadVersionsAsync(updated.BriefId);
+            if (IsCurrentProject(projectVersion, project.ProjectId) && selectionVersion == SelectionVersion)
+                await LoadVersionsAsync(updated.BriefId);
         }
         else
         {
@@ -372,17 +398,20 @@
 
     private async Task ExportAsync(string format)
     {
-        if (ProjectState.SelectedProject is not { } project || SelectedBrief is null)
+        if (ProjectState.SelectedProject is not { } project || SelectedBrief is null || SelectedBrief.ProjectId != project.ProjectId)
         {
             return;
         }
 
         Errors = [];
         Message = null;
+        var projectVersion = ProjectVersion;
+        var selectionVersion = SelectionVersion;
         var result = await ApiClient.ExportBriefAsync(
             project.ProjectId,
             SelectedBrief.BriefId,
             new ArticleBriefExportRequest(format));
+        if (!IsCurrentProject(projectVersion, project.ProjectId) || selectionVersion != SelectionVersion) return;
         if (result.IsSuccess && result.Data is { } job)
         {
             Message = $"{format}出力ジョブを登録しました: {job.JobId:D}";
@@ -401,12 +430,14 @@
 
     private async Task RegenerateWithAiAsync()
     {
-        if (ProjectState.SelectedProject is not { } project || SelectedBrief is null)
+        if (ProjectState.SelectedProject is not { } project || SelectedBrief is null || SelectedBrief.ProjectId != project.ProjectId)
         {
             return;
         }
 
         IsAiRegenerating = true;
+        var projectVersion = ProjectVersion;
+        var selectionVersion = SelectionVersion;
         Errors = [];
         Message = null;
         var referenceScope = JsonSerializer.SerializeToElement(
@@ -425,6 +456,7 @@
                 $"記事ブリーフ「{SelectedBrief.Title}」を再生成してください。",
                 AllowedTools: ["brief.regenerate"],
                 ReferenceScope: referenceScope));
+        if (!IsCurrentProject(projectVersion, project.ProjectId) || selectionVersion != SelectionVersion) return;
         if (result.IsSuccess && result.Data is { } response)
         {
             AiRegeneration = response;
@@ -447,7 +479,10 @@
         }
 
         IsVersionLoading = true;
+        var projectVersion = ProjectVersion;
+        var selectionVersion = SelectionVersion;
         var result = await ApiClient.GetBriefVersionsAsync(project.ProjectId, briefId, pageSize: 50);
+        if (!IsCurrentProject(projectVersion, project.ProjectId) || selectionVersion != SelectionVersion) return;
         if (result.IsSuccess)
         {
             Versions = result.Data ?? [];
@@ -501,6 +536,22 @@
     {
         await InvokeAsync(async () =>
         {
+            var projectId = ProjectState.SelectedProject?.ProjectId;
+            if (SelectedProjectId == projectId) return;
+            SelectedProjectId = projectId;
+            ProjectVersion++;
+            SelectionVersion++;
+            Briefs = [];
+            SelectedBrief = null;
+            Versions = [];
+            AiRegeneration = null;
+            GenerateForm = new();
+            EditForm = new();
+            Errors = [];
+            Message = null;
+            Query = null;
+            ReviewStatusFilter = null;
+            IsLoading = IsVersionLoading = IsGenerating = IsAiRegenerating = false;
             await LoadAsync();
             StateHasChanged();
         });
@@ -532,8 +583,14 @@
     private static string FormatDateTime(DateTime value)
         => value.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
 
+    private bool IsCurrentProject(int version, Guid projectId)
+        => version == ProjectVersion && ProjectState.SelectedProject?.ProjectId == projectId;
+
     public void Dispose()
-        => ProjectState.Changed -= OnProjectStateChanged;
+    {
+        ProjectVersion++;
+        ProjectState.Changed -= OnProjectStateChanged;
+    }
 
     private sealed class GenerateBriefFormModel
     {

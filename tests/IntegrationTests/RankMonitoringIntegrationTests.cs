@@ -23,9 +23,11 @@ namespace IntegrationTests;
 
 public sealed class RankMonitoringIntegrationTests
 {
-    [Fact]
+    [Theory]
     [Trait("Category", "Integration")]
-    public async Task RankCheckPersistsResultsDistributionAlertEventsAndRankAlertDelivery()
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task RankCheckPersistsResultsDistributionAlertEventsAndRankAlertDelivery(bool withMetrics)
     {
         await using var factory = new RankMonitoringApiFactory();
         using var client = CreateClient(factory);
@@ -61,7 +63,7 @@ public sealed class RankMonitoringIntegrationTests
                     },
                     matchType = "domain",
                     depth = 100,
-                    withMetrics = true,
+                    withMetrics,
                     deduplicate = true
                 });
             using var document = await ReadJsonAsync(response);
@@ -99,6 +101,7 @@ public sealed class RankMonitoringIntegrationTests
 
                 alertEventId = alertEvent.Id;
                 Assert.Equal(StatusValues.Succeeded, job.Status);
+                Assert.Equal(withMetrics, Assert.Single(factory.RakkoKeywordClient.ResultsRequests).WithAggregation);
                 Assert.Equal(100, job.Progress);
                 Assert.Equal(StatusValues.Succeeded, externalRequest.Status);
                 Assert.Equal(StatusValues.Succeeded, evaluationJob.Status);
@@ -384,6 +387,7 @@ public sealed class RankMonitoringIntegrationTests
 
     private sealed class RankMonitoringRakkoKeywordClient : IRakkoKeywordClient
     {
+        public List<RakkoSearchRankResultsRequest> ResultsRequests { get; } = [];
         private readonly Dictionary<string, RakkoSearchRankRegistrationRequest> requests = new(StringComparer.Ordinal);
         private int nextRequestId = 9000001;
 
@@ -424,6 +428,7 @@ public sealed class RankMonitoringIntegrationTests
             CancellationToken cancellationToken = default)
         {
             var registration = requests[requestId];
+            ResultsRequests.Add(request);
             var target = registration.Urls.Single();
             const decimal position = 8m;
             const decimal traffic = 75.5m;

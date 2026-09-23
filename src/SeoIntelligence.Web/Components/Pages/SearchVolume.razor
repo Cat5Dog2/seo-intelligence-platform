@@ -185,6 +185,14 @@
 
     private string ResultOrderBy { get; set; } = "asc";
 
+    private Guid? SelectedProjectId { get; set; }
+
+    private int ProjectVersion { get; set; }
+
+    private int JobLoadVersion { get; set; }
+
+    private int ResultLoadVersion { get; set; }
+
     private KeywordInputParseResult ParsedInput => KeywordInputParser.Parse(KeywordsText);
 
     private string InputSummary
@@ -214,15 +222,17 @@
 
     private async Task ReadCsvFileAsync()
     {
+        var projectVersion = ProjectVersion;
         Errors = [];
         Message = null;
         try
         {
-            KeywordsText = await JS.InvokeAsync<string>("seoIntelligence.readTextFile", CsvInputId);
+            var text = await JS.InvokeAsync<string>("seoIntelligence.readTextFile", CsvInputId);
+            if (projectVersion == ProjectVersion) KeywordsText = text;
         }
         catch (JSException exception)
         {
-            Errors = [new ApiError("Csv.ReadFailed", exception.Message, "csv")];
+            if (projectVersion == ProjectVersion) Errors = [new ApiError("Csv.ReadFailed", exception.Message, "csv")];
         }
     }
 
@@ -234,6 +244,7 @@
         }
 
         IsRegistering = true;
+        var projectVersion = ProjectVersion;
         Errors = [];
         Message = null;
         var keywords = ParsedInput.Keywords;
@@ -245,6 +256,7 @@
                 SearchVolumeForm.Language!.Trim(),
                 SearchVolumeForm.AggregationPeriodMonths,
                 SearchVolumeForm.SeoDifficulty));
+        if (projectVersion != ProjectVersion) return;
         if (result.IsSuccess && result.Data is { } job)
         {
             JobIdText = job.JobId.ToString("D");
@@ -269,18 +281,30 @@
 
     private async Task LoadJobAsync(Guid jobId)
     {
+        if (ProjectState.SelectedProject is not { } project) return;
+        var projectVersion = ProjectVersion;
+        var loadVersion = ++JobLoadVersion;
         IsJobLoading = true;
         Errors = [];
+        CurrentJob = null;
+        Results = [];
+        IsResultLoading = false;
+        ++ResultLoadVersion;
         var result = await ApiClient.GetJobAsync(jobId);
-        if (result.IsSuccess)
+        if (projectVersion != ProjectVersion || loadVersion != JobLoadVersion) return;
+        if (result.IsSuccess && result.Data is { } job && job.ProjectId == project.ProjectId &&
+            job.JobType == "RegisterSearchVolumeJob")
         {
-            CurrentJob = result.Data;
+            CurrentJob = job;
             JobIdText = jobId.ToString("D");
         }
         else
         {
             CurrentJob = null;
-            Errors = result.Errors;
+            JobIdText = null;
+            Errors = result.IsSuccess
+                ? [new ApiError("Resource.NotFound", "このプロジェクトの検索ボリュームジョブが見つかりません。", "jobId")]
+                : result.Errors;
         }
 
         IsJobLoading = false;
@@ -294,6 +318,8 @@
         }
 
         IsResultLoading = true;
+        var projectVersion = ProjectVersion;
+        var loadVersion = ++ResultLoadVersion;
         Errors = [];
         var result = await ApiClient.GetSearchVolumeResultsAsync(
             project.ProjectId,
@@ -302,6 +328,9 @@
             ResultSortBy,
             ResultOrderBy,
             pageSize: 100);
+        if (projectVersion != ProjectVersion || loadVersion != ResultLoadVersion) return;
+        IsResultLoading = false;
+        if (JobIdText != jobId.ToString("D")) return;
         if (result.IsSuccess)
         {
             Results = result.Data ?? [];
@@ -317,12 +346,15 @@
 
     private async Task CancelJobAsync()
     {
-        if (!TryGetCurrentJobId(out var jobId))
+        if (!CanCancel || CurrentJob is null || CurrentJob.ProjectId != ProjectState.SelectedProject?.ProjectId ||
+            !TryGetCurrentJobId(out var jobId) || CurrentJob.JobId != jobId)
         {
             return;
         }
 
+        var projectVersion = ProjectVersion;
         var result = await ApiClient.CancelJobAsync(jobId);
+        if (projectVersion != ProjectVersion || JobIdText != jobId.ToString("D")) return;
         if (result.IsSuccess)
         {
             CurrentJob = result.Data;
@@ -335,12 +367,15 @@
 
     private async Task RetryJobAsync()
     {
-        if (!TryGetCurrentJobId(out var jobId))
+        if (!CanRetry || CurrentJob is null || CurrentJob.ProjectId != ProjectState.SelectedProject?.ProjectId ||
+            !TryGetCurrentJobId(out var jobId) || CurrentJob.JobId != jobId)
         {
             return;
         }
 
+        var projectVersion = ProjectVersion;
         var result = await ApiClient.RetryJobAsync(jobId);
+        if (projectVersion != ProjectVersion || JobIdText != jobId.ToString("D")) return;
         if (result.IsSuccess)
         {
             CurrentJob = result.Data;
@@ -359,6 +394,7 @@
         }
 
         IsExporting = true;
+        var projectVersion = ProjectVersion;
         Errors = [];
         Message = null;
         var filter = JsonSerializer.SerializeToElement(
@@ -371,6 +407,9 @@
         var result = await ApiClient.CreateCsvExportAsync(
             project.ProjectId,
             new DataExportRequest("search_volume_results", filter));
+        if (projectVersion != ProjectVersion) return;
+        IsExporting = false;
+        if (JobIdText != jobId.ToString("D")) return;
         if (result.IsSuccess && result.Data is { } exportJob)
         {
             Message = $"CSV出力ジョブを登録しました: {exportJob.JobId:D}";
@@ -447,6 +486,24 @@
 
     private void SyncDefaultsFromProject()
     {
+        var projectId = ProjectState.SelectedProject?.ProjectId;
+        if (SelectedProjectId != projectId)
+        {
+            SelectedProjectId = projectId;
+            ++ProjectVersion;
+            ++JobLoadVersion;
+            ++ResultLoadVersion;
+            KeywordsText = null;
+            JobIdText = null;
+            CurrentJob = null;
+            Results = [];
+            Errors = [];
+            Message = null;
+            ResultQuery = null;
+            ResultSortBy = "keyword";
+            ResultOrderBy = "asc";
+            IsRegistering = IsJobLoading = IsResultLoading = IsExporting = false;
+        }
         if (ProjectState.SelectedProject is not { } project)
         {
             return;
@@ -468,7 +525,10 @@
         => value.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
 
     public void Dispose()
-        => ProjectState.Changed -= OnProjectStateChanged;
+    {
+        ProjectState.Changed -= OnProjectStateChanged;
+        ++ProjectVersion;
+    }
 
     private sealed class SearchVolumeFormModel
     {

@@ -510,7 +510,7 @@ internal sealed class DashboardService(SeoIntelligenceDbContext dbContext)
             keywordCandidateCount,
             runningJobCount,
             failedJobCount,
-            Decimal.ToInt32(decimal.Truncate(consumedCredit)),
+            consumedCredit,
             keywordDiscoveryCount,
             searchVolumeJobCount,
             searchVolumeResultCount,

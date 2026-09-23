@@ -221,6 +221,8 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | API | `POST /api/projects/{projectId}/briefs/generate`、`GET /api/projects/{projectId}/briefs/{briefId}`、`PUT /api/projects/{projectId}/briefs/{briefId}`、`GET /api/projects/{projectId}/briefs/{briefId}/versions`、`POST /api/projects/{projectId}/briefs/{briefId}/export` |
 | 状態 | draft / active / archived、review_statusはpending/reviewed/rejected等を画面表示する。 |
 
+記事ブリーフ画面では追加取得に伴うクレジット消費を案内し、生成ジョブの進捗・再試行導線を表示する。ブリーフ詳細・編集中の内容・版履歴はプロジェクト切替時にクリアし、切替前の非同期応答は反映しない。
+
 ### 6.10 S-090 リライト管理
 
 | 項目 | 内容 |
@@ -279,6 +281,8 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 キーワード探索と検索ボリューム画面には選択中プロジェクトの「CSV出力ジョブ」を表示する。「更新」で完了を確認し、成功した`csv_export`ジョブの「ダウンロード」からWebホストの`/downloads/projects/{projectId}/exports/{exportId}`を開く。処理中・失敗・キャンセルされたジョブにはダウンロードを表示しない。
 
 キーワード探索の「状態更新」はジョブが完了したら`GET /api/projects/{projectId}/keyword-discovery/jobs/{jobId}/results`で候補語とソース別状態を取得する。外部APIを再実行せず、保存済み候補を検索ボリューム調査へ送れるようにする。プロジェクト切替時は候補と探索ジョブをクリアする。
+
+探索が失敗した場合も保存済みの部分結果とソース別エラーを表示する。再試行可能な場合は「失敗したソースを再試行」を表示する。検索ボリューム画面ではプロジェクト切替時に入力・ジョブ・結果・出力状態をクリアし、切替前の応答を破棄する。ジョブ読込時はプロジェクトとジョブ種別を照合する。
 
 ### 6.15 S-900 管理
 

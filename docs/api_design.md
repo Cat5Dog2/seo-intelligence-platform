@@ -358,6 +358,12 @@ ISSUE-P3-001では、上記Phase 3 APIのContracts/DTO、ルートグループ�
 
 `GET /api/projects/{projectId}/keyword-discovery/jobs/{jobId}/results`は保存済みの探索結果（`KeywordDiscoveryResult`）を返す。サービスキー認証とworkspace/project一致を要求し、対象外は404。未完了なら受付状態を200で返す。取得時に外部APIは呼び出さない。結果スナップショットのない修正前の完了ジョブは409を返し、既存の保存済み候補のCSV出力へ案内する。
 
+キーワード探索は複数ソース、LSI/PAA（`other`）、limitが50超、または`syncPreferred=false`の場合に202でジョブを返す。ソースの一時障害時は他のソースを続行して部分結果を保存し、再試行では取得済みソースを再実行しない。402/403等の恒久エラーは後続ソースも停止する。
+
+記事ブリーフ生成は、同じプロジェクト・キーワードに不足する集客コンテンツ、見出し、共起語を生成ジョブ内で取得する。指定タイトルは保持する。取得失敗または根拠が全件0件の場合は完成版を保存せず、ジョブを失敗にする。429/500/503は再試行可能、402/403は再試行不可。`currentVersion=0`は未生成を表す。
+
+ダッシュボードの`consumedCredit`は小数を保持するJSON numberで返し、整数への切り捨てを行わない。
+
 | モデル | 用途 | 主な項目 |
 | --- | --- | --- |
 | `WorkspaceSettingsRequest` | ワークスペース設定更新 | `name`、`defaultLocation`、`defaultLanguage`、`retentionSettings`、`notificationDefaults` |

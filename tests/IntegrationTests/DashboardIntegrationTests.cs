@@ -46,7 +46,7 @@ public sealed class DashboardIntegrationTests
                 Assert.Equal(HttpStatusCode.OK, response.StatusCode);
                 var data = document.RootElement.GetProperty("data");
 
-                Assert.Equal(12, data.GetProperty("consumedCredit").GetInt32());
+                Assert.Equal(12.8m, data.GetProperty("consumedCredit").GetDecimal());
                 Assert.Equal(1, data.GetProperty("runningJobCount").GetInt32());
                 Assert.Equal(1, data.GetProperty("failedJobCount").GetInt32());
                 Assert.Equal(1, data.GetProperty("notificationFailureCount").GetInt32());
