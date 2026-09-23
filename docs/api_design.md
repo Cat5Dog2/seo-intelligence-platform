@@ -123,6 +123,10 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 
 利用者はWeb側の単一管理者ログイン（ASP.NET Core Identity + Cookie）で認証する。詳細は `docs/adr/0008-aspnet-core-identity-auth.md` を参照する。
 
+ゲスト用のWebエンドポイントは`POST /login/guest`。フォームの`returnUrl`は任意で、既存のアプリ内パス検証に従う。CSRFトークンを必須とし、管理者ログインと同じIP単位10回/分の制限を適用する。成功時はGuestロールとMock claimを持つ非永続Cookieを発行して302で遷移する。有効期限は1時間で延長しない。`POST /logout`でデモセッションも失効させる。ゲストの`POST /account/password`は認可で拒否する。
+
+Guestの業務操作はWeb内の`GuestApiRouter`がメモリ上で処理し、内部APIへ通信しない。通常APIのサービスキー認証・URL・レスポンス契約は変更しない。ゲストデモの独自エラーは`Guest.Validation`/`Guest.Limit`（400）、`Guest.Conflict`（409）、`Guest.NotFound`（404）、`Guest.Unsupported`（403）、`Guest.SessionExpired`（401）である。ゲストのCSVダウンロードも同じ振り分けを通る。詳細は`guest_login.md`を参照する。
+
 内部APIはWebからのみ呼び出される前提で、`X-Service-Key`ヘッダーの共有シークレットで認証する。値はSecret Storeから取得し、定数時間比較で検証する。既定で全エンドポイントが要認証であり、匿名で到達できるのは以下だけである。
 
 | パス | 匿名許可の理由 |

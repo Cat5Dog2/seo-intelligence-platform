@@ -152,7 +152,7 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | Worker/Job Queue | .NET Worker Service + Hangfire + PostgreSQL storage | 外部API連携、ポーリング、リトライ、レポート生成、Discord通知、定期実行、ジョブ管理画面。 |
 | DB | PostgreSQL + EF Core | 正規化データ、JSONBローデータ、全文検索補助、集計。 |
 | Cache/Coordination | Redis | キャッシュ、分散ロック、レート制御、一時状態管理。ジョブの永続化とスケジューリングはHangfireのPostgreSQL storageで行う。 |
-| Auth | ASP.NET Core Identity + Cookie（Web） / 共有サービスキー（API） | 全環境で単一管理者ログインを必須にする。WebからAPIへは`X-Service-Key`で認証する。ADR 0008を参照。 |
+| Auth | ASP.NET Core Identity + Cookie（Web） / 共有サービスキー（API） | 通常データには管理者ログインを必須にする。WebからAPIへは`X-Service-Key`で認証する。GuestはWeb内の分離Mockデモを利用する。ADR 0008を参照。 |
 | Observability | OpenTelemetry + Application Insights/Grafana | ログ、トレース、メトリクス、ジョブ監視。 |
 | Reports | ClosedXML / QuestPDF | Phase 3のExcel/PDF/共有URL出力。Phase 1はCSV出力のみ。 |
 | AI | IAiContentService abstraction | Azure OpenAI/OpenAI/社内LLMを差し替え可能にする。 |
@@ -306,6 +306,8 @@ DBテーブル、型、FK、インデックス、保持期間、マイグレー�
 業務データ側のusers、roles、user_rolesは持たない。操作主体は固定値developerとしてjobs、external_api_calls、audit_logsに保存する。複数ユーザー化が必要になった時点で、Phase 4拡張として業務用のユーザー/ロールテーブルとRBACを追加する。
 
 認証用のアカウント情報はASP.NET Core Identityのテーブル群として同一DBに保持する。テーブル名はidentity_users、identity_roles、identity_user_roles、identity_user_claims、identity_user_logins、identity_user_tokens、identity_role_claimsとし、業務データとは分離して扱う。単一管理者運用のためロールはAdminのみ使用し、Userは将来拡張用に定義だけ行う。詳細はADR 0008を参照する。
+
+ゲストデモはWebのみで完結する例外であり、Identityユーザーや業務DB行は作成しない。暗号化CookieのGuestロールとMock claimから`GuestApiRouter`が分岐し、セッションID別のメモリデータを利用する。通常APIへ送れるのは認証済みAdminのみ。Blazor回路の`AuthenticationStateProvider`から毎回ユーザーを取得し、Cookie更新・HTTPクライアントのハンドラースコープに依存する振り分けを避ける。Webダウンロードも同じ入口を通す。デモセッションの失効をCookie検証と各操作で確認し、失効時に通常APIへフォールバックしない。詳細は`guest_login.md`を参照する。
 
 api_contract_scopesはラッコキーワードAPIの契約プラン、APIキー上限、データ利用範囲、確認日、確認者、適用期間を保持する。管理画面/APIでは管理せず、初期データと運用手順で登録する。契約内容を変更した場合はSeedDataまたはマイグレーション相当の保守手順で既存行をarchivedにして新しいscope_keyを発行し、過去データの再利用可否を後から追跡できるようにする。
 

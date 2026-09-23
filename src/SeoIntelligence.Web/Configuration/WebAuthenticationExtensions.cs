@@ -6,6 +6,7 @@ using SeoIntelligence.Infrastructure.Identity;
 using SeoIntelligence.Infrastructure.Persistence;
 using SeoIntelligence.Infrastructure.Secrets;
 using SeoIntelligence.Web.Security;
+using SeoIntelligence.Web.Services;
 
 namespace SeoIntelligence.Web.Configuration;
 
@@ -42,6 +43,7 @@ public static class WebAuthenticationExtensions
             options.LoginPath = "/login";
             options.LogoutPath = "/logout";
             options.AccessDeniedPath = "/forbidden";
+            options.Events.OnValidatePrincipal = GuestAuthentication.ValidatePrincipalAsync;
         });
 
         services.AddCascadingAuthenticationState();
@@ -50,6 +52,11 @@ public static class WebAuthenticationExtensions
             options.AddPolicy(
                 ApplicationPolicies.RequireAdmin,
                 policy => policy.RequireRole(ApplicationRoles.Admin));
+            options.AddPolicy(ApplicationPolicies.RequireWorkspaceAccess, policy =>
+                policy.RequireAuthenticatedUser().RequireAssertion(context =>
+                    context.User.IsInRole(ApplicationRoles.Admin) || GuestAuthentication.IsGuest(context.User)));
+            options.AddPolicy(ApplicationPolicies.RequireRegisteredAccount, policy =>
+                policy.RequireAuthenticatedUser().RequireAssertion(context => !GuestAuthentication.IsGuest(context.User)));
         });
 
         services.AddAntiforgery(options => options.HeaderName = CsrfEndpointFilter.HeaderName);
@@ -58,6 +65,8 @@ public static class WebAuthenticationExtensions
         services.AddOptions<ServiceAuthenticationOptions>()
             .Bind(configuration.GetSection(ServiceAuthenticationOptions.SectionName));
         services.AddTransient<ServiceKeyHttpMessageHandler>();
+        services.AddSingleton<GuestDemoSessionStore>();
+        services.AddScoped<GuestApiRouter>();
 
         return services;
     }

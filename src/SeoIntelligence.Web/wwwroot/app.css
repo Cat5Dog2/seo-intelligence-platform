@@ -887,3 +887,30 @@ legend {
         font-size: 0.95rem;
         margin: 0.25rem 0 0;
     }
+.guest-login {
+    margin-top: 1.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid #cbd5e1;
+}
+
+.guest-mode-badge {
+    border-radius: 0.4rem;
+    padding: 0.35rem 0.6rem;
+    background: #e0f2fe;
+    color: #075985;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.guest-demo-notice {
+    margin-bottom: 1rem;
+    padding: 1rem;
+    border: 1px solid #7dd3fc;
+    border-radius: 0.5rem;
+    background: #f0f9ff;
+    color: #0c4a6e;
+}
+
+.guest-demo-notice p {
+    margin: 0.5rem 0 0;
+}

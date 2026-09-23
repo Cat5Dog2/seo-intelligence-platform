@@ -14,11 +14,13 @@ public sealed partial class SeoIntelligenceApiClient : ISeoIntelligenceApiClient
 
     private readonly HttpClient _httpClient;
     private readonly ILogger<SeoIntelligenceApiClient> _logger;
+    private readonly GuestApiRouter? _guestRouter;
 
-    public SeoIntelligenceApiClient(HttpClient httpClient, ILogger<SeoIntelligenceApiClient> logger)
+    public SeoIntelligenceApiClient(HttpClient httpClient, ILogger<SeoIntelligenceApiClient> logger, GuestApiRouter? guestRouter = null)
     {
         _httpClient = httpClient;
         _logger = logger;
+        _guestRouter = guestRouter;
         _httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
     }
 
@@ -611,6 +613,11 @@ public sealed partial class SeoIntelligenceApiClient : ISeoIntelligenceApiClient
         string fallbackFileName,
         CancellationToken cancellationToken)
     {
+        if (_guestRouter is not null
+            && await _guestRouter.RouteAsync<ApiFileResponse>(HttpMethod.Get, requestUri, null, cancellationToken) is { } guestResult)
+        {
+            return guestResult;
+        }
         using var request = new HttpRequestMessage(HttpMethod.Get, requestUri);
 
         HttpResponseMessage? response = null;
@@ -688,6 +695,11 @@ public sealed partial class SeoIntelligenceApiClient : ISeoIntelligenceApiClient
         object? body = null,
         CancellationToken cancellationToken = default)
     {
+        if (_guestRouter is not null
+            && await _guestRouter.RouteAsync<T>(method, requestUri, body, cancellationToken) is { } guestResult)
+        {
+            return guestResult;
+        }
         using var request = new HttpRequestMessage(method, requestUri);
         if (body is not null)
         {

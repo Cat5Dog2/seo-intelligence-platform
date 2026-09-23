@@ -8,12 +8,12 @@
 
 <p>このページを表示する権限がありません。</p>
 
-<AuthorizeView Policy="@ApplicationPolicies.RequireAdmin">
+<AuthorizeView Policy="@ApplicationPolicies.RequireWorkspaceAccess">
     <Authorized>
         <a data-testid="forbidden-back-link" href="/">プロジェクト一覧へ戻る</a>
     </Authorized>
     <NotAuthorized>
-        @* Only Admin accounts can open the project list; sending anyone else there would loop
+        @* Only workspace users can open the project list; sending anyone else there would loop
            straight back to this page. *@
         <a data-testid="forbidden-back-link" href="/account">アカウントへ戻る</a>
     </NotAuthorized>

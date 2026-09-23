@@ -41,6 +41,12 @@
 
         <button type="submit" class="btn-primary">ログイン</button>
     </form>
+    <form method="post" action="/login/guest" class="auth-form guest-login">
+        <AntiforgeryToken />
+        <input type="hidden" name="returnUrl" value="@ReturnUrl" />
+        <p>アカウント不要で、通常データから分離したデモを試せます。Mockモードで動作し、実際のAPIクレジットは消費しません。</p>
+        <button type="submit" class="secondary-button">ゲストでログイン</button>
+    </form>
 </div>
 
 @code {

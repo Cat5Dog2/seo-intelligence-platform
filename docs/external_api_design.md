@@ -38,6 +38,8 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 
 ## 3. ラッコキーワードAPIクライアント
 
+ゲストログインのMockは、以下のサーバー全体の`RakkoKeyword:Mode`とは別のWeb内デモである。Guestの呼び出しは内部API・Worker・外部クライアントへ渡さず、セッション内で模擬結果を生成する。通常環境がRealでもゲストには適用されず、デモの`ConsumedCredit`は0。通常の外部API Mockクライアントや監査DBの動作は変更しない。詳細は`guest_login.md`を参照する。
+
 | 項目 | 設計 |
 | --- | --- |
 | 実装場所 | Infrastructure層の`IRakkoKeywordClient`実装。 |

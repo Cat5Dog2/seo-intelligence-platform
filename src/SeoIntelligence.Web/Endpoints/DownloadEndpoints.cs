@@ -19,7 +19,7 @@ public static class DownloadEndpoints
     {
         var downloads = endpoints
             .MapGroup("/downloads/projects/{projectId:guid}")
-            .RequireAuthorization(ApplicationPolicies.RequireAdmin);
+            .RequireAuthorization(ApplicationPolicies.RequireWorkspaceAccess);
 
         downloads.MapGet("/exports/{exportId:guid}", GetExportAsync);
         downloads.MapGet("/reports/{reportId:guid}", GetReportAsync);
@@ -31,19 +31,29 @@ public static class DownloadEndpoints
         Guid projectId,
         Guid exportId,
         ISeoIntelligenceApiClient apiClient,
+        GuestApiRouter guestRouter,
+        HttpContext context,
         CancellationToken cancellationToken)
-        => StreamAsync(
+    {
+        guestRouter.UseRequestPrincipal(context.User);
+        return StreamAsync(
             () => apiClient.DownloadExportAsync(projectId, exportId, cancellationToken),
             cancellationToken);
+    }
 
     private static Task<IResult> GetReportAsync(
         Guid projectId,
         Guid reportId,
         ISeoIntelligenceApiClient apiClient,
+        GuestApiRouter guestRouter,
+        HttpContext context,
         CancellationToken cancellationToken)
-        => StreamAsync(
+    {
+        guestRouter.UseRequestPrincipal(context.User);
+        return StreamAsync(
             () => apiClient.DownloadReportAsync(projectId, reportId, cancellationToken),
             cancellationToken);
+    }
 
     private static async Task<IResult> StreamAsync(
         Func<Task<ApiClientResult<ApiFileResponse>>> fetch,

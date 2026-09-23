@@ -132,6 +132,7 @@ ISSUE-MVP-00X の続きから再開してください。
 - [x] ISSUE-P3-008 Phase 3受入テストを整備する
 - [x] ISSUE-REF-001 コードベース保守性リファクタリングを実施する
 - [x] ISSUE-SEC-001 単一管理者ログインとAPIサービス認証を実装する
+- [x] ISSUE-SEC-007 分離されたMockデモを使うゲストログインを実装する
 - [x] ISSUE-EXT-001 ラッコキーワードAPI v1.14.0へ追随する
 - [ ] ISSUE-P4-001 エンタープライズ拡張を設計する
 - [ ] ISSUE-BACKLOG-001 推奨バックログを整理する
@@ -2378,3 +2379,18 @@ CI失敗の是正:
 - [ ] `dotnet ef database update --project src/SeoIntelligence.Infrastructure --startup-project src/SeoIntelligence.Api`
 - [ ] `dotnet run --project src/SeoIntelligence.Api`
 - [ ] `dotnet run --project src/SeoIntelligence.Worker`
+
+### ISSUE-SEC-007 分離されたMockデモを使うゲストログインを実装する
+
+目的: アカウントなしで画面を試せるようにし、通常データと外部APIのクレジットを保護する。
+
+参照: `docs/guest_login.md`、`docs/requirements.md`、`docs/screen_design.md`、`docs/api_design.md`。
+
+- [x] CSRF・レート制限付きの`POST /login/guest`とログインボタンを追加する。
+- [x] Guest専用Cookieとメモリセッションを用意し、通常DB・別セッションから分離する。
+- [x] Mockを固定し、通常環境がRealでもゲストのAPI通信を遮断する。
+- [x] プロジェクト・サイト編集、キーワード探索、一括調査、CSV出力をデモ内で提供する。他の分析画面はサンプル閲覧とする。
+- [x] 管理・パスワード変更・外部送信を拒否し、期限・ログアウト・管理者への切り替えで失効させる。
+- [x] 認証、スコープ分離、入力境界、ダウンロードのテストとChromiumでの操作確認を追加する。
+
+検証: `dotnet test tests/IntegrationTests/IntegrationTests.csproj --filter 'FullyQualifiedName~GuestDemoSessionTests|FullyQualifiedName~WebGuestLoginTests|FullyQualifiedName~WebAuthenticationTests|FullyQualifiedName~WebAccountAuthorizationTests|FullyQualifiedName~WebDownloadEndpointTests'`。ブラウザ確認の起動条件は`docs/guest_login.md`を参照。

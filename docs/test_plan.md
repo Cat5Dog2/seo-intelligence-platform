@@ -300,3 +300,7 @@ PostgreSQLテストは指定DBにスキーマがなければ作成し、合成�
 | MVP | AC-001、AC-002、AC-003、AC-008からAC-014、AC-019の対象テストが通過し、主要障害系が確認済み。 |
 | Phase 2 | 競合、コンテンツ、記事ブリーフ、順位監視、Phase 2ダッシュボード拡張のE2Eと契約テストが通過。 |
 | Phase 3 | P3-001のmigration、API土台、AI秘匿処理、共有URL共通処理のUnit/Security testが通過したうえで、AI、リライト、カニバリ、レポート、CSV/Excelインポート、外部連携スタブのE2E/統合テストと監査が通過。 |
+
+## 12. ゲストデモの検証
+
+ゲストログインは`WebGuestLoginTests`でCSRF、Cookie属性、オープンリダイレクト、Guest/Admin分離、全業務画面の表示、通常APIへ到達しないこと、ログアウト後のCookie再利用拒否を検証する。`GuestDemoSessionTests`はセッション/プロジェクト間の分離、期限・再起動、入力上限、Mockデータ、CSVの対象ジョブと数式対策を検証する。`BrowserGuestLoginTests`はChromiumでログイン→プロジェクト作成→探索→CSV取得→一括調査→ログアウト、別ゲストとの分離、390px幅のレイアウトを確認する。実行コマンドとデモの制限は`guest_login.md`を参照する。

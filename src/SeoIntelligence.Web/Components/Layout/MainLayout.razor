@@ -12,6 +12,10 @@
             <div class="header-usage"><CreditBadge /></div>
             <AuthorizeView>
                 <Authorized>
+                    @if (GuestAuthentication.IsGuest(context.User))
+                    {
+                        <span class="guest-mode-badge">ゲスト・Mock</span>
+                    }
                     <a class="account-link" href="/account">@context.User.Identity?.Name</a>
                     <form method="post" action="/logout" class="logout-form">
                         <AntiforgeryToken />
@@ -49,13 +53,29 @@
             <NavLink href="/rank-monitoring">順位監視</NavLink>
             <NavLink href="/reports">レポート</NavLink>
             </div>
-            <div class="nav-group" aria-labelledby="nav-admin">
-            <h2 id="nav-admin">管理</h2>
-            <NavLink href="/admin">管理</NavLink>
-            </div>
+            <AuthorizeView Policy="@ApplicationPolicies.RequireAdmin">
+                <Authorized>
+                    <div class="nav-group" aria-labelledby="nav-admin">
+                    <h2 id="nav-admin">管理</h2>
+                    <NavLink href="/admin">管理</NavLink>
+                    </div>
+                </Authorized>
+            </AuthorizeView>
         </nav>
 
         <main class="main-content">
+            <AuthorizeView>
+                <Authorized>
+                    @if (GuestAuthentication.IsGuest(context.User))
+                    {
+                        <aside class="guest-demo-notice" aria-label="ゲストデモのご案内">
+                            <strong>ゲスト・Mockモード</strong>
+                            <p>プロジェクト・サイト編集、キーワード探索、検索ボリューム調査、CSV出力を試せます。その他の分析画面はサンプルの閲覧用です。</p>
+                            <p>データはこのゲストセッション専用です。通常データへのアクセスや外部APIの通信は行いません。ログアウト・1時間経過・サーバー再起動で初期化されます。</p>
+                        </aside>
+                    }
+                </Authorized>
+            </AuthorizeView>
             @Body
         </main>
     </div>

@@ -1,5 +1,5 @@
 @page "/search-volume"
-@attribute [Authorize(Policy = ApplicationPolicies.RequireAdmin)]
+@attribute [Authorize(Policy = ApplicationPolicies.RequireWorkspaceAccess)]
 @using System.Text.Json
 @implements IDisposable
 @inject ISeoIntelligenceApiClient ApiClient

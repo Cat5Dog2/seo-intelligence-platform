@@ -62,3 +62,9 @@
 - ../environment_setup.md
 - ../test_plan.md
 - 0007-secret-store-and-audit.md
+
+## 2026-09-23 ゲストデモの追加
+
+通常データの認証境界は維持し、Web内だけで動くゲストデモを追加する。GuestのIdentity行は作成しない。GuestロールとMock claimを含む1時間有効・非永続Cookieを発行し、メモリセッションの存在・期限をsecurity stampの代わりに検証する。
+
+業務画面とWebダウンロードのポリシーは`RequireWorkspaceAccess`（AdminまたはMock Guest）、管理画面は`RequireAdmin`、パスワード変更は`RequireRegisteredAccount`とする。セルフサービス画面は専用レイアウトを維持する。APIクライアントの共通入口でゲストをデモへ分岐し、通常APIへは認証済みAdminのみ通す。Blazor内は`AuthenticationStateProvider`、通常HTTPダウンロードは`HttpContext.User`を明示的に渡す。デモの未対応操作・期限切れも通常APIへ転送しない。データ、操作範囲、上限は`../guest_login.md`を参照する。
