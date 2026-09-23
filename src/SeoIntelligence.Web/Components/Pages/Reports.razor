@@ -12,10 +12,13 @@
             <h1>レポート</h1>
             <p>選択中プロジェクト: @(ProjectState.SelectedProject?.Name ?? "未選択")</p>
         </div>
-        <div class="toolbar">
-            <button type="button" class="secondary-button" @onclick="LoadReportDeliveriesAsync">通知履歴更新</button>
-            <button type="button" class="secondary-button" @onclick="CreateReportAsync" disabled="@(!CanOperate)">生成</button>
-        </div>
+        @if (!IsGuest)
+        {
+            <div class="toolbar">
+                <button type="button" class="secondary-button" @onclick="LoadReportDeliveriesAsync">通知履歴更新</button>
+                <button type="button" class="secondary-button" @onclick="CreateReportAsync" disabled="@(!CanOperate)">生成</button>
+            </div>
+        }
     </header>
 
     <ErrorSummary Errors="@Errors" />
@@ -24,7 +27,19 @@
         <div class="state-row">@Message</div>
     }
 
-    @if (ProjectState.SelectedProject is null)
+    @if (IsGuest)
+    {
+        <section class="panel" role="status">
+            <h2>ゲストデモの利用範囲</h2>
+            <p>ゲストデモではレポート生成・共有・通知履歴は利用できません。</p>
+            <p>キーワード探索と検索ボリューム調査の結果はCSVで出力できます。</p>
+            <div class="button-row">
+                <a class="secondary-button" href="/keywords">キーワード探索へ</a>
+                <a class="secondary-button" href="/search-volume">検索ボリューム調査へ</a>
+            </div>
+        </section>
+    }
+    else if (ProjectState.SelectedProject is null)
     {
         <GettingStarted />
     }
@@ -151,6 +166,11 @@
 </div>
 
 @code {
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthenticationState { get; set; }
+
+    private bool IsGuest { get; set; }
+
     private static readonly IReadOnlyList<DataTableColumn<NotificationDeliveryDetails>> DeliveryColumns =
     [
         new("Event", delivery => delivery.EventType),
@@ -190,10 +210,11 @@
     private bool IsDeliveryLoading { get; set; }
 
     private bool CanOperate
-        => ProjectState.SelectedProject is not null && !IsCreating;
+        => !IsGuest && ProjectState.SelectedProject is not null && !IsCreating;
 
     protected override async Task OnInitializedAsync()
     {
+        IsGuest = AuthenticationState is not null && GuestAuthentication.IsGuest((await AuthenticationState).User);
         ProjectState.Changed += OnProjectStateChanged;
         await ProjectState.LoadAsync();
         await LoadReportDeliveriesAsync();
@@ -351,6 +372,11 @@
 
     private async Task LoadReportDeliveriesAsync()
     {
+        if (IsGuest)
+        {
+            return;
+        }
+
         IsDeliveryLoading = true;
         var result = await ApiClient.SearchNotificationDeliveriesAsync("all", q: "report_completed", pageSize: 50);
         if (result.IsSuccess)

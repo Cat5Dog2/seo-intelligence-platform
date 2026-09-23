@@ -92,6 +92,16 @@ h3 {
     flex-wrap: wrap;
 }
 
+.row-actions {
+    flex-wrap: wrap;
+}
+
+.data-table .table-action,
+.data-table .audit-link {
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
 .section-heading {
     margin-bottom: 0.75rem;
 }

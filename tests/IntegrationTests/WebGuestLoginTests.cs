@@ -1,4 +1,6 @@
 using System.Net;
+using System.Net.Http.Json;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using IntegrationTests.Support;
 using Microsoft.AspNetCore.Identity;
@@ -9,11 +11,66 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.Extensions.Options;
 using SeoIntelligence.Infrastructure.Identity;
+using SeoIntelligence.Application.Services;
+using SeoIntelligence.Contracts.Api;
 
 namespace IntegrationTests;
 
 public sealed partial class WebGuestLoginTests
 {
+    [Fact]
+    [Trait("Category", "UI")]
+    public async Task AdministratorReportsKeepGenerationControlsAndLoadNotificationHistory()
+    {
+        await using var factory = new WebAuthenticationFactory();
+        var project = new ProjectDetails(Guid.NewGuid(), Guid.NewGuid(), "Reports regression", "Japan", "Japanese",
+            JsonSerializer.SerializeToElement(new { }), null, "active", DateTime.UtcNow, DateTime.UtcNow, null);
+        factory.RecordedApiCalls.Responder = request => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = request.RequestUri!.AbsolutePath == "/api/projects"
+                ? JsonContent.Create(ApiResponseEnvelope<ProjectDetails[]>.Success("projects", [project]))
+                : JsonContent.Create(ApiResponseEnvelope<object[]>.Success("empty-list", []))
+        };
+        using var client = factory.CreateAnonymousClient();
+        var token = await ReadTokenAsync(client, "/login");
+        using var signIn = await client.PostAsync("/login", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["__RequestVerificationToken"] = token,
+            ["email"] = WebAuthenticationFactory.AdminEmail,
+            ["password"] = WebAuthenticationFactory.AdminPassword
+        }));
+        Assert.Equal(HttpStatusCode.Redirect, signIn.StatusCode);
+
+        using var response = await client.GetAsync("/reports");
+        var html = WebUtility.HtmlDecode(await response.Content.ReadAsStringAsync());
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("data-testid=\"report-create-button\"", html);
+        Assert.Contains("通知履歴更新", html);
+        Assert.DoesNotContain("ゲストデモの利用範囲", html);
+        Assert.DoesNotContain("role=\"alert\"", html);
+        Assert.Contains("GET /api/admin/notification-deliveries", factory.RecordedApiCalls.Requests);
+    }
+
+    [Fact]
+    [Trait("Category", "UI")]
+    public async Task GuestReportsExplainTheLimitWithoutAnErrorOrRealApiCall()
+    {
+        await using var factory = new WebAuthenticationFactory();
+        using var client = factory.CreateAnonymousClient();
+        using var signIn = await SignInAsync(client);
+
+        using var response = await client.GetAsync("/reports");
+        var html = WebUtility.HtmlDecode(await response.Content.ReadAsStringAsync());
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("ゲストデモではレポート生成・共有・通知履歴は利用できません。", html);
+        Assert.DoesNotContain("role=\"alert\"", html);
+        Assert.DoesNotContain("data-testid=\"report-create-button\"", html);
+        Assert.DoesNotContain("通知履歴更新", html);
+        Assert.Empty(factory.RecordedApiCalls.Requests);
+    }
+
     [Fact]
     [Trait("Category", "Security")]
     public async Task AdministratorSignInRevokesThePreviousGuestSession()
