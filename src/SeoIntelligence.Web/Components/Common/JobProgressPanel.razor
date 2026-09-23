@@ -23,6 +23,7 @@
                 {
                     <a class="table-action" data-testid="job-download-link" href="@downloadHref" target="_top">ダウンロード</a>
                 }
+                @ResultActions?.Invoke(job)
                 <AuditLink ResourceType="job" ResourceId="@job.JobId.ToString("D")" />
             </div>
         </RowActions>
@@ -50,6 +51,14 @@
 
     [Parameter]
     public string? JobType { get; set; }
+
+    [Parameter]
+    public RenderFragment<JobDetails>? ResultActions { get; set; }
+
+    [Parameter]
+    public EventCallback OnRefreshed { get; set; }
+
+    private int LoadVersion { get; set; }
 
     private IReadOnlyList<JobDetails> Jobs { get; set; } = [];
 
@@ -83,8 +92,19 @@
     {
         IsLoading = true;
         Errors = [];
+        var loadVersion = ++LoadVersion;
         var projectId = ProjectScoped ? ProjectState.SelectedProject?.ProjectId : null;
+        if (ProjectScoped && projectId is null)
+        {
+            Jobs = [];
+            IsLoading = false;
+            return;
+        }
         var result = await ApiClient.SearchJobsAsync(status: Status, jobType: JobType, projectId: projectId, pageSize: 25);
+        if (loadVersion != LoadVersion || (ProjectScoped && projectId != ProjectState.SelectedProject?.ProjectId))
+        {
+            return;
+        }
         if (result.IsSuccess)
         {
             Jobs = result.Data ?? [];
@@ -99,6 +119,10 @@
         LoadedJobType = JobType;
         LoadedStatus = Status;
         LoadedProjectScoped = ProjectScoped;
+        if (result.IsSuccess)
+        {
+            await OnRefreshed.InvokeAsync();
+        }
     }
 
     private async Task RetryAsync(Guid jobId)
@@ -139,5 +163,8 @@
         => value.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
 
     public void Dispose()
-        => ProjectState.Changed -= OnProjectStateChanged;
+    {
+        LoadVersion++;
+        ProjectState.Changed -= OnProjectStateChanged;
+    }
 }

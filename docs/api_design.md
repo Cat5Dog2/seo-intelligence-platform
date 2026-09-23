@@ -279,6 +279,7 @@ API認証情報の作成/ローテーションでは、`secretValue`系と`keyRe
 | Phase | Method | Path | 概要 |
 | --- | --- | --- | --- |
 | MVP | POST | `/api/projects/{projectId}/keyword-discovery/suggest` | サジェスト/関連語/LSI/PAA/FAQ統合調査 |
+| MVP | GET | `/api/projects/{projectId}/keyword-discovery/jobs/{jobId}/results` | 保存済み探索結果取得。外部APIの再実行なし |
 | MVP | POST | `/api/projects/{projectId}/search-volume/jobs` | 一括検索ボリューム調査ジョブ登録 |
 | MVP | GET | `/api/projects/{projectId}/search-volume/jobs/{jobId}` | 検索ボリュームジョブ状態取得 |
 | MVP | GET | `/api/projects/{projectId}/search-volume/jobs/{jobId}/results` | 検索ボリューム結果取得 |
@@ -349,10 +350,13 @@ API認証情報の作成/ローテーションでは、`secretValue`系と`keyRe
 | Phase 3 | POST | `/api/projects/{projectId}/connectors/{connectorId}/test` | 実データ取得を伴わない接続テスト/スタブ実行 |
 | Phase 3 | GET | `/api/projects/{projectId}/connectors/{connectorId}/runs` | 外部連携スタブ実行履歴取得 |
 | Phase 3 | POST | `/api/projects/{projectId}/ai/chat` | AIアシスタント実行 |
+| Phase 3 | GET | `/api/projects/{projectId}/ai/messages/{messageId}` | 保存済みAI応答とジョブ状態取得。再生成やジョブ登録は行わない |
 
 ISSUE-P3-001では、上記Phase 3 APIのContracts/DTO、ルートグループ、projectIdスコープ検証の土台までを追加する。リライト、カニバリ、レポート、インポート、外部連携、AIの個別エンドポイント本体とジョブ登録はISSUE-P3-002からISSUE-P3-006で実装する。
 
 ## 8. 主要リクエスト/レスポンスモデル
+
+`GET /api/projects/{projectId}/keyword-discovery/jobs/{jobId}/results`は保存済みの探索結果（`KeywordDiscoveryResult`）を返す。サービスキー認証とworkspace/project一致を要求し、対象外は404。未完了なら受付状態を200で返す。取得時に外部APIは呼び出さない。結果スナップショットのない修正前の完了ジョブは409を返し、既存の保存済み候補のCSV出力へ案内する。
 
 | モデル | 用途 | 主な項目 |
 | --- | --- | --- |
@@ -372,6 +376,11 @@ ISSUE-P3-001では、上記Phase 3 APIのContracts/DTO、ルートグループ�
 | `ImportRequest` | インポート | `importType`（keywords/rankings/competitors/briefs/tasks）、`format`（csv/excel）、`sourceFileUri`、`validationMode`（初期実装はstrict） |
 | `ConnectorSettingsRequest` | 外部連携スタブ設定 | `connectorType`、`name`、`authRef`、`settings`、`status`。Secret/OAuth実値はSecret Store参照のみ |
 | `AiChatRequest` | AIアシスタント | `message`、`conversationId`、`allowedTools`、`referenceScope` |
+| `AiChatResponse` | AI実行受付/保存済み応答 | `sessionId`、`messageId`、`jobId`、`jobStatus`、`response`、`toolCalls`、`referenceData`、`tokenUsage`、`redactionStatus`、`reviewStatus` |
+
+AI応答のGETは他の内部APIと同じサービスキー認証を要求する。指定プロジェクトが有効であり、会話とジョブの両方が同じworkspace/projectに属する場合のみ200を返す。未認証は401、存在しない/別プロジェクト/無効なプロジェクトのメッセージは404。処理中も200で現時点の保存内容と`jobStatus`を返し、完了後は保存済みの応答、ツール、参照データ、token使用量を返す。例: `GET /api/projects/{projectId}/ai/messages/{messageId}`。GETを繰り返しても生成やクレジット消費は発生しない。
+
+`allowedTools`の対応値は`keyword-discovery`、`search-volume`、`rank-results`、`competitor-analysis`、`content-analysis`、`brief-generation`、`rewrite-analysis`、`report-summary`。未対応の値は400。ブリーフ生成の`targetKeyword`と`targetKeywordId`は排他指定とし、クラスター/コンテンツ分析画面ではIDがある場合にIDだけを送る。
 
 ## 9. 入力制約
 

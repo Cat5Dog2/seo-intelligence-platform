@@ -113,6 +113,13 @@ public sealed class KeywordDiscoveryIntegrationTests
             Assert.True(data.GetProperty("isAccepted").GetBoolean());
             Assert.Equal($"/api/jobs/{jobId:D}", data.GetProperty("statusUrl").GetString());
 
+            using (var pending = await client.GetAsync($"/api/projects/{projectId}/keyword-discovery/jobs/{jobId}/results"))
+            using (var pendingJson = await ReadJsonAsync(pending))
+            {
+                Assert.Equal(HttpStatusCode.OK, pending.StatusCode);
+                Assert.True(pendingJson.RootElement.GetProperty("data").GetProperty("isAccepted").GetBoolean());
+            }
+
             using var duplicateResponse = await client.PostAsJsonAsync($"/api/projects/{projectId}/keyword-discovery/suggest", payload);
             using var duplicateDocument = await ReadJsonAsync(duplicateResponse);
             Assert.Equal(HttpStatusCode.Accepted, duplicateResponse.StatusCode);
@@ -133,6 +140,29 @@ public sealed class KeywordDiscoveryIntegrationTests
                 Assert.NotNull(job.ResultResourceId);
                 Assert.Equal(1, await dbContext.KeywordSuggestions.CountAsync());
                 Assert.Equal(1, await dbContext.RelatedKeywords.CountAsync());
+
+                var callsBeforeRead = await dbContext.ExternalApiCalls.CountAsync();
+                using var resultsResponse = await client.GetAsync($"/api/projects/{projectId}/keyword-discovery/jobs/{jobId}/results");
+                Assert.Equal(HttpStatusCode.OK, resultsResponse.StatusCode);
+                using var resultsDocument = await ReadJsonAsync(resultsResponse);
+                var results = resultsDocument.RootElement.GetProperty("data");
+                Assert.Equal(2, results.GetProperty("candidates").GetArrayLength());
+                Assert.All(results.GetProperty("sourceStatuses").EnumerateArray(), source =>
+                    Assert.Equal("succeeded", source.GetProperty("status").GetString()));
+                Assert.False(results.GetProperty("isAccepted").GetBoolean());
+                Assert.Equal(callsBeforeRead, await dbContext.ExternalApiCalls.CountAsync());
+
+                using var otherProject = await client.GetAsync($"/api/projects/{Guid.NewGuid()}/keyword-discovery/jobs/{jobId}/results");
+                Assert.Equal(HttpStatusCode.NotFound, otherProject.StatusCode);
+
+                var seed = await dbContext.KeywordSeeds.SingleAsync(entity => entity.Id == job.ResultResourceId);
+                var legacyMemo = System.Text.Json.Nodes.JsonNode.Parse(seed.Memo!)!.AsObject();
+                legacyMemo.Remove("result");
+                seed.Memo = legacyMemo.ToJsonString();
+                await dbContext.SaveChangesAsync();
+                using var legacy = await client.GetAsync($"/api/projects/{projectId}/keyword-discovery/jobs/{jobId}/results");
+                Assert.Equal(HttpStatusCode.Conflict, legacy.StatusCode);
+                Assert.Equal(callsBeforeRead, await dbContext.ExternalApiCalls.CountAsync());
             }
         }
         finally
@@ -181,6 +211,24 @@ public sealed class KeywordDiscoveryIntegrationTests
                 Assert.Equal(0, await dbContext.RelatedKeywords.CountAsync());
                 Assert.Contains("rate_limited", job.ErrorJson, StringComparison.Ordinal);
             }
+
+            using (var retry = await client.PostAsJsonAsync($"/api/jobs/{jobId}/retry", new { }))
+            {
+                Assert.Equal(HttpStatusCode.OK, retry.StatusCode);
+            }
+            await using (var scope = factory.Services.CreateAsyncScope())
+            {
+                await scope.ServiceProvider.GetRequiredService<IJobDispatcher>().DispatchAsync(jobId);
+                var db = scope.ServiceProvider.GetRequiredService<SeoIntelligenceDbContext>();
+                Assert.Equal(1, await db.KeywordSuggestions.CountAsync());
+            }
+            using var partial = await client.GetAsync($"/api/projects/{projectId}/keyword-discovery/jobs/{jobId}/results");
+            using var partialJson = await ReadJsonAsync(partial);
+            var partialData = partialJson.RootElement.GetProperty("data");
+            Assert.Equal(HttpStatusCode.OK, partial.StatusCode);
+            Assert.Equal("technical seo guide", Assert.Single(partialData.GetProperty("candidates").EnumerateArray()).GetProperty("keyword").GetString());
+            Assert.Contains(partialData.GetProperty("sourceStatuses").EnumerateArray(), source =>
+                source.GetProperty("source").GetString() == "suggest" && source.GetProperty("candidateCount").GetInt32() == 1);
         }
         finally
         {

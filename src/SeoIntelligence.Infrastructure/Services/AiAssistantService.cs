@@ -166,6 +166,38 @@ internal sealed class AiAssistantService(
         return Result<AiChatResponse>.Success(MapResponse(messageEntity, job.Id));
     }
 
+    public async Task<Result<AiChatResponse>> GetMessageAsync(
+        ProjectExecutionContext context,
+        Guid messageId,
+        CancellationToken cancellationToken = default)
+    {
+        if (await FindActiveProjectAsync(context, cancellationToken) is null)
+        {
+            return Failure<AiChatResponse>(ErrorCode.NotFound, "Project was not found.");
+        }
+
+        var message = await dbContext.AiMessages.AsNoTracking()
+            .Where(entity => entity.Id == messageId)
+            .Join(
+                dbContext.AiSessions.AsNoTracking().Where(session =>
+                    session.WorkspaceId == context.WorkspaceId && session.ProjectId == context.ProjectId),
+                entity => entity.SessionId,
+                session => session.Id,
+                (entity, _) => entity)
+            .SingleOrDefaultAsync(cancellationToken);
+        var job = message is null ? null : await dbContext.Jobs.AsNoTracking()
+            .SingleOrDefaultAsync(entity =>
+                entity.WorkspaceId == context.WorkspaceId && entity.ProjectId == context.ProjectId &&
+                entity.JobType == JobType && entity.ResultResourceType == MessageResourceType &&
+                entity.ResultResourceId == messageId, cancellationToken);
+        if (message is null || job is null)
+        {
+            return Failure<AiChatResponse>(ErrorCode.NotFound, "AI message was not found.");
+        }
+
+        return Result<AiChatResponse>.Success(MapResponse(message, job.Id) with { JobStatus = job.Status });
+    }
+
     public async Task<Result<AiChatResponse>> GenerateResponseAsync(
         ProjectExecutionContext context,
         Guid jobId,

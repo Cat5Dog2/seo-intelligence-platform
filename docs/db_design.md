@@ -105,7 +105,7 @@ identity_users
 
 | テーブル | 主なカラム | 制約/備考 |
 | --- | --- | --- |
-| `keyword_seeds` | `id uuid PK`, `project_id uuid FK`, `seed text`, `source text`, `memo text`, `created_at` | 画面入力やCSV取込の起点語。 |
+| `keyword_seeds` | `id uuid PK`, `project_id uuid FK`, `seed text`, `source text`, `memo text`, `created_at` | 画面入力やCSV取込の起点語。`source=keyword_discovery`では既存のmemo JSONに要求条件と任意の`result`（フィルタ済み候補、ソース別状態、消費クレジット）を保持し、非同期完了後の画面取得に使う。旧memoのresult欠落を許容する。 |
 | `keywords` | `id uuid PK`, `normalized_text text`, `language text`, `text_hash text`, `created_at` | グローバル正規化マスタ。`UNIQUE(language, text_hash)`。 |
 | `keyword_metrics` | `id uuid PK`, `keyword_id uuid FK`, `location text`, `language text`, `contract_scope_key text`, `source_call_id uuid NULL FK`, `search_volume integer`, `seo_difficulty numeric(8,4)`, `cpc numeric(18,4)`, `competition numeric(8,4)`, `first_seen_range text`, `fetched_at timestamptz` | 指標履歴/最新指標。契約スコープ単位で再利用判定。 |
 | `keyword_monthly_volumes` | `id uuid PK`, `keyword_id uuid FK`, `location text`, `language text`, `contract_scope_key text`, `source_call_id uuid NULL FK`, `year_month char(7)`, `search_volume integer`, `fetched_at timestamptz` | `year_month`は`YYYY-MM`。取得回ごとの月別履歴を保持する。 |

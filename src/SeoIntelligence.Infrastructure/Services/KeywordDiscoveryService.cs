@@ -75,6 +75,41 @@ internal sealed class KeywordDiscoveryService(
             cancellationToken);
     }
 
+    public async Task<Result<KeywordDiscoveryResult>> GetJobResultsAsync(
+        ProjectExecutionContext context,
+        Guid jobId,
+        CancellationToken cancellationToken = default)
+    {
+        var job = await dbContext.Jobs.AsNoTracking().SingleOrDefaultAsync(entity =>
+            entity.Id == jobId && entity.WorkspaceId == context.WorkspaceId && entity.ProjectId == context.ProjectId &&
+            entity.JobType == KeywordDiscoveryJob.JobType && entity.ResultResourceType == ResultResourceType,
+            cancellationToken);
+        if (job?.ResultResourceId is null || !await dbContext.Projects.AsNoTracking().AnyAsync(entity =>
+            entity.Id == context.ProjectId && entity.WorkspaceId == context.WorkspaceId && entity.Status == StatusValues.Active,
+            cancellationToken))
+        {
+            return Failure<KeywordDiscoveryResult>(ErrorCode.NotFound, "Keyword discovery job was not found.");
+        }
+
+        var seed = await dbContext.KeywordSeeds.AsNoTracking().SingleOrDefaultAsync(entity =>
+            entity.Id == job.ResultResourceId && entity.ProjectId == context.ProjectId, cancellationToken);
+        var memo = string.IsNullOrWhiteSpace(seed?.Memo) ? null : JsonSerializer.Deserialize<KeywordDiscoverySeedMemo>(seed.Memo, JsonOptions);
+        if (memo is null)
+        {
+            return Failure<KeywordDiscoveryResult>(ErrorCode.NotFound, "Keyword discovery results were not found.");
+        }
+        if (memo.Result is { } result)
+        {
+            return Result<KeywordDiscoveryResult>.Success(result);
+        }
+        if (job.Status == StatusValues.Succeeded)
+        {
+            return Failure<KeywordDiscoveryResult>(ErrorCode.Conflict,
+                "This older job has no saved result snapshot. Its saved keywords can be exported as CSV.");
+        }
+        return Result<KeywordDiscoveryResult>.Success(AcceptedResult(memo.Request, job.Id, job.Status));
+    }
+
     public async Task<Result<KeywordDiscoveryResult>> ExecuteQueuedAsync(
         ProjectExecutionContext context,
         Guid jobId,
@@ -186,12 +221,16 @@ internal sealed class KeywordDiscoveryService(
         var statuses = new List<KeywordDiscoverySourceStatus>();
         var consumedCredit = 0m;
         SourceFailure? firstFailure = null;
+        var memo = JsonSerializer.Deserialize<KeywordDiscoverySeedMemo>(seed.Memo!, JsonOptions)!;
 
         foreach (var source in request.Sources)
         {
-            if (skipFetchedSources && await SourceAlreadyFetchedAsync(seed, seedKeyword.Id, source, cancellationToken))
+            var savedStatus = memo.Result?.SourceStatuses?.FirstOrDefault(status => status.Source == source && status.Status == StatusValues.Succeeded);
+            if (skipFetchedSources && (savedStatus is not null || await SourceAlreadyFetchedAsync(seed, seedKeyword.Id, source, cancellationToken)))
             {
-                statuses.Add(new KeywordDiscoverySourceStatus(source, StatusValues.Succeeded, CandidateCount: 0));
+                collected.AddRange(memo.Result?.Candidates.Where(candidate => candidate.Source == source) ?? []);
+                statuses.Add(savedStatus ?? new KeywordDiscoverySourceStatus(source, StatusValues.Succeeded, CandidateCount: 0));
+                consumedCredit += savedStatus?.ConsumedCredit ?? 0;
                 continue;
             }
 
@@ -238,6 +277,10 @@ internal sealed class KeywordDiscoveryService(
             StatusUrl: jobId.HasValue ? $"/api/jobs/{jobId.Value:D}" : null,
             SourceStatuses: statuses,
             consumedCredit);
+
+        // Keep the exact filtered result for read-only UI refreshes, including sources saved before a retry.
+        seed.Memo = JsonSerializer.Serialize(memo with { Result = result }, JsonOptions);
+        await dbContext.SaveChangesAsync(cancellationToken);
 
         return firstFailure is null
             ? Result<KeywordDiscoveryResult>.Success(result)
@@ -1020,7 +1063,8 @@ internal sealed record KeywordDiscoverySeedMemo(
     int Version,
     string IdempotencyKey,
     string RequestHash,
-    NormalizedKeywordDiscoveryRequest Request);
+    NormalizedKeywordDiscoveryRequest Request,
+    KeywordDiscoveryResult? Result = null);
 
 internal sealed record NormalizedKeywordDiscoveryRequest(
     string SeedKeyword,

@@ -274,6 +274,25 @@ dotnet test tests/E2ETests/E2ETests.csproj --no-restore --filter FullyQualifiedN
 
 APIキーを実値で登録するBrowserE2Eは、空のキー参照名を入力するために詳細設定を開く必要はない。参照名を指定する経路を試す場合だけ詳細設定を開く。
 
+### ブラウザQA不具合の回帰検証（2026-09-23）
+
+- `BrowserQaRegressionTests`: 実際のRazorイベント処理から送信されるブリーフの排他項目、競合URL保持、AI既定ツール、保存済み応答取得を検証する。レンダリングしたAI画面でも、ジョブ更新による回答反映とプロジェクト切替による会話クリアを確認する。
+- `AiAssistantIntegrationTests`: 受付/完了/失敗/キャンセル状態の応答取得、他プロジェクトの404、Secret非表示、GETによる二重生成防止を検証する。
+- `KeywordDiscoveryIntegrationTests`: 非同期探索の完了結果GET、プロジェクト分離、再試行時の取得済み候補保持、結果を持たない旧ジョブの409と外部APIの再呼出し防止を確認する。Razor側でも「状態更新」から候補が表示されることを検証する。
+- `ArtifactDownloadLinkTests`と`WebDownloadEndpointTests`: CSVを含む成果物リンクと認証済みWebダウンロードを検証する。
+- `DashboardIntegrationTests.PostgreSqlDashboardSupportsPopulatedAndEmptyProjects`: 本番と同じNpgsqlでSQL変換、上位10件の降順、データあり/なしの応答を検証する。InMemoryだけではSQL変換エラーを検出できないため、修正確認時にはこのケースを必ず実行する。
+
+最小確認コマンド:
+
+```powershell
+dotnet test tests/E2ETests/E2ETests.csproj --filter 'FullyQualifiedName~BrowserQaRegressionTests|FullyQualifiedName~ArtifactDownloadLinkTests'
+# 専用の破棄可能なテストDBを指定する。本番DBは指定しない。
+$env:TEST_POSTGRES_CONNECTION = '<PostgreSQL test connection string>'
+dotnet test tests/IntegrationTests/IntegrationTests.csproj --filter 'FullyQualifiedName~DashboardIntegrationTests|FullyQualifiedName~AiAssistantIntegrationTests|FullyQualifiedName~WebDownloadEndpointTests'
+```
+
+PostgreSQLテストは指定DBにスキーマがなければ作成し、合成データを追加する。DBを削除/初期化しない。接続設定がない通常実行ではこの1件はスキップされる。
+
 ### フェーズごとの完了条件
 
 | フェーズ | 完了条件 |

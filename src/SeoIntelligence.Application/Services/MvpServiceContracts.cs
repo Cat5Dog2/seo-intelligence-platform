@@ -89,6 +89,8 @@ public interface IMasterDataService
 public interface IKeywordDiscoveryService
 {
     Task<Result<KeywordDiscoveryResult>> DiscoverAsync(ProjectExecutionContext context, KeywordDiscoveryRequest request, CancellationToken cancellationToken = default);
+
+    Task<Result<KeywordDiscoveryResult>> GetJobResultsAsync(ProjectExecutionContext context, Guid jobId, CancellationToken cancellationToken = default);
 }
 
 public interface ISearchVolumeService

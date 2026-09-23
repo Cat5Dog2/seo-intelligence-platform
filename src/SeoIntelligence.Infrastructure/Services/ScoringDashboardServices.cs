@@ -349,15 +349,19 @@ internal sealed class DashboardService(SeoIntelligenceDbContext dbContext)
                 dbContext.Keywords.AsNoTracking(),
                 score => score.KeywordId,
                 keyword => keyword.Id,
-                (score, keyword) => new DashboardOpportunityScoreRow(
+                (score, keyword) => new
+                {
                     score.KeywordId,
                     keyword.NormalizedText,
                     score.OpportunityScore,
                     score.Location,
                     score.Language,
-                    score.ScoredAt))
+                    score.ScoredAt
+                })
             .OrderByDescending(row => row.OpportunityScore)
             .ThenByDescending(row => row.ScoredAt)
+            .Select(row => new DashboardOpportunityScoreRow(
+                row.KeywordId, row.NormalizedText, row.OpportunityScore, row.Location, row.Language, row.ScoredAt))
             .ToArrayAsync(cancellationToken);
         var competitorCount = await dbContext.CompetitiveResults
             .AsNoTracking()

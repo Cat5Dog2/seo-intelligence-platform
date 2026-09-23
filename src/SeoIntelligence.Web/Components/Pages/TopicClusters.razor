@@ -280,7 +280,7 @@
         var result = await ApiClient.GenerateBriefAsync(
             project.ProjectId,
             new GenerateBriefRequest(
-                TargetKeyword: cluster.RepresentativeKeyword,
+                TargetKeyword: cluster.RepresentativeKeywordId.HasValue ? null : cluster.RepresentativeKeyword,
                 TargetKeywordId: cluster.RepresentativeKeywordId,
                 ClusterId: cluster.ClusterId,
                 Title: cluster.ArticleCandidates.FirstOrDefault()?.Title ?? cluster.Name));

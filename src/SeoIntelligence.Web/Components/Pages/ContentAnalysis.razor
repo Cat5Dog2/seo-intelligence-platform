@@ -257,7 +257,6 @@
         var result = await ApiClient.GenerateBriefAsync(
             project.ProjectId,
             new GenerateBriefRequest(
-                TargetKeyword: analysis.Keyword,
                 TargetKeywordId: analysis.KeywordId,
                 CompetitorUrls: competitorUrls));
         if (result.IsSuccess && result.Data is { } job)

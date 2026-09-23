@@ -15,6 +15,8 @@ public static class ArtifactDownloadLinks
     /// <summary>Result resource types whose artifact is stored as a data export.</summary>
     public const string DataExportResourceType = "data_export";
 
+    public const string CsvExportResourceType = "csv_export";
+
     public const string ArticleBriefExportResourceType = "article_brief_export";
 
     public const string ReportResourceType = "report";
@@ -38,7 +40,7 @@ public static class ArtifactDownloadLinks
         {
             // Article brief exports are written by a different service but stored as data exports,
             // so they are fetched through the same route.
-            DataExportResourceType or ArticleBriefExportResourceType
+            DataExportResourceType or CsvExportResourceType or ArticleBriefExportResourceType
                 => $"/downloads/projects/{projectId:D}/exports/{resource.ResourceId:D}",
             ReportResourceType
                 => $"/downloads/projects/{projectId:D}/reports/{resource.ResourceId:D}",

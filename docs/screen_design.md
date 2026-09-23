@@ -99,7 +99,7 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | S-100 | 順位監視 | Phase 2 | `POST /api/projects/{projectId}/rank-check/jobs` |
 | S-110 | EC/YouTube/画像企画 | 推奨 | `POST /api/projects/{projectId}/keyword-discovery/suggest` |
 | S-120 | レポート | Phase 3 | `POST /api/projects/{projectId}/reports` |
-| S-130 | AIアシスタント | Phase 3 | `POST /api/projects/{projectId}/ai/chat` |
+| S-130 | AIアシスタント | Phase 3 | `POST /api/projects/{projectId}/ai/chat`、`GET /api/projects/{projectId}/ai/messages/{messageId}` |
 | S-900 | 管理 | MVP（段階拡張） | MVPは`/api/admin/*`、Phase 2で`rank_alert`/`alert_events`/Phase 2ジョブ導線、Phase 3で`/api/projects/{projectId}/connectors` |
 
 ## 6. 画面詳細
@@ -271,8 +271,14 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | 入力 | message、参照範囲、許可ツール。 |
 | 表示 | 応答、実行ツール、参照データ、生成物、token_usage、レビュー状態。 |
 | 操作 | 送信、生成物保存、ブリーフ化、再生成、履歴参照。 |
-| API | `POST /api/projects/{projectId}/ai/chat` |
+| API | `POST /api/projects/{projectId}/ai/chat`、`GET /api/projects/{projectId}/ai/messages/{messageId}` |
 | 注意 | APIキー、Webhook、秘密情報をプロンプトへ含めない。 |
+
+送信直後は受付内容とジョブ状態を表示する。「応答を更新」またはAIジョブの「更新」で保存済み応答を読み直し、完了後の本文とtoken_usageを反映する。ジョブ行の「応答を表示」から過去の応答も取得できる。プロジェクトを切り替えると応答とconversation_idをクリアし、切替前の通信結果は表示しない。既定の許可ツールは`keyword-discovery, brief-generation, rewrite-analysis, report-summary`。
+
+キーワード探索と検索ボリューム画面には選択中プロジェクトの「CSV出力ジョブ」を表示する。「更新」で完了を確認し、成功した`csv_export`ジョブの「ダウンロード」からWebホストの`/downloads/projects/{projectId}/exports/{exportId}`を開く。処理中・失敗・キャンセルされたジョブにはダウンロードを表示しない。
+
+キーワード探索の「状態更新」はジョブが完了したら`GET /api/projects/{projectId}/keyword-discovery/jobs/{jobId}/results`で候補語とソース別状態を取得する。外部APIを再実行せず、保存済み候補を検索ボリューム調査へ送れるようにする。プロジェクト切替時は候補と探索ジョブをクリアする。
 
 ### 6.15 S-900 管理
 

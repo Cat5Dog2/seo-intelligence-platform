@@ -73,6 +73,8 @@ public interface IExternalConnectorService
 public interface IAiAssistantService
 {
     Task<Result<AiChatResponse>> ChatAsync(ProjectExecutionContext context, AiChatRequest request, CancellationToken cancellationToken = default);
+
+    Task<Result<AiChatResponse>> GetMessageAsync(ProjectExecutionContext context, Guid messageId, CancellationToken cancellationToken = default);
 }
 
 public sealed record RewriteTaskUpdateRequest(
@@ -244,7 +246,8 @@ public sealed record AiChatResponse(
     JsonElement ReferenceData,
     JsonElement TokenUsage,
     string RedactionStatus,
-    string ReviewStatus);
+    string ReviewStatus,
+    string JobStatus = "queued");
 
 public sealed record DashboardRewriteSummary(
     int TaskCount,

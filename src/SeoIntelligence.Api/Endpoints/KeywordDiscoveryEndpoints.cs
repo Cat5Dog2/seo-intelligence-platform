@@ -13,8 +13,20 @@ internal static class KeywordDiscoveryEndpoints
     {
         var keywordDiscovery = app.MapGroup("/api/projects/{projectId:guid}/keyword-discovery");
         keywordDiscovery.MapPost("/suggest", SuggestAsync);
+        keywordDiscovery.MapGet("/jobs/{jobId:guid}/results", GetJobResultsAsync);
         return app;
     }
+
+    private static async Task<IResult> GetJobResultsAsync(
+        Guid projectId,
+        Guid jobId,
+        [FromServices] IKeywordDiscoveryService service,
+        [FromServices] IProjectContextService contextService,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+        => ApiResponseResults.FromResult(httpContext, await service.GetJobResultsAsync(
+            contextService.Create(SeoIntelligenceSeedData.DefaultWorkspaceId, projectId, httpContext.GetCorrelationId()),
+            jobId, cancellationToken));
 
     private static async Task<IResult> SuggestAsync(
         Guid projectId,
