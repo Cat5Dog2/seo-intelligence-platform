@@ -122,8 +122,8 @@
                 <input @bind="SiteForm.Domain" required placeholder="example.com" />
             </label>
             <label class="field">
-                <span>正規URL</span>
-                <input @bind="SiteForm.CanonicalUrl" placeholder="https://example.com/" />
+                <span>正規URL（必須）</span>
+                <input type="url" @bind="SiteForm.CanonicalUrl" required pattern="[Hh][Tt][Tt][Pp][Ss]?://.+" title="http:// または https:// で始まるURLを入力してください。" placeholder="https://example.com/" />
             </label>
             <label class="field">
                 <span>サイトの種類</span>

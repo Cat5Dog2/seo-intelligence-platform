@@ -111,6 +111,54 @@ public sealed class GuestDemoSessionTests
 
     [Fact]
     [Trait("Category", "Unit")]
+    public void RewriteSampleDetailsMatchTheListAndStayWithinTheProject()
+    {
+        var session = NewSession();
+        var project = Assert.Single(session.Execute<IReadOnlyList<ProjectDetails>>(HttpMethod.Get, "/api/projects", null).Data!);
+        var prefix = $"/api/projects/{project.ProjectId}/rewrite/tasks";
+        var sample = Assert.Single(session.Execute<IReadOnlyList<RewriteTaskDetails>>(HttpMethod.Get, prefix, null).Data!);
+
+        var result = session.Execute<RewriteTaskDetails>(HttpMethod.Get, $"{prefix}/{sample.TaskId}", null);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(sample.TaskId, result.Data!.TaskId);
+        Assert.Equal(project.ProjectId, result.Data.ProjectId);
+        Assert.Equal(sample.TargetUrl, result.Data.TargetUrl);
+        Assert.Equal(sample.PriorityScore, result.Data.PriorityScore);
+        Assert.Equal(sample.Reason.GetRawText(), result.Data.Reason.GetRawText());
+        Assert.Equal("active", result.Data.Status);
+        Assert.Equal(sample.Status, result.Data.Status);
+        Assert.Equal("デモの提案です。", result.Data.Memo);
+
+        var other = session.Execute<ProjectDetails>(HttpMethod.Post, "/api/projects", new ProjectCreateRequest("other", "jp", "ja", null, null)).Data!;
+        Assert.Equal(HttpStatusCode.NotFound, session.Execute<RewriteTaskDetails>(HttpMethod.Get,
+            $"/api/projects/{other.ProjectId}/rewrite/tasks/{sample.TaskId}", null).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, session.Execute<RewriteTaskDetails>(HttpMethod.Get,
+            $"{prefix}/{Guid.NewGuid()}", null).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, NewSession().Execute<RewriteTaskDetails>(HttpMethod.Get,
+            $"{prefix}/{sample.TaskId}", null).StatusCode);
+    }
+
+    [Fact]
+    [Trait("Category", "Unit")]
+    public void BriefSampleUsesPendingReviewInTheListDetailsAndVersionHistory()
+    {
+        var session = NewSession();
+        var project = Assert.Single(session.Execute<IReadOnlyList<ProjectDetails>>(HttpMethod.Get, "/api/projects", null).Data!);
+        var prefix = $"/api/projects/{project.ProjectId}/briefs";
+        var sample = Assert.Single(session.Execute<IReadOnlyList<ArticleBriefSummary>>(HttpMethod.Get, prefix, null).Data!);
+        var details = session.Execute<ArticleBriefDetails>(HttpMethod.Get, $"{prefix}/{sample.BriefId}", null).Data!;
+        var version = Assert.Single(session.Execute<IReadOnlyList<ArticleBriefVersionDetails>>(HttpMethod.Get,
+            $"{prefix}/{sample.BriefId}/versions", null).Data!);
+
+        Assert.Equal("pending", sample.ReviewStatus);
+        Assert.Equal(sample.ReviewStatus, details.ReviewStatus);
+        Assert.Equal(sample.ReviewStatus, version.ReviewStatus);
+        Assert.Equal("active", details.Status);
+    }
+
+    [Fact]
+    [Trait("Category", "Unit")]
     public async Task CsvExportHonorsTheSelectedJobAndEscapesSpreadsheetFormulas()
     {
         var session = NewSession();

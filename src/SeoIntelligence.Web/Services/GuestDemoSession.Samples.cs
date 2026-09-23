@@ -21,6 +21,9 @@ public sealed partial class GuestDemoSession
         const string keyword = "SEO 対策";
         const string domain = "example.com";
         const string url = "https://example.com/seo";
+        RewriteTaskDetails RewriteSample() => new(sampleResourceId, projectId, url, 80,
+            JsonSerializer.SerializeToElement(new { summary = "検索意図に合わせて見出しを改善" }),
+            "active", "guest", "デモの提案です。", _sampleTime, _sampleTime);
         switch (route)
         {
             case "competitors":
@@ -43,9 +46,9 @@ public sealed partial class GuestDemoSession
             case "clusters":
                 return Page<T, TopicClusterSummary>([new(sampleResourceId, projectId, "SEOの基礎（デモ）", null, null, sampleKeywordId, keyword, 80, 1, "informational", 0, [], [], _sampleTime, _sampleTime)], query, row => row.Name, row => row.Score);
             case "briefs":
-                return Page<T, ArticleBriefSummary>([new(sampleResourceId, projectId, null, "SEO入門記事（デモ）", sampleKeywordId, keyword, 1, SampleBrief(), "draft", "active", _sampleTime, _sampleTime)], query, row => row.Title, row => row.UpdatedAt);
+                return Page<T, ArticleBriefSummary>([new(sampleResourceId, projectId, null, "SEO入門記事（デモ）", sampleKeywordId, keyword, 1, SampleBrief(), "pending", "active", _sampleTime, _sampleTime)], query, row => row.Title, row => row.UpdatedAt);
             case "rewrite/tasks":
-                return Page<T, RewriteTaskDetails>([new(sampleResourceId, projectId, url, 80, JsonSerializer.SerializeToElement(new { summary = "検索意図に合わせて見出しを改善" }), "proposed", "guest", "デモの提案です。", _sampleTime, _sampleTime)], query, row => row.TargetUrl, row => row.PriorityScore);
+                return Page<T, RewriteTaskDetails>([RewriteSample()], query, row => row.TargetUrl, row => row.PriorityScore);
             case "cannibalization/candidates":
                 return Ok<T>(Array.Empty<CannibalizationCandidateDetails>());
             case "reports":
@@ -57,9 +60,11 @@ public sealed partial class GuestDemoSession
             return Ok<T>(new TopicClusterDetails(sampleResourceId, projectId, "SEOの基礎（デモ）", null, null, sampleKeywordId, keyword, 80, 1, "informational",
                 [new(sampleKeywordId, keyword, "representative", 80, "informational", new(1, 0, 0, ["Mock"]))], [], [], [], _sampleTime, _sampleTime));
         if (route == $"briefs/{sampleResourceId}")
-            return Ok<T>(new ArticleBriefDetails(sampleResourceId, projectId, null, "SEO入門記事（デモ）", sampleKeywordId, keyword, 1, SampleBrief(), "draft", "active", _sampleTime, _sampleTime));
+            return Ok<T>(new ArticleBriefDetails(sampleResourceId, projectId, null, "SEO入門記事（デモ）", sampleKeywordId, keyword, 1, SampleBrief(), "pending", "active", _sampleTime, _sampleTime));
         if (route == $"briefs/{sampleResourceId}/versions")
-            return Ok<T>(new ArticleBriefVersionDetails[] { new(sampleResourceId, 1, "guest-mock", null, SampleBrief(), "guest", "draft", "初期デモ", _sampleTime) });
+            return Ok<T>(new ArticleBriefVersionDetails[] { new(sampleResourceId, 1, "guest-mock", null, SampleBrief(), "guest", "pending", "初期デモ", _sampleTime) });
+        if (route == $"rewrite/tasks/{sampleResourceId}")
+            return Ok<T>(RewriteSample());
         return Missing<T>();
     }
 
