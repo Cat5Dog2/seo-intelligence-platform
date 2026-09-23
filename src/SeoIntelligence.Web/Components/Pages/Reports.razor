@@ -1,5 +1,5 @@
 @page "/reports"
-@attribute [Authorize(Policy = ApplicationPolicies.RequireAdmin)]
+@attribute [Authorize(Policy = ApplicationPolicies.RequireWorkspaceAccess)]
 @implements IDisposable
 @inject ISeoIntelligenceApiClient ApiClient
 @inject ProjectSelectionState ProjectState

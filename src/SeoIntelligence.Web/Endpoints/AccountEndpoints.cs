@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -6,6 +7,7 @@ using SeoIntelligence.Application.Accounts;
 using SeoIntelligence.Application.Security;
 using SeoIntelligence.Infrastructure.Identity;
 using SeoIntelligence.Web.Security;
+using SeoIntelligence.Web.Services;
 
 namespace SeoIntelligence.Web.Endpoints;
 
@@ -22,8 +24,13 @@ public static class AccountEndpoints
             .RequireAuthorization()
             .RequireCsrfToken();
 
+        endpoints.MapPost("/login/guest", GuestLoginAsync)
+            .AllowAnonymous()
+            .RequireRateLimiting(SecurityRateLimitPolicyNames.Login)
+            .RequireCsrfToken();
+
         endpoints.MapPost("/account/password", ChangePasswordFromFormAsync)
-            .RequireAuthorization()
+            .RequireAuthorization(ApplicationPolicies.RequireRegisteredAccount)
             .RequireRateLimiting(SecurityRateLimitPolicyNames.PasswordChange)
             .RequireCsrfToken();
 
@@ -32,12 +39,15 @@ public static class AccountEndpoints
 
     private static async Task<IResult> LoginFromFormAsync(
         [FromForm] LoginForm form,
+        HttpContext context,
+        GuestDemoSessionStore sessions,
         UserManager<ApplicationUser> userManager,
         SignInManager<ApplicationUser> signInManager,
         TimeProvider timeProvider,
         ILoggerFactory loggerFactory)
     {
         var logger = loggerFactory.CreateLogger("SeoIntelligence.Web.Login");
+        var previousPrincipal = context.User;
 
         if (string.IsNullOrWhiteSpace(form.Email) || string.IsNullOrWhiteSpace(form.Password))
         {
@@ -81,11 +91,51 @@ public static class AccountEndpoints
         await userManager.UpdateAsync(user);
 
         logger.LogInformation("Sign-in succeeded for user {user_id}.", user.Id);
+        if (GuestAuthentication.IsGuest(previousPrincipal))
+        {
+            sessions.Remove(previousPrincipal);
+        }
         return Results.Redirect(GetSafeReturnUrl(form.ReturnUrl));
     }
 
-    private static async Task<IResult> LogoutAsync(SignInManager<ApplicationUser> signInManager)
+    private static async Task<IResult> GuestLoginAsync(
+        [FromForm] GuestLoginForm form,
+        HttpContext context,
+        GuestDemoSessionStore sessions,
+        SignInManager<ApplicationUser> signInManager,
+        TimeProvider timeProvider)
     {
+        if (GuestAuthentication.IsGuest(context.User))
+        {
+            sessions.Remove(context.User);
+        }
+        await signInManager.SignOutAsync();
+        var id = sessions.Create();
+        var principal = new ClaimsPrincipal(new ClaimsIdentity(
+        [
+            new Claim(ClaimTypes.NameIdentifier, id),
+            new Claim(ClaimTypes.Name, "ゲスト"),
+            new Claim(ClaimTypes.Role, ApplicationRoles.Guest),
+            new Claim(GuestAuthentication.ModeClaim, GuestAuthentication.MockMode)
+        ], IdentityConstants.ApplicationScheme));
+        await context.SignInAsync(IdentityConstants.ApplicationScheme, principal, new AuthenticationProperties
+        {
+            IsPersistent = false,
+            AllowRefresh = false,
+            ExpiresUtc = timeProvider.GetUtcNow().Add(GuestDemoSessionStore.Lifetime)
+        });
+        return Results.Redirect(GetSafeReturnUrl(form.ReturnUrl));
+    }
+
+    private static async Task<IResult> LogoutAsync(
+        HttpContext context,
+        GuestDemoSessionStore sessions,
+        SignInManager<ApplicationUser> signInManager)
+    {
+        if (GuestAuthentication.IsGuest(context.User))
+        {
+            sessions.Remove(context.User);
+        }
         await signInManager.SignOutAsync();
         return Results.Redirect("/login");
     }
@@ -161,6 +211,11 @@ public static class AccountEndpoints
 
         public bool RememberMe { get; set; }
 
+        public string? ReturnUrl { get; set; }
+    }
+
+    private sealed class GuestLoginForm
+    {
         public string? ReturnUrl { get; set; }
     }
 

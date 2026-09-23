@@ -13,17 +13,17 @@ public sealed partial class WebAccountAuthorizationTests
 {
     [Fact]
     [Trait("Category", "Security")]
-    public void EveryBusinessPageRequiresTheAdminPolicy()
+    public void EveryBusinessPageRequiresWorkspaceAccessAndAdministrationRequiresAdmin()
     {
         // Self-service and error pages must stay reachable by any signed-in account; everything
-        // else renders business data through the shared layout and needs the Admin policy.
+        // else renders workspace data through the shared layout and needs workspace access.
         var selfServicePages = new[] { "Account", "Forbidden", "Error" };
 
         var pagesMissingTheAdminPolicy = typeof(SeoIntelligence.Web.Components.App).Assembly
             .GetTypes()
             .Where(type => type.GetCustomAttributes(typeof(RouteAttribute), inherit: true).Length > 0)
             .Where(type => type.Name != "Login" && !selfServicePages.Contains(type.Name))
-            .Where(type => GetAuthorizePolicy(type) != ApplicationPolicies.RequireAdmin)
+            .Where(type => GetAuthorizePolicy(type) != (type.Name == "Admin" ? ApplicationPolicies.RequireAdmin : ApplicationPolicies.RequireWorkspaceAccess))
             .Select(type => type.Name)
             .Order(StringComparer.Ordinal)
             .ToArray();

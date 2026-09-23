@@ -75,7 +75,7 @@ public sealed partial class WebAuthenticationTests
             ApplicationPolicies.RequireAdmin,
             GetAuthorizePolicy(assembly.GetType("SeoIntelligence.Web.Components.Pages.Admin")!));
         Assert.Equal(
-            ApplicationPolicies.RequireAdmin,
+            ApplicationPolicies.RequireWorkspaceAccess,
             GetAuthorizePolicy(assembly.GetType("SeoIntelligence.Web.Components.Pages.Dashboard")!));
 
         // Changing your own password and seeing the access-denied page must not need the Admin

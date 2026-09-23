@@ -1,5 +1,5 @@
-﻿@page "/not-found"
-@attribute [Authorize(Policy = ApplicationPolicies.RequireAdmin)]
+@page "/not-found"
+@attribute [Authorize(Policy = ApplicationPolicies.RequireWorkspaceAccess)]
 @layout MainLayout
 
 <h3>Not Found</h3>

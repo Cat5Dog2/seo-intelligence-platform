@@ -9,13 +9,12 @@
 
 <div class="self-service-shell">
     <header class="self-service-header">
-        <AuthorizeView Policy="@ApplicationPolicies.RequireAdmin" Context="adminAccess">
+        <AuthorizeView Policy="@ApplicationPolicies.RequireWorkspaceAccess" Context="workspaceAccess">
             <Authorized>
                 <a class="brand" data-testid="self-service-brand-link" href="/">SEO Intelligence</a>
             </Authorized>
             <NotAuthorized>
-                @* The project list requires the Admin policy, so linking there would bounce a
-                   non-Admin account straight back to /forbidden. *@
+                @* Accounts without workspace access must not link back to the project list. *@
                 <a class="brand" data-testid="self-service-brand-link" href="/account">SEO Intelligence</a>
             </NotAuthorized>
         </AuthorizeView>
