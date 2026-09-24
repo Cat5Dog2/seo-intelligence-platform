@@ -1,88 +1,97 @@
-﻿@inherits LayoutComponentBase
+@inherits LayoutComponentBase
+@inject IJSRuntime JS
 
 <div class="app-shell">
     <header class="app-header">
-        <a class="brand" href="/">SEO Intelligence</a>
-        <div class="header-controls">
-            <ProjectSwitcher />
-            <details class="header-settings">
-                <summary>地域・言語の設定</summary>
-                <div class="header-settings-content"><LocationLanguageSelector /></div>
-            </details>
-            <div class="header-usage"><CreditBadge /></div>
+        <div class="brand-row">
+            <a class="brand" href="/">SEO Intelligence</a>
             <AuthorizeView>
                 <Authorized>
                     @if (GuestAuthentication.IsGuest(context.User))
                     {
                         <span class="guest-mode-badge">ゲスト・Mock</span>
                     }
-                    <a class="account-link" href="/account">@context.User.Identity?.Name</a>
-                    <form method="post" action="/logout" class="logout-form">
-                        <AntiforgeryToken />
-                        <button type="submit" class="btn-link">ログアウト</button>
-                    </form>
                 </Authorized>
             </AuthorizeView>
+        </div>
+        <div class="header-controls">
+            <ProjectSwitcher />
+            <button type="button" class="text-button settings-trigger" aria-haspopup="dialog" aria-controls="app-settings" @onclick="ShowSettingsAsync">設定・アカウント</button>
         </div>
     </header>
 
     <div class="app-frame">
-        <button type="button" class="mobile-nav-toggle" aria-expanded="@IsMenuOpen.ToString().ToLowerInvariant()" aria-controls="main-navigation" @onclick="() => IsMenuOpen = !IsMenuOpen">@(IsMenuOpen ? "メニューを閉じる" : "メニューを開く")</button>
-        <nav id="main-navigation" class="side-nav @(IsMenuOpen ? "is-open" : "")" aria-label="メインメニュー" @onclick="() => IsMenuOpen = false">
-            <div class="nav-group">
-            <NavLink href="/" Match="NavLinkMatch.All">プロジェクト</NavLink>
-            <NavLink href="/dashboard">ダッシュボード</NavLink>
-            </div>
-            <div class="nav-group" aria-labelledby="nav-research">
-            <h2 id="nav-research">調査・分析</h2>
-            <NavLink href="/keywords">キーワード</NavLink>
-            <NavLink href="/search-volume">検索ボリューム</NavLink>
-            <NavLink href="/competitors">競合分析</NavLink>
-            <NavLink href="/influx">獲得語/ページ</NavLink>
-            <NavLink href="/content-analysis">コンテンツ分析</NavLink>
-            </div>
-            <div class="nav-group" aria-labelledby="nav-content">
-            <h2 id="nav-content">コンテンツ</h2>
-            <NavLink href="/clusters">トピッククラスター</NavLink>
-            <NavLink href="/briefs">記事ブリーフ</NavLink>
-            <NavLink href="/rewrite">リライト管理</NavLink>
-            <NavLink href="/ai-assistant">AIアシスタント</NavLink>
-            </div>
-            <div class="nav-group" aria-labelledby="nav-monitoring">
-            <h2 id="nav-monitoring">監視・レポート</h2>
-            <NavLink href="/rank-monitoring">順位監視</NavLink>
-            <NavLink href="/reports">レポート</NavLink>
-            </div>
-            <AuthorizeView Policy="@ApplicationPolicies.RequireAdmin">
-                <Authorized>
-                    <div class="nav-group" aria-labelledby="nav-admin">
-                    <h2 id="nav-admin">管理</h2>
-                    <NavLink href="/admin">管理</NavLink>
-                    </div>
-                </Authorized>
-            </AuthorizeView>
+        <nav class="side-nav" aria-label="メインメニュー">
+            <MainNavigation />
         </nav>
-
         <main class="main-content">
+            @Body
+        </main>
+    </div>
+
+    <nav class="mobile-bottom-nav" aria-label="よく使う機能">
+        <NavLink href="/dashboard" aria-label="ダッシュボード">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z" /></svg><span>概要</span>
+        </NavLink>
+        <NavLink href="/keywords" aria-label="キーワード探索">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="6" /><path d="m15 15 6 6" /></svg><span>探索</span>
+        </NavLink>
+        <NavLink href="/search-volume" aria-label="検索ボリューム">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10m8 10V4m8 16v-7" /></svg><span>検索数</span>
+        </NavLink>
+        <button type="button" aria-haspopup="dialog" aria-controls="mobile-menu" @onclick="ShowMenuAsync">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" /></svg><span>その他</span>
+        </button>
+    </nav>
+
+    <dialog id="mobile-menu" class="app-dialog menu-dialog" aria-labelledby="mobile-menu-title">
+        <div class="dialog-heading">
+            <h2 id="mobile-menu-title">すべての機能</h2>
+            <form method="dialog"><button type="submit" class="text-button" autofocus>閉じる</button></form>
+        </div>
+        <nav aria-label="その他の機能"><MainNavigation OnNavigate="CloseMenuAsync" /></nav>
+        <button type="button" class="text-button menu-settings" @onclick="ShowSettingsFromMenuAsync">設定・アカウント</button>
+    </dialog>
+
+    <dialog id="app-settings" class="app-dialog" aria-labelledby="app-settings-title">
+        <div class="dialog-heading">
+            <h2 id="app-settings-title">設定・アカウント</h2>
+            <form method="dialog"><button type="submit" class="text-button" autofocus>閉じる</button></form>
+        </div>
+        <div class="header-settings-content">
+            <div class="header-preferences"><h3>地域・言語</h3><p class="muted">選択中プロジェクトの調査に使う既定値です。</p><LocationLanguageSelector /></div>
+            <div class="header-usage"><CreditBadge /></div>
             <AuthorizeView>
                 <Authorized>
                     @if (GuestAuthentication.IsGuest(context.User))
                     {
-                        <aside class="guest-demo-notice" aria-label="ゲストデモのご案内">
-                            <strong>ゲスト・Mockモード</strong>
+                        <details class="guest-demo-notice" aria-label="ゲストデモのご案内">
+                            <summary>ゲスト・Mockモード — デモの利用範囲</summary>
                             <p>プロジェクト・サイト編集、キーワード探索、検索ボリューム調査、CSV出力を試せます。その他の分析画面はサンプルの閲覧用です。</p>
                             <p>データはこのゲストセッション専用です。通常データへのアクセスや外部APIの通信は行いません。ログアウト・1時間経過・サーバー再起動で初期化されます。</p>
-                        </aside>
+                        </details>
                     }
+                    <a class="account-link" href="/account" @onclick="CloseSettingsAsync">@context.User.Identity?.Name</a>
+                    <form method="post" action="/logout" class="logout-form">
+                        <AntiforgeryToken />
+                        <button type="submit" class="text-button">ログアウト</button>
+                    </form>
                 </Authorized>
             </AuthorizeView>
-            @Body
-        </main>
-    </div>
+        </div>
+    </dialog>
 </div>
 
 @code {
-    private bool IsMenuOpen { get; set; }
+    private async Task ShowSettingsAsync() => await JS.InvokeVoidAsync("seoIntelligence.openDialog", "app-settings");
+    private async Task ShowMenuAsync() => await JS.InvokeVoidAsync("seoIntelligence.openDialog", "mobile-menu");
+    private async Task CloseMenuAsync() => await JS.InvokeVoidAsync("seoIntelligence.closeDialog", "mobile-menu");
+    private async Task CloseSettingsAsync() => await JS.InvokeVoidAsync("seoIntelligence.closeDialog", "app-settings");
+    private async Task ShowSettingsFromMenuAsync()
+    {
+        await CloseMenuAsync();
+        await ShowSettingsAsync();
+    }
 }
 
 <div id="blazor-error-ui" data-nosnippet>

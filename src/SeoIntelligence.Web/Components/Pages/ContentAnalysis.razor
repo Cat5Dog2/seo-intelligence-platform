@@ -1,5 +1,6 @@
 @page "/content-analysis"
 @attribute [Authorize(Policy = ApplicationPolicies.RequireWorkspaceAccess)]
+@inherits WorkspaceComponentBase
 @implements IDisposable
 @inject ISeoIntelligenceApiClient ApiClient
 @inject ProjectSelectionState ProjectState
@@ -11,14 +12,17 @@
     <header class="page-header">
         <div>
             <h1>コンテンツ分析</h1>
-            <p>選択中プロジェクト: @(ProjectState.SelectedProject?.Name ?? "未選択")</p>
+            <p class="project-context">選択中プロジェクト: @(ProjectState.SelectedProject?.Name ?? "未選択")</p>
         </div>
         <div class="toolbar">
-            <button type="button" class="secondary-button" @onclick="AnalyzeAsync" disabled="@(!CanOperate)">分析ジョブ登録</button>
             <button type="button" class="secondary-button" @onclick="LoadAsync" disabled="@(ProjectState.SelectedProject is null)">更新</button>
         </div>
     </header>
 
+    @if (IsGuest)
+    {
+        <GuestReadOnlyNotice />
+    }
     <ErrorSummary Errors="@Errors" />
     @if (!ProjectState.IsLoading && ProjectState.SelectedProject is null && ProjectState.ErrorMessage is null)
     {
@@ -34,13 +38,15 @@
             <h2>分析条件</h2>
             <span class="muted">@(Analyses.Count)件表示</span>
         </div>
+        @if (!IsGuest)
+        {
         <div class="form-grid dense-form">
             <label class="field wide-field">
                 <span>キーワード</span>
                 <input @bind="Form.Keyword" @bind:event="oninput" disabled="@(ProjectState.SelectedProject is null)" />
             </label>
             <label class="field">
-                <span>limit</span>
+                <span>取得件数の上限</span>
                 <input type="number" min="1" max="100" @bind="Form.Limit" disabled="@(ProjectState.SelectedProject is null)" />
             </label>
             <label class="check-option compact-check">
@@ -55,8 +61,9 @@
                 <input type="checkbox" @bind="Form.IncludeCoOccurrence" disabled="@(ProjectState.SelectedProject is null)" />
                 <span>共起語</span>
             </label>
-            <button type="button" class="primary-button" @onclick="AnalyzeAsync" disabled="@(!CanOperate)">登録</button>
+            <button type="button" class="primary-button" @onclick="AnalyzeAsync" disabled="@(!CanOperate)">分析を開始</button>
         </div>
+        }
         <div class="form-grid dense-form">
             <label class="field wide-field">
                 <span>結果検索</span>
@@ -75,7 +82,10 @@
                 <RowActions Context="analysis">
                     <div class="row-actions">
                         <button type="button" class="table-action" @onclick="() => SelectAnalysis(analysis)">詳細</button>
-                        <button type="button" class="table-action" @onclick="() => GenerateBriefAsync(analysis)">ブリーフ生成</button>
+                        @if (!IsGuest)
+                        {
+                            <button type="button" class="table-action" @onclick="() => GenerateBriefAsync(analysis)">ブリーフ生成</button>
+                        }
                     </div>
                 </RowActions>
             </DataTable>
@@ -115,37 +125,37 @@
 @code {
     private static readonly IReadOnlyList<DataTableColumn<ContentAnalysisResultRow>> AnalysisColumns =
     [
-        new("keyword", row => row.Keyword),
-        new("content", row => row.ContentResults.Count.ToString(), "table-number"),
-        new("headlines", row => row.HeadlinePages.Count.ToString(), "table-number"),
-        new("co-occurrence", row => row.CoOccurrences.Count.ToString(), "table-number"),
-        new("last analyzed", row => FormatDateTime(row.LastAnalyzedAt))
+        new("キーワード", row => row.Keyword),
+        new("集客コンテンツ数", row => row.ContentResults.Count.ToString(), "table-number"),
+        new("見出し数", row => row.HeadlinePages.Count.ToString(), "table-number"),
+        new("共起語数", row => row.CoOccurrences.Count.ToString(), "table-number"),
+        new("分析日時", row => FormatDateTime(row.LastAnalyzedAt))
     ];
 
     private static readonly IReadOnlyList<DataTableColumn<ContentSearchResultRow>> ContentColumns =
     [
-        new("url", row => row.Url),
-        new("title", row => row.Title),
-        new("traffic", row => row.EstimatedTraffic.ToString("0.##"), "table-number"),
-        new("value", row => row.TrafficValue.ToString("0.##"), "table-number"),
-        new("top keyword", row => row.TopKeyword)
+        new("URL", row => row.Url),
+        new("タイトル", row => row.Title),
+        new("推定流入数", row => row.EstimatedTraffic.ToString("0.##"), "table-number"),
+        new("流入価値", row => row.TrafficValue.ToString("0.##"), "table-number"),
+        new("主要キーワード", row => row.TopKeyword)
     ];
 
     private static readonly IReadOnlyList<DataTableColumn<SerpHeadlinePageResultRow>> HeadlinePageColumns =
     [
-        new("rank", row => row.Rank.ToString(), "table-number"),
-        new("url", row => row.Url),
-        new("title", row => row.Title),
-        new("headlines", row => row.HeadlineCount.ToString(), "table-number"),
-        new("words", row => row.WordCount.ToString(), "table-number"),
-        new("sample", row => string.Join(" / ", row.Headlines.Take(3).Select(headline => $"H{headline.Level} {headline.Text}")))
+        new("順位", row => row.Rank.ToString(), "table-number"),
+        new("URL", row => row.Url),
+        new("タイトル", row => row.Title),
+        new("見出し数", row => row.HeadlineCount.ToString(), "table-number"),
+        new("文字数", row => row.WordCount.ToString(), "table-number"),
+        new("見出し例", row => string.Join(" / ", row.Headlines.Take(3).Select(headline => $"H{headline.Level} {headline.Text}")))
     ];
 
     private static readonly IReadOnlyList<DataTableColumn<CoOccurrenceWordResultRow>> CoOccurrenceColumns =
     [
-        new("word", row => row.Word),
-        new("pages", row => row.PageDetails.Count.ToString(), "table-number"),
-        new("top urls", row => string.Join(" / ", row.PageDetails.Take(3).Select(detail => $"{detail.Rank}:{detail.Url}")))
+        new("共起語", row => row.Word),
+        new("ページ数", row => row.PageDetails.Count.ToString(), "table-number"),
+        new("上位URL", row => string.Join(" / ", row.PageDetails.Take(3).Select(detail => $"{detail.Rank}:{detail.Url}")))
     ];
 
     private ContentAnalyzeFormModel Form { get; set; } = new();
@@ -165,10 +175,11 @@
     private string? Query { get; set; }
 
     private bool CanOperate
-        => ProjectState.SelectedProject is not null && !IsAnalyzing;
+        => !IsGuest && ProjectState.SelectedProject is not null && !IsAnalyzing;
 
     protected override async Task OnInitializedAsync()
     {
+        await base.OnInitializedAsync();
         ProjectState.Changed += OnProjectStateChanged;
         await ProjectState.LoadAsync();
         await LoadAsync();
@@ -176,6 +187,7 @@
 
     private async Task AnalyzeAsync()
     {
+        if (IsGuest) return;
         if (ProjectState.SelectedProject is not { } project)
         {
             return;
@@ -246,6 +258,7 @@
 
     private async Task GenerateBriefAsync(ContentAnalysisResultRow analysis)
     {
+        if (IsGuest) return;
         if (ProjectState.SelectedProject is not { } project)
         {
             return;

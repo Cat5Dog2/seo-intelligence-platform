@@ -18,6 +18,73 @@ namespace IntegrationTests;
 
 public sealed partial class WebGuestLoginTests
 {
+    [Theory]
+    [Trait("Category", "UI")]
+    [InlineData("/briefs", "生成ジョブ登録")]
+    [InlineData("/competitors", "登録</button>")]
+    [InlineData("/content-analysis", "分析を開始")]
+    [InlineData("/clusters", "クラスターを生成")]
+    [InlineData("/rank-monitoring", "順位チェック登録")]
+    [InlineData("/rewrite", "カニバリ再計算")]
+    [InlineData("/ai-assistant", "送信</button>")]
+    public async Task AdministratorKeepsBusinessActionsAfterGuestUiRestrictions(string path, string action)
+    {
+        await using var factory = new WebAuthenticationFactory();
+        var project = new ProjectDetails(Guid.NewGuid(), Guid.NewGuid(), "UI regression", "Japan", "Japanese",
+            JsonSerializer.SerializeToElement(new { }), null, "active", DateTime.UtcNow, DateTime.UtcNow, null);
+        factory.RecordedApiCalls.Responder = request => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = request.RequestUri!.AbsolutePath switch
+            {
+                "/api/projects" => JsonContent.Create(ApiResponseEnvelope<ProjectDetails[]>.Success("projects", [project])),
+                var route when route.EndsWith("/rank-results", StringComparison.Ordinal)
+                    => JsonContent.Create(ApiResponseEnvelope<RankResultList>.Success("ranks", new([], new(0, 0, 0, 0, 0, 0), 1, 100, 0, 0))),
+                _ => JsonContent.Create(ApiResponseEnvelope<object[]>.Success("empty-list", []))
+            }
+        };
+        using var client = factory.CreateAnonymousClient();
+        var token = await ReadTokenAsync(client, "/login");
+        using var signIn = await client.PostAsync("/login", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["__RequestVerificationToken"] = token,
+            ["email"] = WebAuthenticationFactory.AdminEmail,
+            ["password"] = WebAuthenticationFactory.AdminPassword
+        }));
+        Assert.Equal(HttpStatusCode.Redirect, signIn.StatusCode);
+        using var response = await client.GetAsync(path);
+        var html = WebUtility.HtmlDecode(await response.Content.ReadAsStringAsync());
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains(action, html);
+        Assert.DoesNotContain("サンプル閲覧専用", html);
+        Assert.DoesNotContain("role=\"alert\"", html);
+    }
+
+    [Theory]
+    [Trait("Category", "UI")]
+    [InlineData("/briefs", "生成ジョブ登録")]
+    [InlineData("/competitors", "競合抽出")]
+    [InlineData("/influx", "分析ジョブ登録")]
+    [InlineData("/content-analysis", "ブリーフ生成")]
+    [InlineData("/clusters", "ブリーフ作成")]
+    [InlineData("/rank-monitoring", "順位チェック登録")]
+    [InlineData("/rewrite", "カニバリ再計算")]
+    [InlineData("/ai-assistant", "送信</button>")]
+    public async Task GuestReadOnlyPagesExplainCapabilitiesAndHideUnsupportedActions(string path, string action)
+    {
+        await using var factory = new WebAuthenticationFactory();
+        using var client = factory.CreateAnonymousClient();
+        using var signIn = await SignInAsync(client);
+        using var response = await client.GetAsync(path);
+        var html = WebUtility.HtmlDecode(await response.Content.ReadAsStringAsync());
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("サンプル閲覧専用", html);
+        Assert.DoesNotContain(action, html);
+        Assert.DoesNotContain("APIクレジットを消費", html);
+        Assert.DoesNotContain("Guest.Unsupported", html);
+        if (path == "/briefs") Assert.Contains("第1版", html);
+        Assert.Empty(factory.RecordedApiCalls.Requests);
+    }
+
     [Fact]
     [Trait("Category", "UI")]
     public async Task AdministratorReportsKeepGenerationControlsAndLoadNotificationHistory()

@@ -55,6 +55,8 @@ public sealed partial class GuestDemoSession
                     case "/api/admin/notification-channels":
                         return Ok<T>(Array.Empty<NotificationChannelDetails>());
                     case "/api/jobs":
+                        // Match the real job API: page 1 must contain the most recent jobs.
+                        query.TryAdd("orderBy", "desc");
                         return Page<T, JobDetails>(_jobs.Values.Where(job =>
                             (!query.TryGetValue("project_id", out var project) || job.ProjectId.ToString() == project)
                             && (!query.TryGetValue("job_type", out var type) || job.JobType == type)

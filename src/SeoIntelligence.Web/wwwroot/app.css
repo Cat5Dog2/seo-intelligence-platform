@@ -1,3 +1,9 @@
+:root {
+    --accent: #6540c8;
+    --accent-hover: #5031a5;
+    --accent-soft: #f3effc;
+}
+
 h1:focus {
     outline: none;
 }
@@ -19,7 +25,7 @@ body {
 
 a {
 
-    color: #126f83;
+    color: var(--accent);
 
 }
 
@@ -130,8 +136,8 @@ h3 {
 }
 
 .primary-button {
-    background: #126f83;
-    border-color: #126f83;
+    background: var(--accent);
+    border-color: var(--accent);
     color: #ffffff;
 }
 
@@ -298,7 +304,7 @@ h3 {
     font-size: 0.8rem;
 }
 .step-number {
-    background: #126f83;
+    background: var(--accent);
     color: white;
     border-radius: 50%;
     display: inline-flex;
@@ -358,7 +364,7 @@ textarea {
 
 .project-switcher select {
 
-    border-color: #126f83;
+    border-color: var(--accent);
 
     background: #f3fafb;
 
@@ -476,7 +482,7 @@ textarea {
 }
 
 .audit-link {
-    color: #126f83;
+    color: var(--accent);
     font-weight: 600;
     text-decoration: none;
 }
@@ -582,7 +588,7 @@ legend {
 }
 
 .job-status-card progress {
-    accent-color: #126f83;
+    accent-color: var(--accent);
     height: 16px;
     width: 100%;
 }
@@ -783,7 +789,7 @@ legend {
 }
 
 .auth-form .btn-primary {
-    background: #1d4ed8;
+    background: var(--accent);
     border: none;
     border-radius: 4px;
     color: #ffffff;
@@ -794,7 +800,7 @@ legend {
 }
 
     .auth-form .btn-primary:hover {
-        background: #1e40af;
+        background: var(--accent-hover);
     }
 
 .alert {
@@ -923,4 +929,98 @@ legend {
 
 .guest-demo-notice p {
     margin: 0.5rem 0 0;
+}
+
+/* Research and reading share one accent and a clear primary action. */
+.primary-button:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
+a.primary-button, a.secondary-button, a.text-button { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
+.advanced-options { min-width: 0; }
+.advanced-options > summary, .guest-demo-notice > summary { cursor: pointer; min-height: 44px; align-content: center; font-weight: 600; }
+.advanced-options[open] > summary { margin-bottom: 0.75rem; }
+.advanced-options .form-grid { margin-top: 0.75rem; }
+.read-only-notice { border-left: 3px solid var(--accent); background: var(--accent-soft); border-radius: 6px; padding: 0.75rem 1rem; }
+.read-only-notice summary { color: #49308c; cursor: pointer; min-height: 44px; align-content: center; font-weight: 600; }
+.read-only-notice p { margin: 0.3rem 0 0; color: #475364; font-size: 0.9rem; }
+.guest-demo-notice { padding: 0.2rem 0.75rem; background: #f4f2fb; border-color: #d7cfee; }
+.guest-demo-notice summary { font-size: 0.85rem; }
+.data-table .table-status { white-space: nowrap; overflow-wrap: normal; }
+.research-flow textarea { min-height: 130px; }
+.research-flow .button-row { margin-top: 1rem; }
+.brief-content { max-width: 75ch; line-height: 1.8; margin: 1.5rem 0; }
+.brief-content section + section { margin-top: 1.5rem; }
+.brief-content h3 { font-size: 1rem; color: #49308c; }
+.brief-content p { margin: 0.5rem 0; white-space: pre-wrap; }
+.brief-content li { padding: 0.25rem 0; }
+.brief-workspace fieldset { border: 1px solid #d7dde6; border-radius: 6px; padding: 1rem; margin: 1rem 0; min-width: 0; }
+.brief-list { list-style: none; padding: 0; margin: 0; }
+.brief-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 1rem; padding: 1rem 0; border-bottom: 1px solid #e3e7ee; }
+.brief-list li:last-child { border-bottom: 0; }
+.brief-list h3 { font-size: 1rem; }
+.brief-list p { color: #5a6575; margin: 0.35rem 0 0; font-size: 0.9rem; }
+.status-pill { display: inline-block; padding: 0.3rem 0.6rem; border-radius: 999px; background: var(--accent-soft); color: #49308c; white-space: nowrap; font-size: 0.85rem; }
+.dashboard-start { padding: 2rem; }
+.dashboard-primary-metrics .metric { border-top: 3px solid var(--accent); }
+.auth-brand { color: var(--accent); font-size: 1.5rem; font-weight: 750; }
+.auth-tagline { margin: 0.5rem 0 1.75rem; color: #5a6575; }
+.auth-shell h1 { font-size: 1.25rem; }
+.guest-login .secondary-button { width: 100%; border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.guest-login p { color: #5a6575; font-size: 0.9rem; line-height: 1.7; }
+@media (max-width: 560px) {
+    .page-header { gap: 0.5rem; }
+    .page-header h1 { font-size: 1.3rem; }
+    .page-header p { font-size: 0.85rem; }
+    .guest-demo-notice { margin-bottom: 0.75rem; }
+    .brief-list li { grid-template-columns: minmax(0, 1fr) auto; gap: 0.75rem; }
+    .brief-list li > div:first-child { grid-column: 1 / -1; }
+    .brief-list .status-pill { justify-self: start; }
+    .dashboard-primary-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .dashboard-start { padding: 1rem; }
+}
+
+/* Mobile research keeps key values and actions together without horizontal swiping. */
+body:has(dialog[open]) { overflow: hidden; }
+.mobile-card-details { display: none; }
+.research-flow > summary, .result-filters > summary { cursor: pointer; min-height: 44px; align-content: center; font-weight: 600; overflow-wrap: anywhere; }
+.research-flow[open] > summary { margin-bottom: 0.5rem; }
+.research-flow .input-count { margin: 0 0 0.75rem; font-size: 0.85rem; }
+.result-filters { margin-bottom: 0.75rem; }
+.result-filters[open] > summary { margin-bottom: 0.5rem; }
+.completion-notice { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.75rem; }
+.completion-notice .primary-button { display: inline-flex; align-items: center; min-height: 44px; text-decoration: none; white-space: nowrap; }
+#search-volume-results { scroll-margin-top: 6rem; }
+#search-volume-results .muted { font-size: 0.85rem; font-weight: 400; }
+.read-only-notice { padding: 0.2rem 0.75rem; }
+.read-only-notice[open] { padding-bottom: 0.75rem; }
+
+@media (max-width: 920px) {
+    html { scroll-padding-bottom: calc(5rem + env(safe-area-inset-bottom)); }
+    .page-header, .compact-heading { flex-direction: row; align-items: center; flex-wrap: wrap; gap: 0.5rem; }
+    .page-header > div:first-child, .compact-heading > h2 { flex: 1; }
+    .page-header > .toolbar { flex-direction: row; flex: 0 0 auto; }
+    .page-header > button, .compact-heading > button { flex-shrink: 0; }
+    .page-header .project-context { display: none; }
+    .page-header h1 { overflow-wrap: anywhere; }
+    #search-volume-results { scroll-margin-top: 0.75rem; }
+}
+@media (max-width: 560px) {
+    .desktop-table-hint { display: none; }
+    .data-table.mobile-cards { display: block; width: 100%; min-width: 0; }
+    .mobile-cards thead { display: none; }
+    .mobile-cards tbody { display: block; }
+    .mobile-cards tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem 1rem; padding: 0.85rem; border: 1px solid #d7dde6; border-radius: 8px; background: white; }
+    .mobile-cards tr + tr { margin-top: 0.75rem; }
+    .data-table.mobile-cards td { display: block; padding: 0; border: 0; white-space: normal; min-width: 0; text-align: left; }
+    .data-table.mobile-cards .card-secondary { display: none; }
+    .mobile-cards .card-title { grid-column: 1 / -1; font-size: 1rem; font-weight: 600; overflow-wrap: anywhere; }
+    .mobile-cards .card-metric::before { content: attr(data-label); display: block; color: #5a6575; font-size: 0.75rem; margin-bottom: 0.15rem; }
+    .mobile-cards .card-metric { font-size: 1rem; }
+    .mobile-cards .mobile-card-details, .mobile-cards .actions-column { grid-column: 1 / -1; }
+    .mobile-cards summary { min-height: 44px; align-content: center; cursor: pointer; color: var(--accent); font-weight: 600; }
+    .mobile-cards dl { margin: 0; }
+    .mobile-cards dl > div { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 0.5rem; padding-block: 0.4rem; border-top: 1px solid #edf0f4; }
+    .mobile-cards dt { color: #5a6575; }
+    .mobile-cards dd { margin: 0; overflow-wrap: anywhere; }
+    .mobile-cards .table-action, .mobile-cards .audit-link { min-height: 44px; display: inline-flex; align-items: center; }
+    .research-flow { padding: 0.75rem; }
+    .result-filters { font-size: 0.9rem; }
 }

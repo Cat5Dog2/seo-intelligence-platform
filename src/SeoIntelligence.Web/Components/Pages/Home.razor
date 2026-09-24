@@ -11,7 +11,7 @@
     <header class="page-header">
         <div>
             <h1>プロジェクト</h1>
-            <p>選択中プロジェクト: @(ProjectState.SelectedProject?.Name ?? "未選択")</p>
+            <p class="project-context">選択中プロジェクト: @(ProjectState.SelectedProject?.Name ?? "未選択")</p>
         </div>
         <button type="button" class="secondary-button" @onclick="RefreshAsync">更新</button>
     </header>

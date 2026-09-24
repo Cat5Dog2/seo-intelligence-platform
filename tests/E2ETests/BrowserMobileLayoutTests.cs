@@ -74,7 +74,7 @@ public sealed class BrowserMobileLayoutTests
             await page.GetByTestId("project-switcher").SelectOptionAsync(new SelectOptionValue { Label = projectName });
             if (route != "/admin")
             {
-                await page.Locator(".page-header p").Filter(new() { HasText = projectName }).WaitForAsync();
+                await page.Locator(".page-header p").Filter(new() { HasText = projectName }).WaitForAsync(new() { State = WaitForSelectorState.Attached });
             }
             await AssertFitsAsync(page, route);
         }
@@ -97,12 +97,19 @@ public sealed class BrowserMobileLayoutTests
             await AssertFitsAsync(page, $"admin/{tab}");
         }
 
-        await page.GetByRole(AriaRole.Button, new() { Name = "メニューを開く", Exact = true }).TapAsync();
-        await page.GetByRole(AriaRole.Navigation, new() { Name = "メインメニュー" }).WaitForAsync();
+        await page.GetByRole(AriaRole.Button, new() { Name = "その他", Exact = true }).TapAsync();
+        await page.GetByRole(AriaRole.Navigation, new() { Name = "その他の機能" }).WaitForAsync();
         await AssertFitsAsync(page, "expanded menu");
         await page.GetByRole(AriaRole.Link, new() { Name = "プロジェクト", Exact = true }).TapAsync();
         await page.GetByRole(AriaRole.Heading, new() { Name = "プロジェクト", Exact = true }).WaitForAsync();
-        await page.GetByRole(AriaRole.Navigation, new() { Name = "メインメニュー" })
+        await page.GetByRole(AriaRole.Navigation, new() { Name = "その他の機能" })
+            .WaitForAsync(new() { State = WaitForSelectorState.Hidden });
+
+        await page.Locator(".settings-trigger").TapAsync();
+        await page.GetByRole(AriaRole.Dialog, new() { Name = "設定・アカウント" }).WaitForAsync();
+        await AssertFitsAsync(page, "settings sheet");
+        await page.Locator("#app-settings").GetByRole(AriaRole.Button, new() { Name = "閉じる", Exact = true }).PressAsync("Escape");
+        await page.GetByRole(AriaRole.Dialog, new() { Name = "設定・アカウント" })
             .WaitForAsync(new() { State = WaitForSelectorState.Hidden });
 
         foreach (var route in new[] { "/account", "/forbidden", "/not-found", "/Error" })

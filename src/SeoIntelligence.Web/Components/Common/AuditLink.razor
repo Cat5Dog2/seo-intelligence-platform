@@ -1,8 +1,9 @@
-@if (!string.IsNullOrWhiteSpace(ResourceType) && !string.IsNullOrWhiteSpace(ResourceId))
+@inherits WorkspaceComponentBase
+@if (!IsGuest && !string.IsNullOrWhiteSpace(ResourceType) && !string.IsNullOrWhiteSpace(ResourceId))
 {
     <a class="audit-link" href="@Href">監査</a>
 }
-else
+else if (!IsGuest)
 {
     <span class="muted">監査なし</span>
 }

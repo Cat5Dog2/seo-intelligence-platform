@@ -13,6 +13,45 @@ namespace IntegrationTests;
 
 public sealed class GuestDemoSessionTests
 {
+    [Theory]
+    [Trait("Category", "Unit")]
+    [InlineData("", "", 1)]
+    [InlineData("pending", "SEO", 1)]
+    [InlineData("reviewed", "", 0)]
+    [InlineData("rejected", "", 0)]
+    [InlineData("pending", "no-match", 0)]
+    public void DemoBriefFiltersRespectReviewStateAndSearchText(string reviewStatus, string query, int expectedCount)
+    {
+        var session = NewSession();
+        var project = Assert.Single(session.Execute<IReadOnlyList<ProjectDetails>>(HttpMethod.Get, "/api/projects", null).Data!);
+        var result = session.Execute<IReadOnlyList<ArticleBriefSummary>>(HttpMethod.Get,
+            $"/api/projects/{project.ProjectId}/briefs?reviewStatus={reviewStatus}&q={query}", null);
+        Assert.True(result.IsSuccess);
+        Assert.Equal(expectedCount, result.Data!.Count);
+        Assert.Equal(expectedCount, result.Meta.Page!.TotalCount);
+        Assert.All(result.Data, row => Assert.Equal("pending", row.ReviewStatus));
+    }
+
+    [Fact]
+    [Trait("Category", "UI")]
+    public void RecentDemoJobsUseNewestFirstBeforePagination()
+    {
+        var session = NewSession();
+        var project = Assert.Single(session.Execute<IReadOnlyList<ProjectDetails>>(HttpMethod.Get, "/api/projects", null).Data!);
+        var jobs = new List<JobDetails>();
+        for (var index = 0; index < 6; index++)
+        {
+            var reference = session.Execute<JobReference>(HttpMethod.Post, $"/api/projects/{project.ProjectId}/search-volume/jobs",
+                new SearchVolumeJobRequest([$"keyword {index}"], "jp", "ja")).Data!;
+            jobs.Add(session.Execute<JobDetails>(HttpMethod.Get, $"/api/jobs/{reference.JobId}", null).Data!);
+        }
+        var path = $"/api/jobs?project_id={project.ProjectId}&pageSize=5";
+        var recent = session.Execute<IReadOnlyList<JobDetails>>(HttpMethod.Get, path, null).Data!;
+        Assert.Equal(jobs.OrderByDescending(job => job.CreatedAt).Take(5).Select(job => job.JobId), recent.Select(job => job.JobId));
+        var oldest = session.Execute<IReadOnlyList<JobDetails>>(HttpMethod.Get, path + "&orderBy=asc", null).Data!;
+        Assert.Equal(jobs.OrderBy(job => job.CreatedAt).Take(5).Select(job => job.JobId), oldest.Select(job => job.JobId));
+    }
+
     [Fact]
     [Trait("Category", "Unit")]
     public void DemoProjectsAreIsolatedBetweenSessionsAndSupportArchiveAndRestore()

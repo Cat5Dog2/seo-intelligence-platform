@@ -46,7 +46,9 @@ public sealed partial class GuestDemoSession
             case "clusters":
                 return Page<T, TopicClusterSummary>([new(sampleResourceId, projectId, "SEOの基礎（デモ）", null, null, sampleKeywordId, keyword, 80, 1, "informational", 0, [], [], _sampleTime, _sampleTime)], query, row => row.Name, row => row.Score);
             case "briefs":
-                return Page<T, ArticleBriefSummary>([new(sampleResourceId, projectId, null, "SEO入門記事（デモ）", sampleKeywordId, keyword, 1, SampleBrief(), "pending", "active", _sampleTime, _sampleTime)], query, row => row.Title, row => row.UpdatedAt);
+                ArticleBriefSummary[] briefs = [new(sampleResourceId, projectId, null, "SEO入門記事（デモ）", sampleKeywordId, keyword, 1, SampleBrief(), "pending", "active", _sampleTime, _sampleTime)];
+                var reviewStatus = query.GetValueOrDefault("reviewStatus");
+                return Page<T, ArticleBriefSummary>(briefs.Where(row => string.IsNullOrWhiteSpace(reviewStatus) || row.ReviewStatus == reviewStatus), query, row => row.Title, row => row.UpdatedAt);
             case "rewrite/tasks":
                 return Page<T, RewriteTaskDetails>([RewriteSample()], query, row => row.TargetUrl, row => row.PriorityScore);
             case "cannibalization/candidates":

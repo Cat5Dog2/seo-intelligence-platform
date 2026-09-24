@@ -1,6 +1,7 @@
 @page "/rank-monitoring"
 @attribute [Authorize(Policy = ApplicationPolicies.RequireWorkspaceAccess)]
 @using System.Text.Json
+@inherits WorkspaceComponentBase
 @implements IDisposable
 @inject ISeoIntelligenceApiClient ApiClient
 @inject ProjectSelectionState ProjectState
@@ -11,14 +12,17 @@
     <header class="page-header">
         <div>
             <h1>順位監視</h1>
-            <p>選択中プロジェクト: @(ProjectState.SelectedProject?.Name ?? "未選択")</p>
+            <p class="project-context">選択中プロジェクト: @(ProjectState.SelectedProject?.Name ?? "未選択")</p>
         </div>
         <div class="toolbar">
-            <button type="button" class="secondary-button" @onclick="RegisterRankCheckAsync" disabled="@(!CanOperate)">順位チェック登録</button>
             <button type="button" class="secondary-button" @onclick="LoadAllAsync" disabled="@(ProjectState.SelectedProject is null)">更新</button>
         </div>
     </header>
 
+    @if (IsGuest)
+    {
+        <GuestReadOnlyNotice />
+    }
     <ErrorSummary Errors="@Errors" />
     @if (!ProjectState.IsLoading && ProjectState.SelectedProject is null && ProjectState.ErrorMessage is null)
     {
@@ -29,7 +33,9 @@
         <div class="state-row" data-testid="rank-status-message">@Message</div>
     }
 
-    <section class="split-grid">
+    <section class="@(IsGuest ? "page-stack" : "split-grid")">
+        @if (!IsGuest)
+        {
         <div class="panel">
             <div class="section-heading">
                 <h2>順位チェック登録</h2>
@@ -37,31 +43,31 @@
             </div>
             <div class="form-grid dense-form">
                 <label class="field wide-field">
-                    <span>keywords（改行区切り）</span>
+                    <span>キーワード（改行区切り）</span>
                     <textarea data-testid="rank-keywords-input" @bind="RankForm.KeywordsText" disabled="@(ProjectState.SelectedProject is null)"></textarea>
                 </label>
                 <label class="field wide-field">
-                    <span>targets（改行区切り）</span>
+                    <span>対象サイト（改行区切り）</span>
                     <textarea data-testid="rank-targets-input" @bind="RankForm.TargetsText" disabled="@(ProjectState.SelectedProject is null)"></textarea>
                 </label>
                 <label class="field">
-                    <span>targetType</span>
+                    <span>対象の種類</span>
                     <select @bind="RankForm.TargetType" disabled="@(ProjectState.SelectedProject is null)">
-                        <option value="domain">domain</option>
-                        <option value="url">url</option>
+                        <option value="domain">ドメイン</option>
+                        <option value="url">URL</option>
                     </select>
                 </label>
                 <label class="field">
-                    <span>matchType</span>
+                    <span>一致条件</span>
                     <select @bind="RankForm.MatchType" disabled="@(ProjectState.SelectedProject is null)">
-                        <option value="domain">domain</option>
-                        <option value="url">url</option>
-                        <option value="exact">exact</option>
-                        <option value="prefix">prefix</option>
+                        <option value="domain">ドメイン</option>
+                        <option value="url">URL</option>
+                        <option value="exact">完全一致</option>
+                        <option value="prefix">前方一致</option>
                     </select>
                 </label>
                 <label class="field">
-                    <span>depth</span>
+                    <span>調査する順位</span>
                     <select @bind="RankForm.Depth" disabled="@(ProjectState.SelectedProject is null)">
                         @foreach (var depth in AllowedDepths)
                         {
@@ -71,16 +77,17 @@
                 </label>
                 <label class="check-option compact-check">
                     <input type="checkbox" @bind="RankForm.WithMetrics" disabled="@(ProjectState.SelectedProject is null)" />
-                    <span>withMetrics</span>
+                    <span>検索指標を取得</span>
                 </label>
                 <label class="check-option compact-check">
                     <input type="checkbox" @bind="RankForm.Deduplicate" disabled="@(ProjectState.SelectedProject is null)" />
-                    <span>deduplicate</span>
+                    <span>重複を除外</span>
                 </label>
-                <button type="button" class="primary-button" data-testid="rank-register-button" @onclick="RegisterRankCheckAsync" disabled="@(!CanOperate)">登録</button>
+                <button type="button" class="primary-button" data-testid="rank-register-button" @onclick="RegisterRankCheckAsync" disabled="@(!CanOperate)">順位を調べる</button>
             </div>
         </div>
 
+        }
         <div class="panel">
             <div class="section-heading">
                 <h2>順位分布</h2>
@@ -102,11 +109,11 @@
             <h2>順位履歴</h2>
             <div class="toolbar">
                 <label class="field-inline">
-                    <span>Job Id</span>
+                    <span>ジョブID</span>
                     <input @bind="RankQuery.JobId" />
                 </label>
                 <label class="field-inline">
-                    <span>target</span>
+                    <span>対象</span>
                     <input @bind="RankQuery.Target" />
                 </label>
                 <label class="field-inline">
@@ -123,6 +130,8 @@
         </DataTable>
     </section>
 
+    @if (!IsGuest)
+    {
     <section class="split-grid">
         <div class="panel">
             <div class="section-heading">
@@ -131,24 +140,27 @@
             </div>
             <div class="form-grid dense-form">
                 <label class="field">
-                    <span>alertType</span>
+                    <span>通知条件</span>
                     <select @bind="AlertForm.AlertType" disabled="@(ProjectState.SelectedProject is null)">
-                        <option value="rank_drop">rank_drop</option>
-                        <option value="out_of_range">out_of_range</option>
-                        <option value="competitor_passed">competitor_passed</option>
-                        <option value="top_entry">top_entry</option>
-                        <option value="four_to_ten">four_to_ten</option>
+                        <option value="rank_drop">順位低下</option>
+                        <option value="out_of_range">圏外</option>
+                        <option value="competitor_passed">競合の追い越し</option>
+                        <option value="top_entry">上位にランクイン</option>
+                        <option value="four_to_ten">4〜10位</option>
                     </select>
                 </label>
                 <label class="field">
-                    <span>Notification Channel Id</span>
+                    <span>通知先ID</span>
                     <input @bind="AlertForm.NotificationChannelId" disabled="@(ProjectState.SelectedProject is null)" />
                 </label>
                 <label class="field wide-field json-field">
-                    <span>condition JSON</span>
+                    <span>通知条件（JSON）</span>
                     <textarea @bind="AlertForm.ConditionJson" disabled="@(ProjectState.SelectedProject is null)"></textarea>
                 </label>
-                <button type="button" class="primary-button" @onclick="SaveAlertAsync" disabled="@(ProjectState.SelectedProject is null)">保存</button>
+                @if (!IsGuest)
+                {
+                    <button type="button" class="primary-button" @onclick="SaveAlertAsync" disabled="@(ProjectState.SelectedProject is null)">保存</button>
+                }
                 @if (EditingAlertId.HasValue)
                 {
                     <button type="button" class="text-button" @onclick="ClearAlertForm">新規</button>
@@ -160,11 +172,17 @@
                         <button type="button" class="table-action" @onclick="() => EditAlert(alert)">編集</button>
                         @if (alert.Status == "disabled")
                         {
-                            <button type="button" class="table-action" @onclick="() => EnableAlertAsync(alert.AlertId)">有効化</button>
+                            @if (!IsGuest)
+                            {
+                                <button type="button" class="table-action" @onclick="() => EnableAlertAsync(alert.AlertId)">有効化</button>
+                            }
                         }
                         else
                         {
-                            <button type="button" class="table-action danger-button" @onclick="() => DisableAlertAsync(alert.AlertId)">無効化</button>
+                            @if (!IsGuest)
+                            {
+                                <button type="button" class="table-action danger-button" @onclick="() => DisableAlertAsync(alert.AlertId)">無効化</button>
+                            }
                         }
                         <AuditLink ResourceType="alert" ResourceId="@alert.AlertId.ToString("D")" />
                     </div>
@@ -177,7 +195,7 @@
                 <h2>アラート履歴</h2>
                 <div class="toolbar">
                     <label class="field-inline">
-                        <span>eventType</span>
+                        <span>通知の種類</span>
                         <input @bind="AlertEventType" />
                     </label>
                     <button type="button" class="secondary-button" @onclick="LoadAlertEventsAsync" disabled="@(ProjectState.SelectedProject is null)">検索</button>
@@ -195,7 +213,8 @@
                 </RowActions>
             </DataTable>
         </div>
-    </section>
+    </section>    }
+
 </div>
 
 @code {
@@ -203,32 +222,32 @@
 
     private static readonly IReadOnlyList<DataTableColumn<RankResultRow>> RankColumns =
     [
-        new("keyword", row => row.Keyword),
-        new("target", row => row.Target),
-        new("position", row => row.Position.ToString(), "table-number"),
-        new("prev", row => row.PreviousPosition?.ToString() ?? "-", "table-number"),
-        new("delta", row => row.PositionDelta?.ToString() ?? "-", "table-number"),
-        new("ranked url", row => row.RankedUrl),
-        new("traffic", row => row.EstimatedTraffic.ToString("0.##"), "table-number"),
-        new("checked", row => FormatDateTime(row.CheckedAt))
+        new("キーワード", row => row.Keyword),
+        new("対象", row => row.Target),
+        new("順位", row => row.Position.ToString(), "table-number"),
+        new("前回順位", row => row.PreviousPosition?.ToString() ?? "-", "table-number"),
+        new("変動", row => row.PositionDelta?.ToString() ?? "-", "table-number"),
+        new("ランクインURL", row => row.RankedUrl),
+        new("推定流入数", row => row.EstimatedTraffic.ToString("0.##"), "table-number"),
+        new("確認日時", row => FormatDateTime(row.CheckedAt))
     ];
 
     private static readonly IReadOnlyList<DataTableColumn<RankAlertDetails>> AlertColumns =
     [
-        new("type", row => row.AlertType),
-        new("status", row => row.Status),
-        new("channel", row => row.NotificationChannelId?.ToString("D")),
-        new("last", row => row.LastTriggeredAt.HasValue ? FormatDateTime(row.LastTriggeredAt.Value) : "-"),
-        new("updated", row => FormatDateTime(row.UpdatedAt))
+        new("種類", row => row.AlertType),
+        new("状態", row => UiText.Status(row.Status)),
+        new("通知先", row => row.NotificationChannelId?.ToString("D")),
+        new("最終通知", row => row.LastTriggeredAt.HasValue ? FormatDateTime(row.LastTriggeredAt.Value) : "-"),
+        new("更新日時", row => FormatDateTime(row.UpdatedAt))
     ];
 
     private static readonly IReadOnlyList<DataTableColumn<RankAlertEventDetails>> AlertEventColumns =
     [
-        new("event", row => row.EventType),
-        new("keyword", row => row.Keyword),
-        new("job", row => row.JobId?.ToString("D")),
-        new("triggered", row => FormatDateTime(row.TriggeredAt)),
-        new("resolved", row => row.ResolvedAt.HasValue ? FormatDateTime(row.ResolvedAt.Value) : "-")
+        new("イベント", row => row.EventType),
+        new("キーワード", row => row.Keyword),
+        new("ジョブ", row => row.JobId?.ToString("D")),
+        new("発生日時", row => FormatDateTime(row.TriggeredAt)),
+        new("解決日時", row => row.ResolvedAt.HasValue ? FormatDateTime(row.ResolvedAt.Value) : "-")
     ];
 
     private RankCheckFormModel RankForm { get; set; } = new();
@@ -264,10 +283,11 @@
     private long RankTotalCount => RankList?.TotalCount ?? 0;
 
     private bool CanOperate
-        => ProjectState.SelectedProject is not null && !IsRegistering;
+        => !IsGuest && ProjectState.SelectedProject is not null && !IsRegistering;
 
     protected override async Task OnInitializedAsync()
     {
+        await base.OnInitializedAsync();
         ProjectState.Changed += OnProjectStateChanged;
         await ProjectState.LoadAsync();
         await LoadAllAsync();
@@ -282,6 +302,7 @@
 
     private async Task RegisterRankCheckAsync()
     {
+        if (IsGuest) return;
         if (ProjectState.SelectedProject is not { } project)
         {
             return;
@@ -380,6 +401,7 @@
 
     private async Task SaveAlertAsync()
     {
+        if (IsGuest) return;
         if (ProjectState.SelectedProject is not { } project)
         {
             return;
@@ -471,6 +493,7 @@
 
     private async Task DisableAlertAsync(Guid alertId)
     {
+        if (IsGuest) return;
         if (ProjectState.SelectedProject is not { } project)
         {
             return;
@@ -482,6 +505,7 @@
 
     private async Task EnableAlertAsync(Guid alertId)
     {
+        if (IsGuest) return;
         if (ProjectState.SelectedProject is not { } project)
         {
             return;

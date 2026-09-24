@@ -308,3 +308,28 @@ PostgreSQLテストは指定DBにスキーマがなければ作成し、合成�
 ゲスト閲覧の回帰テストでは、リライト一覧・詳細の一致と別プロジェクト/セッション・未知IDの404、記事ブリーフの一覧・詳細・版履歴の`pending`一致を確認する。レポートは実WebホストでGuestには利用範囲を表示して通常APIを呼ばず、Adminには生成操作と通知履歴取得が残ることを確認する。
 
 ブラウザでは、リライト詳細の状態・メモ、記事ブリーフの選択済みレビュー状態、レポートの初期表示を確認する。サイト正規URLの空欄・不正形式・http/https以外を送信前に拒否し、有効URLで保存できること、PCと360/375/393/412px幅で操作ラベルが1行に収まりページ全体が横にはみ出さないことを確認する。2026-09-23の公開環境QAと修正後のローカル再検証は`qa/guest-browser-2026-09-23.md`に記録する。
+
+
+### UI/UX改修の回帰検証（2026-09-24）
+
+- `BrowserQaRegressionTests`: 検索ボリュームの完了時結果取得、待機・実行・外部待ちから完了までの自動追跡、失敗/キャンセルで結果を取得しないこと、二重登録防止を検証する。追跡中のプロジェクト切替・入力クリア・画面破棄後に遅延結果を反映しないことも確認する。CSV受付後は実際の描画HTMLにダウンロードリンクが現れることを検証する。
+- `BlazorUsabilityTests`: ブリーフのデモ形式（summary/headings）と生成形式（title/outline）、日本語表示、欠損・不正型の空状態を検証する。
+- `WebGuestLoginTests`: 閲覧専用の8画面に案内があり、未対応アクションとクレジット消費案内が表示されず、通常APIへ到達しないことを確認する。通常ログイン時の操作は維持する。
+- ブラウザ確認では、ログイン・メニュー開閉・設定・探索・検索ボリューム・CSVリンク・ブリーフ一覧と詳細・ダッシュボードを操作する。360/390/768/1280px幅で横はみ出し、操作領域、入力文字、詳細データの折りたたみを確認する。
+
+```powershell
+dotnet build src/SeoIntelligence.Web --no-restore
+dotnet test tests/E2ETests --no-restore --filter 'Category!=BrowserE2E'
+dotnet test tests/IntegrationTests --no-restore --filter 'FullyQualifiedName~WebGuestLoginTests|FullyQualifiedName~GuestDemoSessionTests|FullyQualifiedName~WebAuthenticationTests|FullyQualifiedName~WebAccountAuthorizationTests|FullyQualifiedName~WebDownloadEndpointTests'
+```
+
+BrowserE2Eの検索ボリューム操作では「CSV・調査条件」を開いて地域・言語を選択する。ゲストログアウト前には「設定・アカウント」を開く。
+
+### モバイル改善の回帰検証（2026-09-24）
+
+- `BlazorUsabilityTests`: 結果カードの主要値と詳細、loading/error/empty、日本語の地域・言語表示と未知コードの保持。
+- `BrowserQaRegressionTests`: 完了時の結果導線・入力折りたたみ、失敗・キャンセル・結果取得エラー時の入力維持、入力クリアでの解除。マスタ取得失敗時の現在値保持と再取得導線。
+- `GuestDemoSessionTests`: ブリーフのレビュー状態と検索文字を組み合わせたフィルター、結果とページ件数の一致。
+- `BrowserMobileLayoutTests`/`BrowserSmokeFlow`/`BrowserGuestLoginTests`: 下部ナビ、設定ダイアログ、地域・言語のselect、ヘッダーのゲストバッジに合わせて既存セレクターを更新する。
+- ブラウザでは360×640、375×667、390×844、1280×900の13画面で横はみ出しと操作領域を確認する。検索結果のカード詳細、結果へのフォーカス移動、CSVジョブの操作、フィルター、メニュー選択後の閉じる動作、設定シートのEscapeと背景クリック、844×390の横向き表示も確認する。
+- 実機Safari/Androidのソフトキーボード・セーフエリア・回転、および実API/低速回線は別途確認対象とする。ブラウザ幅の変更を実機検証と記載しない。

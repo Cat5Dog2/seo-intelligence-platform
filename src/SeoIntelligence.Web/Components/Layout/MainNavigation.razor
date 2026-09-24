@@ -1,0 +1,35 @@
+<div class="navigation-groups">
+            <div class="nav-group">
+            <NavLink @onclick="OnNavigate" href="/" Match="NavLinkMatch.All">プロジェクト</NavLink>
+            <NavLink @onclick="OnNavigate" href="/dashboard">ダッシュボード</NavLink>
+            </div>
+            <div class="nav-group" >
+            <h2>調査・分析</h2>
+            <NavLink @onclick="OnNavigate" href="/keywords">キーワード</NavLink>
+            <NavLink @onclick="OnNavigate" href="/search-volume">検索ボリューム</NavLink>
+            <NavLink @onclick="OnNavigate" href="/competitors">競合分析</NavLink>
+            <NavLink @onclick="OnNavigate" href="/influx">獲得語/ページ</NavLink>
+            <NavLink @onclick="OnNavigate" href="/content-analysis">コンテンツ分析</NavLink>
+            </div>
+            <div class="nav-group" >
+            <h2>コンテンツ</h2>
+            <NavLink @onclick="OnNavigate" href="/clusters">トピッククラスター</NavLink>
+            <NavLink @onclick="OnNavigate" href="/briefs">記事ブリーフ</NavLink>
+            <NavLink @onclick="OnNavigate" href="/rewrite">リライト管理</NavLink>
+            <NavLink @onclick="OnNavigate" href="/ai-assistant">AIアシスタント</NavLink>
+            </div>
+            <div class="nav-group" >
+            <h2>監視・レポート</h2>
+            <NavLink @onclick="OnNavigate" href="/rank-monitoring">順位監視</NavLink>
+            <NavLink @onclick="OnNavigate" href="/reports">レポート</NavLink>
+            </div>
+            <AuthorizeView Policy="@ApplicationPolicies.RequireAdmin">
+                <Authorized>
+                    <div class="nav-group" >
+                    <h2>管理</h2>
+                    <NavLink @onclick="OnNavigate" href="/admin">管理</NavLink>
+                    </div>
+                </Authorized>
+            </AuthorizeView>
+</div>
+@code { [Parameter] public EventCallback OnNavigate { get; set; } }
