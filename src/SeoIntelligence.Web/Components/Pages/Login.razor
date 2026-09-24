@@ -5,6 +5,8 @@
 <PageTitle>ログイン - SEO Intelligence</PageTitle>
 
 <div class="auth-shell">
+    <div class="auth-brand">SEO Intelligence</div>
+    <p class="auth-tagline">キーワード発見から記事改善まで</p>
     <h1>ログイン</h1>
 
     @if (LoginError == "invalid")
@@ -45,7 +47,7 @@
         <AntiforgeryToken />
         <input type="hidden" name="returnUrl" value="@ReturnUrl" />
         <p>アカウント不要で、通常データから分離したデモを試せます。Mockモードで動作し、実際のAPIクレジットは消費しません。</p>
-        <button type="submit" class="secondary-button">ゲストでログイン</button>
+        <button type="submit" class="secondary-button">登録不要でデモを試す</button>
     </form>
 </div>
 

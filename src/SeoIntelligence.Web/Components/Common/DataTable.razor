@@ -2,7 +2,7 @@
 
 @if (HasVisibleTable)
 {
-    <p class="table-scroll-hint">表は横にスクロールできます。@(RowActions is null ? "" : "右端に操作ボタンがあります。")</p>
+    <p class="table-scroll-hint @(MobileCards ? "desktop-table-hint" : "")">表は横にスクロールできます。@(RowActions is null ? "" : "右端に操作ボタンがあります。")</p>
 }
 <div class="data-table-wrap" tabindex="@(HasVisibleTable ? 0 : -1)" role="region" aria-label="データ一覧">
     @if (IsLoading)
@@ -19,7 +19,7 @@
     }
     else
     {
-        <table class="data-table">
+        <table class="data-table @(MobileCards ? "mobile-cards" : "")">
             <thead>
                 <tr>
                     @foreach (var column in Columns)
@@ -36,9 +36,24 @@
                 @foreach (var item in Items)
                 {
                     <tr>
-                        @foreach (var column in Columns)
+                        @for (var index = 0; index < Columns.Count; index++)
                         {
-                            <td class="@column.CssClass">@column.Cell(item)</td>
+                            var column = Columns[index];
+                            <td class="@column.CssClass @(index == 0 ? "card-title" : index < 3 ? "card-metric" : "card-secondary")" data-label="@column.Header">@column.Cell(item)</td>
+                        }
+                        @if (MobileCards && Columns.Count > 3)
+                        {
+                            <td class="mobile-card-details">
+                                <details>
+                                    <summary aria-label="@(Columns[0].Cell(item) + "の詳細")">詳細</summary>
+                                    <dl>
+                                        @foreach (var column in Columns.Skip(3))
+                                        {
+                                            <div><dt>@column.Header</dt><dd>@(column.Cell(item) ?? "—")</dd></div>
+                                        }
+                                    </dl>
+                                </details>
+                            </td>
                         }
                         @if (RowActions is not null)
                         {
@@ -53,6 +68,9 @@
 
 @code {
     private bool HasVisibleTable => !IsLoading && string.IsNullOrWhiteSpace(ErrorMessage) && Items.Count > 0;
+
+    [Parameter]
+    public bool MobileCards { get; set; }
 
     [Parameter]
     public IReadOnlyList<TItem> Items { get; set; } = [];

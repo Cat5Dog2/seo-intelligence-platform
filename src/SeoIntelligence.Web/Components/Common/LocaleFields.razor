@@ -1,0 +1,57 @@
+@inject ISeoIntelligenceApiClient ApiClient
+
+<label class="field">
+    <span>地域</span>
+    <select data-testid="@LocationTestId" value="@Location" @onchange="ChangeLocationAsync" disabled="@Disabled">
+        <option value="@Location">@UiText.Location(Location, Locations.FirstOrDefault(item => string.Equals(item.Code, Location, StringComparison.OrdinalIgnoreCase))?.Name)</option>
+        @foreach (var item in Locations.Where(item => !string.Equals(item.Code, Location, StringComparison.OrdinalIgnoreCase)))
+        {
+            <option value="@item.Code">@UiText.Location(item.Code, item.Name)</option>
+        }
+    </select>
+</label>
+<label class="field">
+    <span>言語</span>
+    <select data-testid="@LanguageTestId" value="@Language" @onchange="ChangeLanguageAsync" disabled="@Disabled">
+        <option value="@Language">@UiText.Language(Language, Languages.FirstOrDefault(item => string.Equals(item.Code, Language, StringComparison.OrdinalIgnoreCase))?.Name)</option>
+        @foreach (var item in Languages.Where(item => !string.Equals(item.Code, Language, StringComparison.OrdinalIgnoreCase)))
+        {
+            <option value="@item.Code">@UiText.Language(item.Code, item.Name)</option>
+        }
+    </select>
+</label>
+@if (LoadFailed)
+{
+    <p class="muted" role="status">選択肢を取得できませんでした。現在の設定はそのまま使えます。</p>
+    <button type="button" class="text-button" @onclick="LoadAsync" disabled="@Loading">選択肢を再取得</button>
+}
+
+@code {
+    [Parameter] public string? Location { get; set; }
+    [Parameter] public EventCallback<string> LocationChanged { get; set; }
+    [Parameter] public string? Language { get; set; }
+    [Parameter] public EventCallback<string> LanguageChanged { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public string? LocationTestId { get; set; }
+    [Parameter] public string? LanguageTestId { get; set; }
+    private IReadOnlyList<LocationSummary> Locations { get; set; } = [];
+    private IReadOnlyList<LanguageSummary> Languages { get; set; } = [];
+    private bool LoadFailed { get; set; }
+    private bool Loading { get; set; }
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        Loading = true;
+        var locations = await ApiClient.ListLocationsAsync();
+        var languages = await ApiClient.ListLanguagesAsync();
+        Locations = locations.Data ?? [];
+        Languages = languages.Data ?? [];
+        LoadFailed = !locations.IsSuccess || !languages.IsSuccess;
+        Loading = false;
+    }
+
+    private Task ChangeLocationAsync(ChangeEventArgs args) => LocationChanged.InvokeAsync(args.Value?.ToString() ?? Location ?? "");
+    private Task ChangeLanguageAsync(ChangeEventArgs args) => LanguageChanged.InvokeAsync(args.Value?.ToString() ?? Language ?? "");
+}

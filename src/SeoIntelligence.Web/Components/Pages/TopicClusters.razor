@@ -1,5 +1,6 @@
 @page "/clusters"
 @attribute [Authorize(Policy = ApplicationPolicies.RequireWorkspaceAccess)]
+@inherits WorkspaceComponentBase
 @implements IDisposable
 @inject ISeoIntelligenceApiClient ApiClient
 @inject ProjectSelectionState ProjectState
@@ -11,14 +12,17 @@
     <header class="page-header">
         <div>
             <h1>トピッククラスター</h1>
-            <p>選択中プロジェクト: @(ProjectState.SelectedProject?.Name ?? "未選択")</p>
+            <p class="project-context">選択中プロジェクト: @(ProjectState.SelectedProject?.Name ?? "未選択")</p>
         </div>
         <div class="toolbar">
-            <button type="button" class="secondary-button" @onclick="GenerateAsync" disabled="@(!CanOperate)">クラスタ生成</button>
             <button type="button" class="secondary-button" @onclick="LoadAsync" disabled="@(ProjectState.SelectedProject is null)">更新</button>
         </div>
     </header>
 
+    @if (IsGuest)
+    {
+        <GuestReadOnlyNotice />
+    }
     <ErrorSummary Errors="@Errors" />
     @if (!ProjectState.IsLoading && ProjectState.SelectedProject is null && ProjectState.ErrorMessage is null)
     {
@@ -42,36 +46,40 @@
             <label class="field">
                 <span>検索意図</span>
                 <select @bind="IntentLabel" disabled="@(ProjectState.SelectedProject is null)">
-                    <option value="">all</option>
-                    <option value="informational">informational</option>
-                    <option value="commercial">commercial</option>
-                    <option value="transactional">transactional</option>
-                    <option value="navigational">navigational</option>
+                    <option value="">すべて</option>
+                    <option value="informational">情報を知りたい</option>
+                    <option value="commercial">比較・検討したい</option>
+                    <option value="transactional">購入・申込みをしたい</option>
+                    <option value="navigational">特定のサイトを探したい</option>
                 </select>
             </label>
             <label class="field">
-                <span>sortBy</span>
+                <span>並べ替え項目</span>
                 <select @bind="SortBy" disabled="@(ProjectState.SelectedProject is null)">
-                    <option value="score">score</option>
-                    <option value="name">name</option>
-                    <option value="representativeKeyword">representativeKeyword</option>
-                    <option value="keywordCount">keywordCount</option>
-                    <option value="childCount">childCount</option>
-                    <option value="updatedAt">updatedAt</option>
+                    <option value="score">スコア</option>
+                    <option value="name">名称</option>
+                    <option value="representativeKeyword">代表キーワード</option>
+                    <option value="keywordCount">キーワード数</option>
+                    <option value="childCount">子クラスター数</option>
+                    <option value="updatedAt">更新日時</option>
                 </select>
             </label>
             <label class="field">
-                <span>orderBy</span>
+                <span>並び順</span>
                 <select @bind="OrderBy" disabled="@(ProjectState.SelectedProject is null)">
-                    <option value="desc">desc</option>
-                    <option value="asc">asc</option>
+                    <option value="desc">降順</option>
+                    <option value="asc">昇順</option>
                 </select>
             </label>
+            @if (!IsGuest)
+            {
             <label class="check-option compact-check">
                 <input type="checkbox" @bind="Regenerate" disabled="@(ProjectState.SelectedProject is null)" />
                 <span>再生成</span>
             </label>
-            <button type="button" class="primary-button" @onclick="LoadAsync" disabled="@(ProjectState.SelectedProject is null)">検索</button>
+                <button type="button" class="primary-button" @onclick="GenerateAsync" disabled="@(!CanOperate)">クラスターを生成</button>
+            }
+            <button type="button" class="secondary-button" @onclick="LoadAsync" disabled="@(ProjectState.SelectedProject is null)">検索</button>
         </div>
     </section>
 
@@ -84,7 +92,10 @@
                 <RowActions Context="cluster">
                     <div class="row-actions">
                         <button type="button" class="table-action" @onclick="() => SelectClusterAsync(cluster.ClusterId)">詳細</button>
-                        <button type="button" class="table-action" @onclick="() => GenerateBriefAsync(cluster)">ブリーフ作成</button>
+                        @if (!IsGuest)
+                        {
+                            <button type="button" class="table-action" @onclick="() => GenerateBriefAsync(cluster)">ブリーフ作成</button>
+                        }
                     </div>
                 </RowActions>
             </DataTable>
@@ -130,36 +141,36 @@
         new("クラスタ名", cluster => cluster.Name),
         new("代表語", cluster => cluster.RepresentativeKeyword),
         new("親", cluster => cluster.ParentName),
-        new("keyword", cluster => cluster.KeywordCount.ToString(), "table-number"),
-        new("score", cluster => cluster.Score.ToString("0.####"), "table-number"),
-        new("intent", cluster => cluster.IntentLabel),
+        new("キーワード", cluster => cluster.KeywordCount.ToString(), "table-number"),
+        new("スコア", cluster => cluster.Score.ToString("0.####"), "table-number"),
+        new("検索意図", cluster => cluster.IntentLabel),
         new("子", cluster => cluster.ChildCount.ToString(), "table-number")
     ];
 
     private static readonly IReadOnlyList<DataTableColumn<TopicClusterKeywordRow>> KeywordColumns =
     [
-        new("keyword", row => row.Keyword),
-        new("role", row => row.Role),
-        new("score", row => row.OpportunityScore.ToString("0.####"), "table-number"),
-        new("intent", row => row.IntentLabel),
+        new("キーワード", row => row.Keyword),
+        new("役割", row => row.Role),
+        new("スコア", row => row.OpportunityScore.ToString("0.####"), "table-number"),
+        new("検索意図", row => UiText.SearchIntent(row.IntentLabel)),
         new("FAQ", row => row.Evidence.FaqCount.ToString(), "table-number"),
-        new("source", row => string.Join(", ", row.Evidence.Sources))
+        new("取得元", row => string.Join(", ", row.Evidence.Sources))
     ];
 
     private static readonly IReadOnlyList<DataTableColumn<ArticleCandidateSummary>> ArticleCandidateColumns =
     [
-        new("title", row => row.Title),
-        new("keyword", row => row.TargetKeyword),
-        new("intent", row => row.IntentLabel),
-        new("score", row => row.OpportunityScore.ToString("0.####"), "table-number"),
-        new("status", row => row.Status)
+        new("タイトル", row => row.Title),
+        new("キーワード", row => row.TargetKeyword),
+        new("検索意図", row => UiText.SearchIntent(row.IntentLabel)),
+        new("スコア", row => row.OpportunityScore.ToString("0.####"), "table-number"),
+        new("状態", row => UiText.Status(row.Status))
     ];
 
     private static readonly IReadOnlyList<DataTableColumn<InternalLinkCandidate>> InternalLinkColumns =
     [
-        new("from", row => row.SourceClusterName),
-        new("to", row => row.TargetClusterName),
-        new("reason", row => row.Reason)
+        new("リンク元", row => row.SourceClusterName),
+        new("リンク先", row => row.TargetClusterName),
+        new("理由", row => row.Reason)
     ];
 
     private IReadOnlyList<TopicClusterSummary> Clusters { get; set; } = [];
@@ -185,10 +196,11 @@
     private bool Regenerate { get; set; } = true;
 
     private bool CanOperate
-        => ProjectState.SelectedProject is not null && !IsGenerating;
+        => !IsGuest && ProjectState.SelectedProject is not null && !IsGenerating;
 
     protected override async Task OnInitializedAsync()
     {
+        await base.OnInitializedAsync();
         ProjectState.Changed += OnProjectStateChanged;
         await ProjectState.LoadAsync();
         await LoadAsync();
@@ -227,6 +239,7 @@
 
     private async Task GenerateAsync()
     {
+        if (IsGuest) return;
         if (ProjectState.SelectedProject is not { } project)
         {
             return;
@@ -270,6 +283,7 @@
 
     private async Task GenerateBriefAsync(TopicClusterSummary cluster)
     {
+        if (IsGuest) return;
         if (ProjectState.SelectedProject is not { } project)
         {
             return;

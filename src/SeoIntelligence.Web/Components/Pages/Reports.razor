@@ -10,7 +10,7 @@
     <header class="page-header">
         <div>
             <h1>レポート</h1>
-            <p>選択中プロジェクト: @(ProjectState.SelectedProject?.Name ?? "未選択")</p>
+            <p class="project-context">選択中プロジェクト: @(ProjectState.SelectedProject?.Name ?? "未選択")</p>
         </div>
         @if (!IsGuest)
         {

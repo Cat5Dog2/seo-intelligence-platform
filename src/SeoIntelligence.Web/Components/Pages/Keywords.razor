@@ -1,6 +1,7 @@
 @page "/keywords"
 @attribute [Authorize(Policy = ApplicationPolicies.RequireWorkspaceAccess)]
 @using System.Text.Json
+@inherits WorkspaceComponentBase
 @implements IDisposable
 @inject ISeoIntelligenceApiClient ApiClient
 @inject ProjectSelectionState ProjectState
@@ -12,12 +13,7 @@
     <header class="page-header">
         <div>
             <h1>キーワード探索</h1>
-            <p>選択中プロジェクト: @(ProjectState.SelectedProject?.Name ?? "未選択")</p>
-        </div>
-        <div class="toolbar">
-            <button type="button" class="secondary-button" data-testid="keyword-discovery-run-button" @onclick="DiscoverAsync" disabled="@(!CanRunDiscovery)">調査開始</button>
-            <button type="button" class="secondary-button" data-testid="keyword-candidates-search-volume-button" @onclick="RegisterCandidateSearchVolumeAsync" disabled="@(!CanSendCandidates)">検索ボリューム調査へ送る</button>
-            <button type="button" class="secondary-button" data-testid="keyword-candidates-export-button" @onclick="CreateCandidateExportAsync" disabled="@(!CanExportCandidates)">CSV出力</button>
+            <p class="project-context">選択中プロジェクト: @(ProjectState.SelectedProject?.Name ?? "未選択")</p>
         </div>
     </header>
 
@@ -41,6 +37,19 @@
                 <span>シードキーワード</span>
                 <input data-testid="keyword-seed-input" @bind="DiscoveryForm.SeedKeyword" @bind:event="oninput" disabled="@(ProjectState.SelectedProject is null)" />
             </label>
+        </div>
+        <div class="button-row">
+            <button type="button" class="primary-button" data-testid="keyword-discovery-run-button" @onclick="DiscoverAsync" disabled="@(!CanRunDiscovery)">キーワードを探す</button>
+        </div>
+        <details class="advanced-options">
+            <summary>詳細条件</summary>
+            @if (IsGuest)
+            {
+                <p class="muted">デモではGoogleの候補語を5件表示します。ソース・件数・絞り込みの指定は通常ログインで利用できます。</p>
+            }
+            else
+            {
+        <div class="form-grid dense-form">
             <label class="field">
                 <span>取得件数の上限</span>
                 <input data-testid="keyword-limit-input" type="number" min="1" max="25000" @bind="DiscoveryForm.Limit" disabled="@(ProjectState.SelectedProject is null)" />
@@ -139,6 +148,8 @@
                 <input @bind="DiscoveryForm.ExcludeTerms" disabled="@(ProjectState.SelectedProject is null)" />
             </label>
         </div>
+            }
+        </details>
     </section>
 
     @if (DiscoveryJob is not null)
@@ -153,7 +164,7 @@
                 }
             </div>
             <div class="job-status-card">
-                <span>@DiscoveryJob.JobType</span>
+                <span>キーワード探索</span>
                 <strong>@UiText.Status(DiscoveryJob.Status)</strong>
                 <progress max="100" value="@DiscoveryJob.Progress"></progress>
                 <span>@DiscoveryJob.Progress%</span>
@@ -163,36 +174,40 @@
 
     @if (SourceStatuses.Count > 0)
     {
-        <section class="panel">
-            <div class="section-heading">
-                <h2>ソース別状態</h2>
-            </div>
+        <details class="panel advanced-options">
+            <summary>取得元ごとの状態</summary>
             <DataTable Items="@SourceStatuses" Columns="@SourceStatusColumns" EmptyText="ソース状態はありません。" />
-        </section>
+        </details>
     }
 
     <section class="panel" data-testid="keyword-candidates-section">
         <div class="section-heading">
             <h2>候補語</h2>
             <span class="muted">@CandidateCountLabel</span>
+        <div class="toolbar">
+            <button type="button" class="secondary-button" data-testid="keyword-candidates-search-volume-button" @onclick="RegisterCandidateSearchVolumeAsync" disabled="@(!CanSendCandidates)">検索ボリューム調査へ送る</button>
+            <button type="button" class="secondary-button" data-testid="keyword-candidates-export-button" @onclick="CreateCandidateExportAsync" disabled="@(!CanExportCandidates)">CSV出力</button>
         </div>
-        <DataTable Items="@Candidates" Columns="@CandidateColumns" IsLoading="@IsLoading" EmptyText="候補語はありません。" />
+        </div>
+        <DataTable Items="@Candidates" Columns="@CandidateColumns" MobileCards="true" IsLoading="@IsLoading" EmptyText="候補語はありません。" />
     </section>
     @if (ProjectState.SelectedProject is not null)
     {
         <section class="panel">
-            <JobProgressPanel Title="CSV出力ジョブ" ProjectScoped="true" JobType="DataExportJob" />
+            <JobProgressPanel @ref="ExportPanel" Title="CSV出力" ProjectScoped="true" JobType="DataExportJob" />
         </section>
     }
 </div>
 
 @code {
+    private JobProgressPanel? ExportPanel;
+
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     private static readonly IReadOnlyList<OptionItem> SourceOptions =
     [
-        new("suggest", "suggest"),
-        new("related", "related"),
+        new("suggest", "サジェスト"),
+        new("related", "関連キーワード"),
         new("other", "LSI/PAA"),
         new("question", "FAQ"),
         new("ranking", "同時ランクイン")
@@ -211,24 +226,24 @@
 
     private static readonly IReadOnlyList<DataTableColumn<KeywordCandidate>> CandidateColumns =
     [
-        new("keyword", candidate => candidate.Keyword),
-        new("source", candidate => candidate.Source),
-        new("class", candidate => candidate.SuggestClass),
-        new("volume", candidate => FormatNullable(candidate.SearchVolume), "table-number"),
-        new("difficulty", candidate => FormatNullable(candidate.SeoDifficulty), "table-number"),
-        new("cpc", candidate => FormatNullable(candidate.Cpc), "table-number"),
-        new("competition", candidate => FormatNullable(candidate.Competition), "table-number"),
-        new("first seen", candidate => candidate.FirstSeenRange),
-        new("score", candidate => FormatNullable(candidate.OpportunityScore), "table-number")
+        new("キーワード", candidate => candidate.Keyword),
+        new("取得元", candidate => UiText.DiscoverySource(candidate.Source)),
+        new("候補の種類", candidate => candidate.SuggestClass),
+        new("検索ボリューム", candidate => FormatNullable(candidate.SearchVolume), "table-number"),
+        new("SEO難易度", candidate => FormatNullable(candidate.SeoDifficulty), "table-number"),
+        new("CPC", candidate => FormatNullable(candidate.Cpc), "table-number"),
+        new("広告競合性", candidate => FormatNullable(candidate.Competition), "table-number"),
+        new("出現時期", candidate => candidate.FirstSeenRange),
+        new("スコア", candidate => FormatNullable(candidate.OpportunityScore), "table-number")
     ];
 
     private static readonly IReadOnlyList<DataTableColumn<KeywordDiscoverySourceStatus>> SourceStatusColumns =
     [
-        new("source", status => status.Source),
-        new("status", status => status.Status),
-        new("count", status => status.CandidateCount.ToString(), "table-number"),
-        new("credit", status => status.ConsumedCredit.ToString("0.##"), "table-number"),
-        new("message", status => status.Message)
+        new("取得元", status => UiText.DiscoverySource(status.Source)),
+        new("状態", status => UiText.Status(status.Status), "table-status"),
+        new("件数", status => status.CandidateCount.ToString(), "table-number"),
+        new("消費クレジット", status => status.ConsumedCredit.ToString("0.##"), "table-number"),
+        new("メッセージ", status => status.Message)
     ];
 
     private DiscoveryFormModel DiscoveryForm { get; set; } = new();
@@ -262,7 +277,7 @@
         => ProjectState.SelectedProject is not null && Candidates.Count > 0 && !IsSendingToSearchVolume;
 
     private bool CanExportCandidates
-        => ProjectState.SelectedProject is not null && !IsExporting;
+        => ProjectState.SelectedProject is not null && Candidates.Count > 0 && !IsExporting;
 
     private string LocationLanguageLabel
         => ProjectState.SelectedProject is { } project
@@ -274,6 +289,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        await base.OnInitializedAsync();
         ProjectState.Changed += OnProjectStateChanged;
         await ProjectState.LoadAsync();
     }
@@ -440,7 +456,8 @@
             new DataExportRequest("keyword_candidates", filter));
         if (result.IsSuccess && result.Data is { } exportJob)
         {
-            Message = $"CSV出力ジョブを登録しました: {exportJob.JobId:D}";
+            Message = "CSV出力を受け付けました。下のCSV出力欄からダウンロードできます。";
+            if (ExportPanel is not null) await ExportPanel.RefreshAsync();
         }
         else
         {

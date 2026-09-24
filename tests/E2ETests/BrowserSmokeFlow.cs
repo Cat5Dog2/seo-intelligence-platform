@@ -74,6 +74,7 @@ internal sealed class BrowserSmokeFlow(
         var seed = $"browser smoke {DateTimeOffset.UtcNow:yyyyMMddHHmmss}";
         await NavigateAsync($"{webUrl}/keywords");
         await page.GetByTestId("keyword-seed-input").FillAsync(seed);
+        await page.Locator("summary").Filter(new() { HasText = "詳細条件" }).ClickAsync();
         await page.GetByTestId("keyword-limit-input").FillAsync("10");
         await WaitForEnabledAsync("keyword-discovery-run-button");
         await page.GetByTestId("keyword-discovery-run-button").ClickAsync();
@@ -91,8 +92,9 @@ internal sealed class BrowserSmokeFlow(
             browser smoke keyword
             browser smoke keyword 2
             """);
-        await page.GetByTestId("search-volume-location-input").FillAsync("Japan");
-        await page.GetByTestId("search-volume-language-input").FillAsync("Japanese");
+        await page.Locator("summary").Filter(new() { HasText = "CSV・調査条件" }).ClickAsync();
+        await page.GetByTestId("search-volume-location-input").SelectOptionAsync(new SelectOptionValue { Label = "日本" });
+        await page.GetByTestId("search-volume-language-input").SelectOptionAsync(new SelectOptionValue { Label = "日本語" });
         await WaitForEnabledAsync("search-volume-register-button");
         await page.GetByTestId("search-volume-register-button").ClickAsync();
         await WaitForInputValueAsync("search-volume-job-id-input");

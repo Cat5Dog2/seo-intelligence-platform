@@ -1,6 +1,7 @@
 @page "/ai-assistant"
 @attribute [Authorize(Policy = ApplicationPolicies.RequireWorkspaceAccess)]
 @using System.Text.Json
+@inherits WorkspaceComponentBase
 @implements IDisposable
 @inject ISeoIntelligenceApiClient ApiClient
 @inject ProjectSelectionState ProjectState
@@ -11,11 +12,15 @@
     <header class="page-header">
         <div>
             <h1>AIアシスタント</h1>
-            <p>選択中プロジェクト: @(ProjectState.SelectedProject?.Name ?? "未選択")</p>
+            <p class="project-context">選択中プロジェクト: @(ProjectState.SelectedProject?.Name ?? "未選択")</p>
         </div>
-        <button type="button" class="secondary-button" @onclick="SendAsync" disabled="@(!CanSend)">送信</button>
     </header>
 
+    @if (IsGuest)
+    {
+        <GuestReadOnlyNotice Description="AI生成はデモでは実行できません。記事ブリーフ画面で構成のサンプルを確認できます。" />
+        <a class="secondary-button" href="/briefs">記事ブリーフのサンプルを見る</a>
+    }
     <ErrorSummary Errors="@Errors" />
     @if (!string.IsNullOrWhiteSpace(Message))
     {
@@ -26,7 +31,7 @@
     {
         <GettingStarted />
     }
-    else
+    else if (!IsGuest)
     {
         <section class="split-grid">
             <div class="panel">
@@ -35,22 +40,25 @@
                 </div>
                 <div class="form-grid dense-form">
                     <label class="field wide-field">
-                        <span>message</span>
+                        <span>依頼内容</span>
                         <textarea @bind="Form.Message" @bind:event="oninput"></textarea>
                     </label>
                     <label class="field wide-field">
-                        <span>conversation_id</span>
+                        <span>会話ID（任意）</span>
                         <input @bind="Form.ConversationId" />
                     </label>
                     <label class="field wide-field">
-                        <span>allowed_tools</span>
+                        <span>許可するツール</span>
                         <input @bind="Form.AllowedTools" />
                     </label>
                     <label class="field wide-field json-field">
-                        <span>reference_scope JSON</span>
+                        <span>参照範囲（JSON）</span>
                         <textarea @bind="Form.ReferenceScopeJson"></textarea>
                     </label>
-                    <button type="button" class="primary-button" @onclick="SendAsync" disabled="@(!CanSend)">送信</button>
+                    @if (!IsGuest)
+                    {
+                        <button type="button" class="primary-button" @onclick="SendAsync" disabled="@(!CanSend)">送信</button>
+                    }
                 </div>
             </div>
 
@@ -66,16 +74,16 @@
                 else
                 {
                     <div class="detail-list">
-                        <div><span>session_id</span><strong>@Response.SessionId</strong></div>
-                        <div><span>message_id</span><strong>@Response.MessageId</strong></div>
-                        <div><span>job_id</span><strong>@Response.JobId</strong></div>
+                        <div><span>セッションID</span><strong>@Response.SessionId</strong></div>
+                        <div><span>メッセージID</span><strong>@Response.MessageId</strong></div>
+                        <div><span>ジョブID</span><strong>@Response.JobId</strong></div>
                         <div><span>状態</span><strong>@UiText.Status(Response.JobStatus)</strong></div>
-                        <div><span>review_status</span><strong>@Response.ReviewStatus</strong></div>
-                        <div><span>redaction</span><strong>@Response.RedactionStatus</strong></div>
+                        <div><span>レビュー状態</span><strong>@Response.ReviewStatus</strong></div>
+                        <div><span>機密情報の除去</span><strong>@Response.RedactionStatus</strong></div>
                     </div>
                     <div class="form-grid dense-form">
                         <label class="field wide-field">
-                            <span>response</span>
+                            <span>応答</span>
                             <textarea readonly>@Response.Response</textarea>
                         </label>
                         <label class="field wide-field json-field">
@@ -87,7 +95,7 @@
                             <textarea readonly>@FormatJson(Response.ReferenceData)</textarea>
                         </label>
                         <label class="field wide-field json-field">
-                            <span>token_usage JSON</span>
+                            <span>トークン使用量（JSON）</span>
                             <textarea readonly>@FormatJson(Response.TokenUsage)</textarea>
                         </label>
                     </div>
@@ -129,16 +137,18 @@
     private int RequestVersion { get; set; }
 
     private bool CanSend
-        => ProjectState.SelectedProject is not null && !IsSending;
+        => !IsGuest && ProjectState.SelectedProject is not null && !IsSending;
 
     protected override async Task OnInitializedAsync()
     {
+        await base.OnInitializedAsync();
         ProjectState.Changed += OnProjectStateChanged;
         await ProjectState.LoadAsync();
     }
 
     private async Task SendAsync()
     {
+        if (IsGuest) return;
         if (IsSending || ProjectState.SelectedProject is not { } project)
         {
             return;

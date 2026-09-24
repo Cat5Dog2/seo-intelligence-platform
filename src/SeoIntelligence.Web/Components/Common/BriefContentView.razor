@@ -1,0 +1,75 @@
+@using System.Text.Json
+
+<article class="brief-content" aria-label="ブリーフ本文">
+    <section>
+        <h3>概要</h3>
+        <p>@(Text(Property("summary")) ?? Text(Property("title")) ?? "概要はまだ登録されていません。")</p>
+    </section>
+    <section>
+        <h3>検索意図</h3>
+        <p>@UiText.SearchIntent(Text(Property("searchIntent")))</p>
+    </section>
+    <section>
+        <h3>見出し構成</h3>
+        @if (Headings.Count == 0)
+        {
+            <p class="muted">見出しはまだ登録されていません。</p>
+        }
+        else
+        {
+            <ol class="brief-outline">
+                @foreach (var heading in Headings)
+                {
+                    <li>@heading</li>
+                }
+            </ol>
+        }
+    </section>
+    @foreach (var section in AdditionalSections)
+    {
+        var items = Strings(Property(section.Key));
+        @if (items.Count > 0)
+        {
+            <section>
+                <h3>@section.Label</h3>
+                <ul>@foreach (var item in items) { <li>@item</li> }</ul>
+            </section>
+        }
+    }
+</article>
+
+@code {
+    [Parameter]
+    public JsonElement Content { get; set; }
+
+    private static readonly (string Key, string Label)[] AdditionalSections =
+        [("requiredTerms", "盛り込む語句"), ("faq", "よくある質問"), ("competitorUrls", "参考URL")];
+
+    private JsonElement Property(string name)
+        => Property(Content, name);
+
+    private static JsonElement Property(JsonElement element, string name)
+        => element.ValueKind == JsonValueKind.Object
+            ? element.EnumerateObject().FirstOrDefault(property => string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase)).Value
+            : default;
+
+    private static string? Text(JsonElement value)
+        => value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+
+    private static IReadOnlyList<string> Strings(JsonElement value)
+        => value.ValueKind == JsonValueKind.Array
+            ? value.EnumerateArray().Select(Text).OfType<string>().Where(text => !string.IsNullOrWhiteSpace(text)).ToArray()
+            : [];
+
+    private IReadOnlyList<string> Headings
+    {
+        get
+        {
+            var outline = Property("outline");
+            if (outline.ValueKind != JsonValueKind.Array) return Strings(Property("headings"));
+            return outline.EnumerateArray()
+                .Select(item => Text(item) ?? Text(Property(item, "heading")))
+                .OfType<string>().Where(text => !string.IsNullOrWhiteSpace(text)).ToArray();
+        }
+    }
+}

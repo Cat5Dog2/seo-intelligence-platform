@@ -1,21 +1,22 @@
+@inherits WorkspaceComponentBase
 @implements IDisposable
 @inject ISeoIntelligenceApiClient ApiClient
 @inject ProjectSelectionState ProjectState
 
 <section class="job-panel">
-    <div class="section-heading">
+    <div class="section-heading compact-heading">
         <h2>@Title</h2>
         <button type="button" class="icon-button text-button" title="ジョブを再読み込み" @onclick="LoadAsync">更新</button>
     </div>
     <ErrorSummary Errors="@Errors" />
-    <DataTable Items="@Jobs" Columns="@JobColumns" IsLoading="@IsLoading" EmptyText="ジョブはありません。">
+    <DataTable Items="@Jobs" Columns="@JobColumns" MobileCards="true" IsLoading="@IsLoading" EmptyText="ジョブはありません。">
         <RowActions Context="job">
             <div class="row-actions">
-                @if (CanRetry(job))
+                @if (!IsGuest && CanRetry(job))
                 {
                     <button type="button" class="table-action" @onclick="() => RetryAsync(job.JobId)">再実行</button>
                 }
-                @if (CanCancel(job))
+                @if (!IsGuest && CanCancel(job))
                 {
                     <button type="button" class="table-action" @onclick="() => CancelAsync(job.JobId)">キャンセル</button>
                 }
@@ -33,12 +34,15 @@
 @code {
     private static readonly IReadOnlyList<DataTableColumn<JobDetails>> JobColumns =
     [
-        new("種別", job => job.JobType),
-        new("状態", job => UiText.Status(job.Status)),
+        new("種別", job => UiText.JobType(job.JobType)),
+        new("状態", job => UiText.Status(job.Status), "table-status"),
         new("進捗", job => $"{job.Progress}%"),
         new("再試行", job => job.RetryCount.ToString()),
         new("更新", job => FormatDateTime(job.UpdatedAt))
     ];
+
+    [Parameter]
+    public int PageSize { get; set; } = 25;
 
     [Parameter]
     public string Title { get; set; } = "ジョブ";
@@ -74,6 +78,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        await base.OnInitializedAsync();
         ProjectState.Changed += OnProjectStateChanged;
         await LoadAsync();
     }
@@ -88,6 +93,12 @@
         }
     }
 
+    public async Task RefreshAsync()
+    {
+        await LoadAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
     private async Task LoadAsync()
     {
         IsLoading = true;
@@ -100,7 +111,7 @@
             IsLoading = false;
             return;
         }
-        var result = await ApiClient.SearchJobsAsync(status: Status, jobType: JobType, projectId: projectId, pageSize: 25);
+        var result = await ApiClient.SearchJobsAsync(status: Status, jobType: JobType, projectId: projectId, pageSize: PageSize);
         if (loadVersion != LoadVersion || (ProjectScoped && projectId != ProjectState.SelectedProject?.ProjectId))
         {
             return;

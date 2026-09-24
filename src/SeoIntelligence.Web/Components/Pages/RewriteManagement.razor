@@ -2,6 +2,7 @@
 @attribute [Authorize(Policy = ApplicationPolicies.RequireWorkspaceAccess)]
 @using System.Globalization
 @using System.Text.Json
+@inherits WorkspaceComponentBase
 @implements IDisposable
 @inject ISeoIntelligenceApiClient ApiClient
 @inject ProjectSelectionState ProjectState
@@ -12,14 +13,21 @@
     <header class="page-header">
         <div>
             <h1>リライト管理</h1>
-            <p>選択中プロジェクト: @(ProjectState.SelectedProject?.Name ?? "未選択")</p>
+            <p class="project-context">選択中プロジェクト: @(ProjectState.SelectedProject?.Name ?? "未選択")</p>
         </div>
         <div class="toolbar">
             <button type="button" class="secondary-button" @onclick="LoadAsync" disabled="@(ProjectState.SelectedProject is null)">更新</button>
-            <button type="button" class="secondary-button" @onclick="RefreshCannibalizationAsync" disabled="@(ProjectState.SelectedProject is null || IsRefreshingCannibalization)">カニバリ再計算</button>
+            @if (!IsGuest)
+            {
+                <button type="button" class="secondary-button" @onclick="RefreshCannibalizationAsync" disabled="@(ProjectState.SelectedProject is null || IsRefreshingCannibalization)">カニバリ再計算</button>
+            }
         </div>
     </header>
 
+    @if (IsGuest)
+    {
+        <GuestReadOnlyNotice />
+    }
     <ErrorSummary Errors="@Errors" />
     @if (!string.IsNullOrWhiteSpace(Message))
     {
@@ -55,7 +63,10 @@
             <div class="panel">
                 <div class="section-heading">
                     <h2>詳細・更新</h2>
-                    <button type="button" class="secondary-button" @onclick="UpdateRewriteTaskAsync" disabled="@(SelectedTask is null)">保存</button>
+                    @if (!IsGuest)
+                    {
+                        <button type="button" class="secondary-button" @onclick="UpdateRewriteTaskAsync" disabled="@(SelectedTask is null)">保存</button>
+                    }
                 </div>
                 @if (SelectedTask is null)
                 {
@@ -64,37 +75,37 @@
                 else
                 {
                     <div class="detail-list">
-                        <div><span>target_url</span><strong>@SelectedTask.TargetUrl</strong></div>
-                        <div><span>created</span><strong>@FormatDateTime(SelectedTask.CreatedAt)</strong></div>
-                        <div><span>updated</span><strong>@FormatDateTime(SelectedTask.UpdatedAt)</strong></div>
+                        <div><span>対象URL</span><strong>@SelectedTask.TargetUrl</strong></div>
+                        <div><span>作成日時</span><strong>@FormatDateTime(SelectedTask.CreatedAt)</strong></div>
+                        <div><span>更新日時</span><strong>@FormatDateTime(SelectedTask.UpdatedAt)</strong></div>
                     </div>
-                    <div class="form-grid dense-form">
+                    <fieldset class="form-grid dense-form" disabled="@IsGuest">
                         <label class="field">
-                            <span>status</span>
+                            <span>状態</span>
                             <select @bind="TaskEditForm.Status">
-                                <option value="draft">draft</option>
-                                <option value="active">active</option>
-                                <option value="completed">completed</option>
-                                <option value="archived">archived</option>
+                                <option value="draft">下書き</option>
+                                <option value="active">有効</option>
+                                <option value="completed">完了</option>
+                                <option value="archived">アーカイブ済み</option>
                             </select>
                         </label>
                         <label class="field">
-                            <span>priority_score</span>
+                            <span>優先度</span>
                             <input type="number" step="0.01" @bind="TaskEditForm.PriorityScore" />
                         </label>
                         <label class="field">
-                            <span>assignee_actor</span>
+                            <span>担当者</span>
                             <input @bind="TaskEditForm.AssigneeActor" />
                         </label>
                         <label class="field wide-field">
-                            <span>memo</span>
+                            <span>メモ</span>
                             <input @bind="TaskEditForm.Memo" />
                         </label>
                         <label class="field wide-field json-field">
-                            <span>reason JSON</span>
+                            <span>選定理由（JSON）</span>
                             <textarea readonly>@FormatJson(SelectedTask.Reason)</textarea>
                         </label>
-                    </div>
+                    </fieldset>
                 }
             </div>
         </section>
@@ -130,31 +141,31 @@
 
     private static readonly IReadOnlyList<StatusFilterOption> ContentStatuses =
     [
-        new("active", "active"),
-        new("draft", "draft"),
-        new("completed", "completed"),
-        new("archived", "archived"),
-        new("all", "all")
+        new("有効", "active"),
+        new("下書き", "draft"),
+        new("完了", "completed"),
+        new("アーカイブ済み", "archived"),
+        new("すべて", "all")
     ];
 
     private static readonly IReadOnlyList<DataTableColumn<RewriteTaskDetails>> RewriteTaskColumns =
     [
         new("URL", task => task.TargetUrl),
-        new("Priority", task => task.PriorityScore.ToString("0.##", CultureInfo.InvariantCulture), "table-number"),
-        new("Status", task => task.Status),
-        new("Assignee", task => task.AssigneeActor),
-        new("Reason", task => JsonSummary(task.Reason)),
-        new("Updated", task => FormatDateTime(task.UpdatedAt))
+        new("優先度", task => task.PriorityScore.ToString("0.##", CultureInfo.InvariantCulture), "table-number"),
+        new("状態", task => UiText.Status(task.Status)),
+        new("担当者", task => task.AssigneeActor),
+        new("理由", task => JsonSummary(task.Reason)),
+        new("更新日時", task => FormatDateTime(task.UpdatedAt))
     ];
 
     private static readonly IReadOnlyList<DataTableColumn<CannibalizationCandidateDetails>> CannibalizationColumns =
     [
-        new("Keyword", candidate => candidate.Keyword),
-        new("Primary URL", candidate => candidate.PrimaryUrl),
-        new("Severity", candidate => candidate.SeverityScore.ToString("0.##", CultureInfo.InvariantCulture), "table-number"),
-        new("Status", candidate => candidate.Status),
-        new("Competing URLs", candidate => JsonSummary(candidate.CompetingUrls)),
-        new("Detected", candidate => FormatDateTime(candidate.DetectedAt))
+        new("キーワード", candidate => candidate.Keyword),
+        new("主要URL", candidate => candidate.PrimaryUrl),
+        new("重要度", candidate => candidate.SeverityScore.ToString("0.##", CultureInfo.InvariantCulture), "table-number"),
+        new("状態", candidate => UiText.Status(candidate.Status)),
+        new("競合URL", candidate => JsonSummary(candidate.CompetingUrls)),
+        new("検出日時", candidate => FormatDateTime(candidate.DetectedAt))
     ];
 
     private IReadOnlyList<RewriteTaskDetails> RewriteTasks { get; set; } = [];
@@ -185,6 +196,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        await base.OnInitializedAsync();
         ProjectState.Changed += OnProjectStateChanged;
         await ProjectState.LoadAsync();
         await LoadAsync();
@@ -283,6 +295,7 @@
 
     private async Task UpdateRewriteTaskAsync()
     {
+        if (IsGuest) return;
         if (ProjectState.SelectedProject is not { } project || SelectedTask is null)
         {
             return;
@@ -323,6 +336,7 @@
 
     private async Task RefreshCannibalizationAsync()
     {
+        if (IsGuest) return;
         if (ProjectState.SelectedProject is not { } project)
         {
             return;

@@ -1,91 +1,83 @@
 @page "/dashboard"
 @attribute [Authorize(Policy = ApplicationPolicies.RequireWorkspaceAccess)]
 @using System.Text.Json
+@inherits WorkspaceComponentBase
 @implements IDisposable
 @inject ISeoIntelligenceApiClient ApiClient
 @inject ProjectSelectionState ProjectState
-@inject NavigationManager Navigation
 
 <PageTitle>ダッシュボード - SEO Intelligence</PageTitle>
-
 <div class="page-stack">
     <header class="page-header">
-        <div>
-            <h1>ダッシュボード</h1>
-            <p>選択中プロジェクト: @(ProjectState.SelectedProject?.Name ?? "未選択")</p>
-        </div>
-        <div class="toolbar">
-            <button type="button" class="secondary-button" @onclick="LoadAsync" disabled="@IsLoading">更新</button>
-            <button type="button" class="secondary-button" @onclick="NavigateToKeywords">キーワード探索</button>
-            <button type="button" class="secondary-button" @onclick="NavigateToSearchVolume">一括調査</button>
-            <button type="button" class="secondary-button" @onclick="NavigateToCompetitors">競合分析</button>
-            <button type="button" class="secondary-button" @onclick="NavigateToRankMonitoring">順位監視</button>
-            <button type="button" class="secondary-button" @onclick="NavigateToRewrite">リライト</button>
-            <button type="button" class="secondary-button" @onclick="NavigateToReports">レポート</button>
-            <button type="button" class="secondary-button" @onclick="NavigateToAiAssistant">AIアシスタント</button>
-        </div>
+        <div><h1>ダッシュボード</h1><p class="project-context">@(ProjectState.SelectedProject?.Name ?? "プロジェクトを選択してください")</p></div>
+        <button type="button" class="text-button" @onclick="LoadAsync" disabled="@(ProjectState.SelectedProject is null || IsLoading)">更新</button>
     </header>
-
     <ErrorSummary Errors="@Errors" />
-    @if (!string.IsNullOrWhiteSpace(Message))
-    {
-        <div class="state-row">@Message</div>
-    }
-
+    @if (!string.IsNullOrWhiteSpace(Message)) { <div class="state-row" role="status">@Message</div> }
     @if (ProjectState.SelectedProject is null)
     {
         <GettingStarted />
     }
     else if (IsLoading)
     {
-        <div class="state-row">読み込み中</div>
+        <div class="state-row" role="status">読み込み中</div>
     }
     else if (Snapshot is null)
     {
-        <div class="state-row">ダッシュボードを表示できません。</div>
+        <div class="state-row">ダッシュボードを表示できません。更新ボタンで再試行してください。</div>
+    }
+    else if (IsEmptyDashboard)
+    {
+        <section class="panel dashboard-start">
+            <h2>最初のキーワードを見つけましょう</h2>
+            <p>気になるテーマから候補語を探し、検索需要を比較できます。</p>
+            <div class="button-row">
+                <a class="primary-button" href="/keywords">キーワードを探す</a>
+                <a class="text-button" href="/search-volume">手持ちのキーワードを調べる</a>
+            </div>
+        </section>
     }
     else
     {
-        @if (Snapshot.KeywordDiscoveryCount == 0 && Snapshot.SearchVolumeJobCount == 0)
-        {
-            <GettingStarted HasProject="true" />
-        }
-        <section class="metric-strip dashboard-metrics" aria-label="MVP指標">
-            <div class="metric">
-                <span>キーワード探索</span>
-                <strong>@Snapshot.KeywordDiscoveryCount</strong>
-            </div>
-            <div class="metric">
-                <span>一括調査ジョブ</span>
-                <strong>@Snapshot.SearchVolumeJobCount</strong>
-            </div>
-            <div class="metric">
-                <span>検索ボリューム結果</span>
-                <strong>@Snapshot.SearchVolumeResultCount</strong>
-            </div>
-            <div class="metric">
-                <span>機会スコア</span>
-                <strong>@Snapshot.OpportunityScoreCount</strong>
-            </div>
-            <div class="metric">
-                <span>消費クレジット</span>
-                <strong>@Snapshot.ConsumedCredit</strong>
-            </div>
-            <div class="metric">
-                <span>実行中ジョブ</span>
-                <strong>@Snapshot.RunningJobCount</strong>
-            </div>
-            <div class="metric">
-                <span>失敗ジョブ</span>
-                <strong>@Snapshot.FailedJobCount</strong>
-            </div>
-            <div class="metric">
-                <span>通知失敗</span>
-                <strong>@Snapshot.NotificationFailureCount</strong>
-            </div>
+        <section class="metric-strip dashboard-metrics dashboard-primary-metrics" aria-label="調査の状況">
+            <div class="metric"><span>キーワード探索</span><strong>@Snapshot.KeywordDiscoveryCount</strong></div>
+            <div class="metric"><span>検索ボリューム結果</span><strong>@Snapshot.SearchVolumeResultCount</strong></div>
+            <div class="metric"><span>実行中の調査</span><strong>@Snapshot.RunningJobCount</strong></div>
+            <div class="metric"><span>確認が必要な失敗</span><strong>@Snapshot.FailedJobCount</strong></div>
         </section>
-
-        <section class="metric-strip dashboard-metrics" aria-label="Phase 2指標">
+        <section class="panel">
+            <div class="section-heading"><h2>次のアクション</h2></div>
+            <div class="button-row"><a class="primary-button" href="/keywords">キーワードを探す</a><a class="text-button" href="/search-volume">検索ボリュームを調べる</a></div>
+        </section>
+        <section class="panel">
+            <JobProgressPanel Title="直近の調査・出力" ProjectScoped="true" PageSize="5">
+                <ResultActions Context="job">
+                    @if (job.JobType == "RegisterSearchVolumeJob")
+                    {
+                        <a class="table-action" href="@($"/search-volume?jobId={job.JobId:D}")">結果を開く</a>
+                    }
+                </ResultActions>
+            </JobProgressPanel>
+        </section>
+        @if (TopOpportunityScores.Count > 0)
+        {
+            <section class="panel">
+                <div class="section-heading">
+                    <h2>機会スコア上位</h2>
+                    @if (!IsGuest) { <button type="button" class="secondary-button" @onclick="CreateKeywordMetricsExportAsync" disabled="@IsExporting">CSV出力</button> }
+                </div>
+                <DataTable Items="@TopOpportunityScores" Columns="@OpportunityColumns" EmptyText="機会スコアはありません。" />
+            </section>
+        }
+        <details class="panel advanced-options">
+            <summary>分析・運用の指標</summary>
+            <section class="metric-strip dashboard-metrics" aria-label="利用状況">
+                <div class="metric"><span>一括調査</span><strong>@Snapshot.SearchVolumeJobCount</strong></div>
+                <div class="metric"><span>機会スコア</span><strong>@Snapshot.OpportunityScoreCount</strong></div>
+                <div class="metric"><span>消費クレジット</span><strong>@Snapshot.ConsumedCredit</strong></div>
+                <div class="metric"><span>通知失敗</span><strong>@Snapshot.NotificationFailureCount</strong></div>
+            </section>
+        <section class="metric-strip dashboard-metrics" aria-label="分析・コンテンツの指標">
             <div class="metric">
                 <span>競合サイト</span>
                 <strong>@(Snapshot.CompetitorSummary?.CompetitorCount ?? 0)</strong>
@@ -120,7 +112,7 @@
             </div>
         </section>
 
-        <section class="metric-strip dashboard-metrics" aria-label="Phase 3指標">
+        <section class="metric-strip dashboard-metrics" aria-label="運用の指標">
             <div class="metric">
                 <span>リライトタスク</span>
                 <strong>@(Snapshot.RewriteSummary?.TaskCount ?? 0)</strong>
@@ -155,57 +147,7 @@
             </div>
         </section>
 
-        <section class="panel">
-            <div class="section-heading">
-                <h2>Phase 2導線</h2>
-            </div>
-            <div class="button-row">
-                <button type="button" class="secondary-button" @onclick="NavigateToClusters">クラスタ生成</button>
-                <button type="button" class="secondary-button" @onclick="NavigateToCompetitors">競合分析</button>
-                <button type="button" class="secondary-button" @onclick="NavigateToInflux">獲得語/ページ</button>
-                <button type="button" class="secondary-button" @onclick="NavigateToContentAnalysis">コンテンツ分析</button>
-                <button type="button" class="secondary-button" @onclick="NavigateToBriefs">記事ブリーフ</button>
-                <button type="button" class="secondary-button" @onclick="NavigateToRankMonitoring">順位監視</button>
-            </div>
-        </section>
-
-        <section class="panel">
-            <div class="section-heading">
-                <h2>Phase 3導線</h2>
-            </div>
-            <div class="button-row">
-                <button type="button" class="secondary-button" @onclick="NavigateToBriefs">記事ブリーフAI再生成</button>
-                <button type="button" class="secondary-button" @onclick="NavigateToRewrite">リライト管理</button>
-                <button type="button" class="secondary-button" @onclick="NavigateToReports">レポート</button>
-                <button type="button" class="secondary-button" @onclick="NavigateToAiAssistant">AIアシスタント</button>
-                <button type="button" class="secondary-button" @onclick="NavigateToAdmin">外部連携スタブ</button>
-            </div>
-        </section>
-
-        @if (IsEmptyDashboard)
-        {
-            <section class="panel">
-                <div class="section-heading">
-                    <h2>次のアクション</h2>
-                </div>
-                <div class="button-row">
-                    <button type="button" class="primary-button" @onclick="NavigateToKeywords">キーワード探索を開始</button>
-                    <button type="button" class="secondary-button" @onclick="NavigateToSearchVolume">一括調査を開始</button>
-                </div>
-            </section>
-        }
-
-        <section class="panel">
-            <div class="section-heading">
-                <h2>機会スコア上位</h2>
-                <button type="button" class="secondary-button" @onclick="CreateKeywordMetricsExportAsync" disabled="@IsExporting">CSV出力</button>
-            </div>
-            <DataTable Items="@TopOpportunityScores" Columns="@OpportunityColumns" IsLoading="false" EmptyText="機会スコアはありません。" />
-        </section>
-
-        <section class="panel">
-            <JobProgressPanel Title="プロジェクトジョブ" ProjectScoped="true" />
-        </section>
+        </details>
     }
 </div>
 
@@ -214,10 +156,10 @@
 
     private static readonly IReadOnlyList<DataTableColumn<DashboardOpportunityScoreRow>> OpportunityColumns =
     [
-        new("keyword", row => row.Keyword),
-        new("score", row => row.OpportunityScore.ToString("0.####"), "table-number"),
-        new("location", row => row.Location),
-        new("language", row => row.Language),
+        new("キーワード", row => row.Keyword),
+        new("スコア", row => row.OpportunityScore.ToString("0.####"), "table-number"),
+        new("地域", row => row.Location),
+        new("言語", row => row.Language),
         new("scored", row => FormatDateTime(row.ScoredAt))
     ];
 
@@ -236,6 +178,11 @@
 
     private bool IsEmptyDashboard
         => Snapshot is not null &&
+            Snapshot.RunningJobCount == 0 &&
+            Snapshot.FailedJobCount == 0 &&
+            Snapshot.NotificationFailureCount == 0 &&
+            Snapshot.KeywordCandidateCount == 0 &&
+            Snapshot.SearchVolumeResultCount == 0 &&
             Snapshot.KeywordDiscoveryCount == 0 &&
             Snapshot.SearchVolumeJobCount == 0 &&
             Snapshot.OpportunityScoreCount == 0 &&
@@ -250,6 +197,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        await base.OnInitializedAsync();
         ProjectState.Changed += OnProjectStateChanged;
         await ProjectState.LoadAsync();
         await LoadAsync();
@@ -282,6 +230,7 @@
 
     private async Task CreateKeywordMetricsExportAsync()
     {
+        if (IsGuest) return;
         if (ProjectState.SelectedProject is not { } project)
         {
             return;
@@ -320,42 +269,6 @@
             StateHasChanged();
         });
     }
-
-    private void NavigateToKeywords()
-        => Navigation.NavigateTo("/keywords");
-
-    private void NavigateToSearchVolume()
-        => Navigation.NavigateTo("/search-volume");
-
-    private void NavigateToClusters()
-        => Navigation.NavigateTo("/clusters");
-
-    private void NavigateToCompetitors()
-        => Navigation.NavigateTo("/competitors");
-
-    private void NavigateToInflux()
-        => Navigation.NavigateTo("/influx");
-
-    private void NavigateToContentAnalysis()
-        => Navigation.NavigateTo("/content-analysis");
-
-    private void NavigateToBriefs()
-        => Navigation.NavigateTo("/briefs");
-
-    private void NavigateToRankMonitoring()
-        => Navigation.NavigateTo("/rank-monitoring");
-
-    private void NavigateToRewrite()
-        => Navigation.NavigateTo("/rewrite");
-
-    private void NavigateToReports()
-        => Navigation.NavigateTo("/reports");
-
-    private void NavigateToAiAssistant()
-        => Navigation.NavigateTo("/ai-assistant");
-
-    private void NavigateToAdmin()
-        => Navigation.NavigateTo("/admin");
 
     private static string FormatDateTime(DateTime value)
         => value.ToLocalTime().ToString("yyyy-MM-dd HH:mm");

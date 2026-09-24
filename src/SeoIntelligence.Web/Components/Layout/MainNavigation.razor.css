@@ -1,0 +1,10 @@
+.navigation-groups { display: flex; flex-direction: column; gap: 0.75rem; }
+.nav-group { display: flex; flex-direction: column; gap: 0.15rem; }
+.nav-group + .nav-group { border-top: 1px solid #414956; padding-top: 0.75rem; }
+.nav-group h2 { color: #b7c3d3; font-size: 0.75rem; padding: 0.25rem 0.75rem; }
+.nav-group ::deep a { border-radius: 6px; color: #dce3ed; font-size: 0.92rem; padding: 0.62rem 0.75rem; text-decoration: none; overflow-wrap: anywhere; min-height: 44px; align-content: center; }
+.nav-group ::deep a.active, .nav-group ::deep a:hover, .nav-group ::deep a:focus-visible { background: white; color: #111827; }
+@media (max-width: 920px) {
+    .navigation-groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; }
+    .nav-group + .nav-group { border: 0; padding-top: 0; }
+}

@@ -19,13 +19,212 @@ namespace E2ETests;
 
 public sealed class BrowserQaRegressionTests
 {
+    [Fact]
+    [Trait("Category", "UI")]
+    public async Task FailedResultDownloadKeepsResearchOpenAndDoesNotOfferAResultJump()
+    {
+        using var fixture = new UiFixture { FailResults = true };
+        await fixture.RenderSearchVolumeAsync(async (page, state) =>
+        {
+            Set(page, "KeywordsText", "SEO");
+            await DispatchAsync(page, "RegisterJobAsync");
+            var html = fixture.ReadHtml!();
+            Assert.Contains("結果を取得できません。", html);
+            Assert.DoesNotContain("結果を見る", html);
+            Assert.Matches("<details[^>]*data-testid=\"research-input\"[^>]*open", html);
+        });
+    }
+
+    [Fact]
+    [Trait("Category", "UI")]
+    public async Task UnavailableLocaleChoicesPreserveCurrentSelectionAndOfferRetry()
+    {
+        using var fixture = new UiFixture { FailLocales = true };
+        await fixture.RenderAsync<LocationLanguageSelector>((page, state) =>
+        {
+            var html = fixture.ReadHtml!();
+            Assert.Contains("選択肢を再取得", html);
+            Assert.Contains("現在の設定はそのまま使えます。", html);
+            Assert.Matches("value=\"JP\"[^>]*>日本</option>", html);
+            Assert.Matches("value=\"ja\"[^>]*>日本語</option>", html);
+            return Task.CompletedTask;
+        });
+    }
+
+    [Theory]
+    [Trait("Category", "UI")]
+    [InlineData("succeeded", true)]
+    [InlineData("failed_retryable", false)]
+    [InlineData("canceled", false)]
+    public async Task CompletedResearchOffersAResultJumpAndCollapsesOnlySuccessfulInput(string status, bool completed)
+    {
+        using var fixture = new UiFixture { JobStatus = status };
+        await fixture.RenderSearchVolumeAsync(async (page, state) =>
+        {
+            Set(page, "KeywordsText", "SEO");
+            await DispatchAsync(page, "RegisterJobAsync");
+            var html = fixture.ReadHtml!();
+            Assert.Equal(completed, html.Contains("結果を見る", StringComparison.Ordinal));
+            Assert.Matches(completed
+                ? "<details[^>]*data-testid=\"research-input\"[^>]*>"
+                : "<details[^>]*data-testid=\"research-input\"[^>]*open", html);
+            if (completed) Assert.DoesNotMatch("<details[^>]*data-testid=\"research-input\"[^>]*open", html);
+            await ((IHandleEvent)page).HandleEventAsync(new EventCallbackWorkItem((Action)(() =>
+                page.GetType().GetMethod("ClearInput", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(page, null))), null);
+            Assert.DoesNotContain("結果を見る", fixture.ReadHtml!());
+            Assert.Matches("<details[^>]*data-testid=\"research-input\"[^>]*open", fixture.ReadHtml!());
+        });
+    }
+
+    [Fact]
+    [Trait("Category", "UI")]
+    public async Task LocaleSelectionShowsJapaneseLabelsWithoutChangingStoredCodes()
+    {
+        using var fixture = new UiFixture();
+        await fixture.RenderAsync<LocationLanguageSelector>((page, state) =>
+        {
+            var html = fixture.ReadHtml!();
+            Assert.Matches("value=\"JP\"[^>]*>日本</option>", html);
+            Assert.Matches("value=\"ja\"[^>]*>日本語</option>", html);
+            Assert.Equal("JP", state.SelectedProject!.DefaultLocation);
+            Assert.Equal("ja", state.SelectedProject.DefaultLanguage);
+            return Task.CompletedTask;
+        });
+    }
+
+    [Theory]
+    [Trait("Category", "UI")]
+    [InlineData(0, 0, true)]
+    [InlineData(1, 0, false)]
+    [InlineData(0, 1, false)]
+    public async Task DashboardShowsActiveOrFailedWorkEvenWhenNoResultsExist(int running, int failed, bool empty)
+    {
+        using var fixture = new UiFixture { Dashboard = new DashboardSnapshot(0, running, failed, 0) };
+        await fixture.RenderAsync<Dashboard>((page, state) =>
+        {
+            var html = fixture.ReadHtml!();
+            Assert.Equal(empty, html.Contains("最初のキーワードを見つけましょう", StringComparison.Ordinal));
+            Assert.Equal(!empty, html.Contains("調査の状況", StringComparison.Ordinal));
+            return Task.CompletedTask;
+        });
+    }
+
+    [Fact]
+    [Trait("Category", "UI")]
+    public async Task ExportCompletionUpdatesTheRenderedDownloadLinkWithoutManualRefresh()
+    {
+        using var fixture = new UiFixture();
+        await fixture.RenderSearchVolumeAsync(async (page, state) =>
+        {
+            Set(page, "JobIdText", fixture.JobId.ToString());
+            await DispatchAsync(page, "CreateResultsExportAsync");
+            Assert.Contains("data-testid=\"job-download-link\"", fixture.ReadHtml!());
+            Assert.Contains($"/downloads/projects/{fixture.ProjectId:D}/exports/{fixture.ExportId:D}", fixture.ReadHtml!());
+        });
+    }
+
+    [Theory]
+    [Trait("Category", "UI")]
+    [InlineData("queued")]
+    [InlineData("running")]
+    [InlineData("waiting_external")]
+    public async Task SearchVolumePollsPendingJobsUntilResultsAreReady(string initialStatus)
+    {
+        using var fixture = new UiFixture { JobStatus = initialStatus };
+        await fixture.RenderSearchVolumeAsync(async (page, state) =>
+        {
+            Set(page, "KeywordsText", "SEO");
+            await InvokeAsync(page, "RegisterJobAsync");
+            Assert.Empty((IReadOnlyList<SearchVolumeResultRow>)Get(page, "Results")!);
+            await InvokeAsync(page, "RegisterJobAsync");
+            Assert.Single(fixture.Posts);
+            fixture.JobStatus = "succeeded";
+            await fixture.ResultsRequested.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.Equal("QA volume", Assert.Single((IReadOnlyList<SearchVolumeResultRow>)Get(page, "Results")!).Keyword);
+            Assert.Single(fixture.Posts);
+        });
+    }
+
+    [Theory]
+    [Trait("Category", "UI")]
+    [InlineData("project")]
+    [InlineData("clear")]
+    [InlineData("dispose")]
+    public async Task SearchVolumeDiscardsAnInFlightPollAfterLeavingTheResearch(string action)
+    {
+        using var fixture = new UiFixture { JobStatus = "running" };
+        await fixture.RenderSearchVolumeAsync(async (page, state) =>
+        {
+            Set(page, "KeywordsText", "SEO");
+            await InvokeAsync(page, "RegisterJobAsync");
+            var response = new TaskCompletionSource<HttpResponseMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+            fixture.PendingResponse = response;
+            Assert.Equal($"/api/jobs/{fixture.JobId:D}", await fixture.PendingRequestStarted.Task.WaitAsync(TimeSpan.FromSeconds(10)));
+            var polling = (Task)Get(page, "PollingTask")!;
+            if (action == "project")
+            {
+                await state.SelectAsync(fixture.OtherProjectId);
+                await state.SelectAsync(fixture.ProjectId);
+            }
+            else if (action == "clear")
+            {
+                page.GetType().GetMethod("ClearInput", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(page, null);
+            }
+            else page.Dispose();
+            fixture.JobStatus = "succeeded";
+            response.SetResult(UiFixture.Reply(fixture.Job()));
+            await polling.WaitAsync(TimeSpan.FromSeconds(10));
+            if (action != "dispose") Assert.Null(Get(page, "CurrentJob"));
+            Assert.Empty((IReadOnlyList<SearchVolumeResultRow>)Get(page, "Results")!);
+            Assert.False(fixture.ResultsRequested.Task.IsCompleted);
+        });
+    }
+
+    [Theory]
+    [Trait("Category", "UI")]
+    [InlineData("succeeded", true)]
+    [InlineData("failed_retryable", false)]
+    [InlineData("failed_fatal", false)]
+    [InlineData("canceled", false)]
+    public async Task SearchVolumeCompletionAutomaticallyLoadsResults(string status, bool hasResults)
+    {
+        using var fixture = new UiFixture { JobStatus = status };
+        await fixture.RenderSearchVolumeAsync(async (page, state) =>
+        {
+            Set(page, "KeywordsText", "SEO");
+            await InvokeAsync(page, "RegisterJobAsync");
+            var results = (IReadOnlyList<SearchVolumeResultRow>)Get(page, "Results")!;
+            Assert.Equal(hasResults ? 1 : 0, results.Count);
+            if (hasResults) Assert.Equal("QA volume", results[0].Keyword);
+            Assert.Single(fixture.Posts);
+        });
+    }
+
+    [Fact]
+    [Trait("Category", "UI")]
+    public async Task SearchVolumeDoesNotSubmitTwiceWhileRegistrationIsPending()
+    {
+        using var fixture = new UiFixture();
+        await fixture.RenderSearchVolumeAsync(async (page, state) =>
+        {
+            Set(page, "KeywordsText", "SEO");
+            var response = new TaskCompletionSource<HttpResponseMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+            fixture.PendingResponse = response;
+            var pending = InvokeAsync(page, "RegisterJobAsync");
+            await InvokeAsync(page, "RegisterJobAsync");
+            Assert.Empty(fixture.Posts);
+            response.SetResult(UiFixture.Reply(new JobReference(fixture.JobId, "queued")));
+            await pending;
+        });
+    }
+
     [Theory]
     [Trait("Category", "UI")]
     [InlineData("LoadResultsAsync", "IsResultLoading")]
     [InlineData("CreateResultsExportAsync", "IsExporting")]
     public async Task SearchVolumeInvalidatedRequestDoesNotLeaveLoadingState(string operation, string loadingProperty)
     {
-        using var fixture = new UiFixture();
+        using var fixture = new UiFixture { JobStatus = "running" };
         await fixture.RenderSearchVolumeAsync(async (page, state) =>
         {
             Set(page, "JobIdText", fixture.JobId.ToString());
@@ -313,8 +512,16 @@ public sealed class BrowserQaRegressionTests
         public Guid JobId { get; } = Guid.NewGuid();
         private Guid jobId => JobId;
         public TaskCompletionSource<HttpResponseMessage>? PendingResponse { get; set; }
+        public TaskCompletionSource<string> PendingRequestStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource ResultsRequested { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public string JobStatus { get; set; } = "succeeded";
         public Guid BriefId { get; } = Guid.NewGuid();
+        public Guid ExportId { get; } = Guid.NewGuid();
+        public bool ExportCreated { get; set; }
+        public bool FailResults { get; set; }
+        public bool FailLocales { get; set; }
+        public DashboardSnapshot Dashboard { get; set; } = new(0, 0, 0, 0);
+        public Func<string>? ReadHtml { get; set; }
         public ArticleBriefDetails Brief() => new(BriefId, ProjectId, null, "Private brief", null, "SEO", 1,
             JsonSerializer.SerializeToElement(new { title = "Private brief" }), "pending", "draft", DateTime.UtcNow, DateTime.UtcNow);
         private readonly HttpClient http;
@@ -345,7 +552,8 @@ public sealed class BrowserQaRegressionTests
             await using var renderer = new HtmlRenderer(provider, provider.GetRequiredService<ILoggerFactory>());
             await renderer.Dispatcher.InvokeAsync(async () =>
             {
-                await renderer.RenderComponentAsync<T>();
+                var root = await renderer.RenderComponentAsync<T>();
+                ReadHtml = () => WebUtility.HtmlDecode(root.ToHtmlString());
                 await action(Assert.Single(activator.Components.OfType<T>()), state);
             });
         }
@@ -367,18 +575,27 @@ public sealed class BrowserQaRegressionTests
             if (PendingResponse is { } pending && path != "/api/jobs")
             {
                 PendingResponse = null;
+                PendingRequestStarted.TrySetResult(path);
                 return await pending.Task;
             }
             if (request.Method == HttpMethod.Get)
             {
                 GetPaths.Add(path);
+                if (FailLocales && path.StartsWith("/api/master-data/", StringComparison.Ordinal))
+                    return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
+                    { Content = JsonContent.Create(ApiResponseEnvelope<object>.Failure("qa", [new ApiError("Unavailable", "選択肢を取得できません。")])) };
+                if (path == "/api/master-data/locations") return Reply(new[] { new LocationSummary("rakko_keyword", "JP", "Japan", "JP", "active") });
+                if (path == "/api/master-data/languages") return Reply(new[] { new LanguageSummary("rakko_keyword", "ja", "Japanese", "active") });
                 if (path == "/api/projects")
                 {
                     return Reply(new[] { ProjectId, OtherProjectId }.Select(projectId =>
                         new ProjectDetails(projectId, Guid.NewGuid(), "QA", "JP", "ja",
                             JsonSerializer.SerializeToElement(new { }), null, "active", DateTime.UtcNow, DateTime.UtcNow, null)).ToArray());
                 }
-                if (path == "/api/jobs") return Reply(Array.Empty<JobDetails>());
+                if (path == "/api/jobs") return Reply(ExportCreated
+                    ? new[] { Job() with { JobType = "DataExportJob", ResultResource = new JobResultResource("data_export", ExportId) } }
+                    : Array.Empty<JobDetails>());
+                if (path.EndsWith("/dashboard", StringComparison.Ordinal)) return Reply(Dashboard);
                 if (path.EndsWith("/briefs", StringComparison.Ordinal)) return Reply(Array.Empty<ArticleBriefSummary>());
                 if (path.EndsWith($"/briefs/{BriefId:D}", StringComparison.Ordinal)) return Reply(Brief());
                 if (path.EndsWith($"/briefs/{BriefId:D}/versions", StringComparison.Ordinal)) return Reply(Array.Empty<ArticleBriefVersionDetails>());
@@ -388,6 +605,9 @@ public sealed class BrowserQaRegressionTests
                 }
                 if (path.EndsWith($"/search-volume/jobs/{jobId:D}/results", StringComparison.Ordinal))
                 {
+                    if (FailResults) return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
+                    { Content = JsonContent.Create(ApiResponseEnvelope<object>.Failure("qa", [new ApiError("Unavailable", "結果を取得できません。")])) };
+                    ResultsRequested.TrySetResult();
                     return Reply(new[] { new SearchVolumeResultRow("QA volume", 900, null, null, null) });
                 }
                 if (path.EndsWith($"/keyword-discovery/jobs/{jobId:D}/results", StringComparison.Ordinal))
@@ -402,6 +622,7 @@ public sealed class BrowserQaRegressionTests
             else if (request.Method == HttpMethod.Post)
             {
                 Posts.Add(JsonSerializer.Deserialize<JsonElement>(await request.Content!.ReadAsStringAsync(cancellationToken)));
+                if (path.EndsWith("/exports/csv", StringComparison.Ordinal)) ExportCreated = true;
                 if (path.EndsWith("/ai/chat", StringComparison.Ordinal))
                 {
                     return Reply(Response("AI response generation has been queued.", new { }));

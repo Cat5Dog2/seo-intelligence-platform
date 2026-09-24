@@ -3,35 +3,12 @@
 @inject ProjectSelectionState ProjectState
 
 <div class="location-language-selector">
-    <label>
-        <span>地域</span>
-        <select value="@SelectedLocation" @onchange="OnLocationChanged" disabled="@(!CanEdit)">
-            <option value="@SelectedLocation">@SelectedLocation</option>
-            @foreach (var location in Locations.Where(location => !string.Equals(location.Code, SelectedLocation, StringComparison.OrdinalIgnoreCase)))
-            {
-                <option value="@location.Code">@location.Name</option>
-            }
-        </select>
-    </label>
-    <label>
-        <span>言語</span>
-        <select value="@SelectedLanguage" @onchange="OnLanguageChanged" disabled="@(!CanEdit)">
-            <option value="@SelectedLanguage">@SelectedLanguage</option>
-            @foreach (var language in Languages.Where(language => !string.Equals(language.Code, SelectedLanguage, StringComparison.OrdinalIgnoreCase)))
-            {
-                <option value="@language.Code">@language.Name</option>
-            }
-        </select>
-    </label>
+    <LocaleFields Location="@SelectedLocation" LocationChanged="OnLocationChanged" Language="@SelectedLanguage" LanguageChanged="OnLanguageChanged" Disabled="@(!CanEdit)" />
     <button type="button" class="icon-button text-button" disabled="@(!CanSave)" @onclick="SaveAsync">@(IsSaving ? "保存中…" : "設定を反映")</button>
 </div>
 <ActionFeedback IsBusy="@IsSaving" Errors="@SaveErrors" SuccessMessage="@SuccessMessage" />
 
 @code {
-    private IReadOnlyList<LocationSummary> Locations { get; set; } = [];
-
-    private IReadOnlyList<LanguageSummary> Languages { get; set; } = [];
-
     private string SelectedLocation { get; set; } = "Japan";
 
     private string SelectedLanguage { get; set; } = "Japanese";
@@ -47,36 +24,24 @@
         && (!string.Equals(project.DefaultLocation, SelectedLocation, StringComparison.OrdinalIgnoreCase)
             || !string.Equals(project.DefaultLanguage, SelectedLanguage, StringComparison.OrdinalIgnoreCase));
 
-    protected override async Task OnInitializedAsync()
+    protected override void OnInitialized()
     {
         ProjectState.Changed += OnProjectStateChanged;
         SyncFromProject();
-
-        var locations = await ApiClient.ListLocationsAsync();
-        if (locations.IsSuccess)
-        {
-            Locations = locations.Data ?? [];
-        }
-
-        var languages = await ApiClient.ListLanguagesAsync();
-        if (languages.IsSuccess)
-        {
-            Languages = languages.Data ?? [];
-        }
     }
 
-    private void OnLocationChanged(ChangeEventArgs args)
+    private void OnLocationChanged(string value)
     {
         SuccessMessage = null;
         SaveErrors = [];
-        SelectedLocation = args.Value?.ToString() ?? SelectedLocation;
+        SelectedLocation = value;
     }
 
-    private void OnLanguageChanged(ChangeEventArgs args)
+    private void OnLanguageChanged(string value)
     {
         SuccessMessage = null;
         SaveErrors = [];
-        SelectedLanguage = args.Value?.ToString() ?? SelectedLanguage;
+        SelectedLanguage = value;
     }
 
     private async Task SaveAsync()
