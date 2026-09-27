@@ -50,3 +50,5 @@ $env:E2E_GUEST_BROWSER_ENABLED = 'true'
 $env:E2E_WEB_URL = 'http://localhost:5295'
 dotnet test tests/E2ETests/E2ETests.csproj --filter FullyQualifiedName~BrowserGuestLoginTests
 ```
+
+手動確認は`qa/guest-login-manual-checklist.md`のチェックリストを使う。
