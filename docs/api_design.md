@@ -20,6 +20,7 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | 1.0 | 2026-05-30 | 初版作成。内部API、共通仕様、外部API連携、主要DTO制約を定義。 | ChatGPT |
 | 1.1 | 2026-07-26 | ラッコキーワードAPI v1.12.0対応。地域/言語マスタ取得を`/v1/metadata/*`へ移行。 | Claude |
 | 1.2 | 2026-08-17 | ラッコキーワードAPI v1.14.0対応。よくある質問検索のfilter/sortBy/orderBy/相対需要と、SERP詳細取得を外部APIマッピングへ追加。 | Claude |
+| 1.3 | 2026-09-28 | 候補語エクスポートの`filter`キーを明記し、`jobId`または`seedId`でキーワード探索1回分に限定できるようにした。 | Claude |
 
 ## 1. 目的
 
@@ -382,11 +383,13 @@ ISSUE-P3-001では、上記Phase 3 APIのContracts/DTO、ルートグループ�
 | `ContentAnalyzeRequest` | コンテンツ分析 | `keyword`、`includeContentSearch`、`includeHeadline`、`includeCoOccurrence`、`limit` |
 | `RankCheckJobRequest` | 順位チェック | `keywords`、`targets`、`matchType`、`depth`、`withMetrics`、`deduplicate` |
 | `ReportRequest` | レポート生成 | `reportType`、`period`、`format`（pdf/excel）、`sections`、`shareExpiresAt`。生成完了後は`reports.file_uri`を保持し、`download`が取得先URLを、`content`がファイル本体を返す。 |
-| `ExportRequest` | エクスポート | `exportType`、`format`（csv/excel）、`filter`、`columns` |
+| `ExportRequest` | エクスポート | `exportType`、`format`（csv/excel）、`filter`、`columns`。候補語の`filter`キーは表の後に記載する。 |
 | `ImportRequest` | インポート | `importType`（keywords/rankings/competitors/briefs/tasks）、`format`（csv/excel）、`sourceFileUri`、`validationMode`（初期実装はstrict） |
 | `ConnectorSettingsRequest` | 外部連携スタブ設定 | `connectorType`、`name`、`authRef`、`settings`、`status`。Secret/OAuth実値はSecret Store参照のみ |
 | `AiChatRequest` | AIアシスタント | `message`、`conversationId`、`allowedTools`、`referenceScope` |
 | `AiChatResponse` | AI実行受付/保存済み応答 | `sessionId`、`messageId`、`jobId`、`jobStatus`、`response`、`toolCalls`、`referenceData`、`tokenUsage`、`redactionStatus`、`reviewStatus` |
+
+候補語エクスポート（`exportType=keyword_candidates`）の`filter`は、`q`（キーワード部分一致）、`source`（取得元。探索を指定しない出力ではsuggest/related/question、探索を指定した出力では画面と同じくother/rankingも対象）と、キーワード探索1回分を指定する`jobId`または`seedId`を受け付ける。`jobId`は非同期の探索ジョブID、`seedId`は同期の探索結果が返す`seedId`である。指定すると、探索結果API・画面と同じ保存済み結果（探索時の`filter`・並び順・`limit`を適用し、エンジン別の行を1行にまとめた候補）を、その並び順で出力する。行の`createdAt`は探索の完了日時（同期の探索はシードの作成日時）とする。保存済み結果の無い探索（結果の保存前の旧データ、実行中）は、そのシードに保存したサジェスト・関連語・質問を出力する。このとき`questions.seed_id`を持たない既存の質問は、同じシードキーワードでジョブの実行期間（シード作成の直前からジョブ完了まで）に保存されたものを含め、ジョブを持たない同期の探索では含めない。`jobId`・`seedId`がUUID文字列でない場合と、両方を指定した場合は400とする。存在しない・別プロジェクト・キーワード探索以外のジョブやシードは404とし、いずれもエクスポートジョブを作成しない。どちらも未指定または`null`の場合は、従来どおりプロジェクトの全探索を対象にする。
 
 AI応答のGETは他の内部APIと同じサービスキー認証を要求する。指定プロジェクトが有効であり、会話とジョブの両方が同じworkspace/projectに属する場合のみ200を返す。未認証は401、存在しない/別プロジェクト/無効なプロジェクトのメッセージは404。処理中も200で現時点の保存内容と`jobStatus`を返し、完了後は保存済みの応答、ツール、参照データ、token使用量を返す。例: `GET /api/projects/{projectId}/ai/messages/{messageId}`。GETを繰り返しても生成やクレジット消費は発生しない。
 

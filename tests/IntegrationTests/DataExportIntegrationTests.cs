@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.IO.Compression;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -11,6 +12,7 @@ using Microsoft.Extensions.DependencyInjection;
 using SeoIntelligence.Application.Auditing;
 using SeoIntelligence.Application.Storage;
 using SeoIntelligence.Domain.Common;
+using SeoIntelligence.Domain.Normalization;
 using SeoIntelligence.Infrastructure.Persistence;
 using SeoIntelligence.Infrastructure.Persistence.Entities;
 using SeoIntelligence.Infrastructure.Services;
@@ -558,6 +560,382 @@ public sealed class DataExportIntegrationTests
         {
             DeleteTempStoragePath(factory.StoragePath);
         }
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task KeywordCandidateCsvWithJobIdExportsOnlyThatDiscoveryRun()
+    {
+        await using var factory = new DataExportApiFactory();
+        using var client = CreateClient(factory);
+        var projectId = await SeedProjectAsync(factory, "Candidate export project");
+        var startedAt = DateTime.UtcNow.AddHours(-2);
+        var selected = await SeedKeywordDiscoveryRunAsync(factory, projectId, "seo", startedAt,
+            suggestion: "seo tools", related: "seo audit", question: "what is seo");
+        // Overlaps the selected run with the same seed keyword, so only the seed link tells their questions apart.
+        await SeedKeywordDiscoveryRunAsync(factory, projectId, "seo", startedAt.AddMinutes(1),
+            suggestion: "seo agency", related: "seo checklist", question: "how much does seo cost");
+        await SeedKeywordDiscoveryRunAsync(factory, projectId, "content", startedAt.AddMinutes(20),
+            suggestion: "content marketing", related: "content calendar", question: "what is content marketing");
+
+        try
+        {
+            using var response = await client.PostAsJsonAsync(
+                $"/api/projects/{projectId}/exports/csv",
+                new { exportType = "keyword_candidates", filter = new { jobId = selected.JobId } });
+            var csv = await DispatchAndReadCsvAsync(factory, response);
+
+            Assert.Contains("seo tools,suggest", csv, StringComparison.Ordinal);
+            Assert.Contains("seo audit,related", csv, StringComparison.Ordinal);
+            Assert.Contains("what is seo,question", csv, StringComparison.Ordinal);
+            Assert.DoesNotContain("content", csv, StringComparison.Ordinal);
+            Assert.DoesNotContain("seo agency", csv, StringComparison.Ordinal);
+            Assert.DoesNotContain("seo checklist", csv, StringComparison.Ordinal);
+            Assert.DoesNotContain("how much does seo cost", csv, StringComparison.Ordinal);
+        }
+        finally
+        {
+            DeleteTempStoragePath(factory.StoragePath);
+        }
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task KeywordCandidateCsvAttributesUnlinkedQuestionsToTheirRunWindow()
+    {
+        await using var factory = new DataExportApiFactory();
+        using var client = CreateClient(factory);
+        var projectId = await SeedProjectAsync(factory, "Candidate export project");
+        var startedAt = DateTime.UtcNow.AddHours(-2);
+        // Questions saved before questions.seed_id existed reference only the seed keyword.
+        var selected = await SeedKeywordDiscoveryRunAsync(factory, projectId, "seo", startedAt,
+            suggestion: "seo tools", related: "seo audit", question: "what is seo", linkQuestionToSeed: false);
+        await SeedKeywordDiscoveryRunAsync(factory, projectId, "seo", startedAt.AddMinutes(40),
+            suggestion: "seo agency", related: "seo checklist", question: "how much does seo cost", linkQuestionToSeed: false);
+
+        try
+        {
+            using var response = await client.PostAsJsonAsync(
+                $"/api/projects/{projectId}/exports/csv",
+                new { exportType = "keyword_candidates", filter = new { jobId = selected.JobId } });
+            var csv = await DispatchAndReadCsvAsync(factory, response);
+
+            Assert.Contains("what is seo,question", csv, StringComparison.Ordinal);
+            Assert.DoesNotContain("how much does seo cost", csv, StringComparison.Ordinal);
+        }
+        finally
+        {
+            DeleteTempStoragePath(factory.StoragePath);
+        }
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task KeywordCandidateCsvWithSeedIdExportsOnlyThatSynchronousRun()
+    {
+        await using var factory = new DataExportApiFactory();
+        using var client = CreateClient(factory);
+        var projectId = await SeedProjectAsync(factory, "Candidate export project");
+        var startedAt = DateTime.UtcNow.AddHours(-2);
+        var selected = await SeedKeywordDiscoveryRunAsync(factory, projectId, "seo", startedAt,
+            suggestion: "seo tools", related: "seo audit", question: "what is seo", withJob: false);
+        await SeedKeywordDiscoveryRunAsync(factory, projectId, "content", startedAt.AddMinutes(20),
+            suggestion: "content marketing", related: "content calendar", question: "what is content marketing");
+
+        try
+        {
+            using var response = await client.PostAsJsonAsync(
+                $"/api/projects/{projectId}/exports/csv",
+                new { exportType = "keyword_candidates", filter = new { seedId = selected.SeedId } });
+            var csv = await DispatchAndReadCsvAsync(factory, response);
+
+            Assert.Contains("seo tools,suggest", csv, StringComparison.Ordinal);
+            Assert.Contains("seo audit,related", csv, StringComparison.Ordinal);
+            Assert.Contains("what is seo,question", csv, StringComparison.Ordinal);
+            Assert.DoesNotContain("content", csv, StringComparison.Ordinal);
+        }
+        finally
+        {
+            DeleteTempStoragePath(factory.StoragePath);
+        }
+    }
+
+    [Theory]
+    [Trait("Category", "Integration")]
+    [InlineData("jobId", "otherProject")]
+    [InlineData("jobId", "otherJobType")]
+    [InlineData("jobId", "unknown")]
+    [InlineData("seedId", "otherProject")]
+    [InlineData("seedId", "importedSeed")]
+    [InlineData("seedId", "unknown")]
+    public async Task KeywordCandidateCsvRejectsRunsThatAreNotThisProjectsDiscoveryRuns(string key, string runKind)
+    {
+        await using var factory = new DataExportApiFactory();
+        using var client = CreateClient(factory);
+        var projectId = await SeedProjectAsync(factory, "Candidate export project");
+        var otherProjectId = await SeedProjectAsync(factory, "Other candidate export project");
+        var startedAt = DateTime.UtcNow.AddHours(-1);
+        var run = runKind switch
+        {
+            "otherProject" => await SeedKeywordDiscoveryRunAsync(factory, otherProjectId, "seo", startedAt,
+                suggestion: "seo tools", related: "seo audit", question: "what is seo"),
+            "otherJobType" => await SeedKeywordDiscoveryRunAsync(factory, projectId, "seo", startedAt,
+                suggestion: "seo tools", related: "seo audit", question: "what is seo", jobType: "RegisterSearchVolumeJob"),
+            "importedSeed" => await SeedKeywordDiscoveryRunAsync(factory, projectId, "seo", startedAt,
+                suggestion: "seo tools", related: "seo audit", question: "what is seo", withJob: false, seedSource: "import"),
+            _ => null
+        };
+        var id = (key == "jobId" ? run?.JobId : run?.SeedId) ?? Guid.NewGuid();
+
+        try
+        {
+            var body = new JsonObject
+            {
+                ["exportType"] = "keyword_candidates",
+                ["filter"] = new JsonObject { [key] = id.ToString("D") }
+            };
+            using var response = await client.PostAsJsonAsync($"/api/projects/{projectId}/exports/csv", body);
+            using var document = await ReadJsonAsync(response);
+
+            Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+            Assert.Equal("Resource.NotFound", document.RootElement.GetProperty("errors")[0].GetProperty("code").GetString());
+            await AssertNoExportRegisteredAsync(factory, projectId);
+        }
+        finally
+        {
+            DeleteTempStoragePath(factory.StoragePath);
+        }
+    }
+
+    [Theory]
+    [Trait("Category", "Integration")]
+    [InlineData("jobId", "\"not-a-guid\"")]
+    [InlineData("jobId", "\"\"")]
+    [InlineData("jobId", "123")]
+    [InlineData("seedId", "\"not-a-guid\"")]
+    [InlineData("seedId", "123")]
+    public async Task KeywordCandidateCsvRejectsMalformedRunIds(string key, string valueJson)
+    {
+        await using var factory = new DataExportApiFactory();
+        using var client = CreateClient(factory);
+        var projectId = await SeedProjectAsync(factory, "Candidate export project");
+
+        try
+        {
+            var body = new JsonObject
+            {
+                ["exportType"] = "keyword_candidates",
+                ["filter"] = new JsonObject { [key] = JsonNode.Parse(valueJson) }
+            };
+            using var response = await client.PostAsJsonAsync($"/api/projects/{projectId}/exports/csv", body);
+            using var document = await ReadJsonAsync(response);
+
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            var error = document.RootElement.GetProperty("errors")[0];
+            Assert.Equal("Validation.Failed", error.GetProperty("code").GetString());
+            Assert.Contains(key, error.GetProperty("message").GetString(), StringComparison.Ordinal);
+            await AssertNoExportRegisteredAsync(factory, projectId);
+        }
+        finally
+        {
+            DeleteTempStoragePath(factory.StoragePath);
+        }
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task KeywordCandidateCsvRejectsJobIdAndSeedIdTogether()
+    {
+        await using var factory = new DataExportApiFactory();
+        using var client = CreateClient(factory);
+        var projectId = await SeedProjectAsync(factory, "Candidate export project");
+        var run = await SeedKeywordDiscoveryRunAsync(factory, projectId, "seo", DateTime.UtcNow.AddHours(-1),
+            suggestion: "seo tools", related: "seo audit", question: "what is seo");
+
+        try
+        {
+            using var response = await client.PostAsJsonAsync(
+                $"/api/projects/{projectId}/exports/csv",
+                new { exportType = "keyword_candidates", filter = new { jobId = run.JobId, seedId = run.SeedId } });
+            using var document = await ReadJsonAsync(response);
+
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            Assert.Equal("Validation.Failed", document.RootElement.GetProperty("errors")[0].GetProperty("code").GetString());
+            await AssertNoExportRegisteredAsync(factory, projectId);
+        }
+        finally
+        {
+            DeleteTempStoragePath(factory.StoragePath);
+        }
+    }
+
+    [Theory]
+    [Trait("Category", "Integration")]
+    [InlineData(null)]
+    [InlineData("jobId")]
+    [InlineData("seedId")]
+    public async Task KeywordCandidateCsvWithoutRunIdStillExportsEveryDiscoveryRun(string? nullKey)
+    {
+        await using var factory = new DataExportApiFactory();
+        using var client = CreateClient(factory);
+        var projectId = await SeedProjectAsync(factory, "Candidate export project");
+        var startedAt = DateTime.UtcNow.AddHours(-2);
+        await SeedKeywordDiscoveryRunAsync(factory, projectId, "seo", startedAt,
+            suggestion: "seo tools", related: "seo audit", question: "what is seo");
+        await SeedKeywordDiscoveryRunAsync(factory, projectId, "content", startedAt.AddMinutes(20),
+            suggestion: "content marketing", related: "content calendar", question: "what is content marketing");
+
+        try
+        {
+            var body = new JsonObject { ["exportType"] = "keyword_candidates" };
+            if (nullKey is not null) body["filter"] = new JsonObject { [nullKey] = null };
+            using var response = await client.PostAsJsonAsync($"/api/projects/{projectId}/exports/csv", body);
+            var csv = await DispatchAndReadCsvAsync(factory, response);
+
+            foreach (var expected in new[]
+            {
+                "seo tools,suggest", "seo audit,related", "what is seo,question",
+                "content marketing,suggest", "content calendar,related", "what is content marketing,question"
+            })
+            {
+                Assert.Contains(expected, csv, StringComparison.Ordinal);
+            }
+        }
+        finally
+        {
+            DeleteTempStoragePath(factory.StoragePath);
+        }
+    }
+
+    /// <summary>
+    /// Stores one discovery run without a saved result snapshot, as older or unfinished runs are, so the
+    /// export falls back to the rows stored for the seed: the job points at its seed, suggestions and
+    /// related keywords reference that seed, and questions reference the seed and the seed keyword with a
+    /// timestamp inside the run. Questions saved before questions.seed_id existed carry only the seed
+    /// keyword, and synchronous runs have no job. Runs with a snapshot are covered end to end in
+    /// KeywordDiscoveryIntegrationTests.
+    /// </summary>
+    private static async Task<SeededRun> SeedKeywordDiscoveryRunAsync(
+        DataExportApiFactory factory,
+        Guid projectId,
+        string seedText,
+        DateTime startedAt,
+        string suggestion,
+        string related,
+        string question,
+        string jobType = "KeywordDiscoveryJob",
+        bool withJob = true,
+        bool linkQuestionToSeed = true,
+        string seedSource = "keyword_discovery")
+    {
+        await using var scope = factory.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<SeoIntelligenceDbContext>();
+        var completedAt = startedAt.AddMinutes(10);
+        var seed = new KeywordSeedEntity
+        {
+            Id = Guid.NewGuid(),
+            ProjectId = projectId,
+            Seed = seedText,
+            Source = seedSource,
+            CreatedAt = startedAt
+        };
+        var job = new JobEntity
+        {
+            Id = Guid.NewGuid(),
+            WorkspaceId = SeoIntelligenceSeedData.DefaultWorkspaceId,
+            ProjectId = projectId,
+            JobType = jobType,
+            Status = StatusValues.Succeeded,
+            Progress = 100,
+            ResultResourceType = "keyword_seed",
+            ResultResourceId = seed.Id,
+            RequestedBy = "developer",
+            CreatedAt = startedAt,
+            UpdatedAt = completedAt,
+            CompletedAt = completedAt
+        };
+        var seedKeyword = await FindOrAddKeywordAsync(dbContext, seedText, startedAt);
+        var suggestionKeyword = await FindOrAddKeywordAsync(dbContext, suggestion, startedAt);
+        var relatedKeyword = await FindOrAddKeywordAsync(dbContext, related, startedAt);
+
+        dbContext.KeywordSeeds.Add(seed);
+        if (withJob) dbContext.Jobs.Add(job);
+        dbContext.KeywordSuggestions.Add(new KeywordSuggestionEntity
+        {
+            Id = Guid.NewGuid(),
+            SeedId = seed.Id,
+            KeywordId = suggestionKeyword.Id,
+            Engine = "google",
+            SuggestClass = "a",
+            EngineCount = 1,
+            CreatedAt = startedAt.AddMinutes(1)
+        });
+        dbContext.RelatedKeywords.Add(new RelatedKeywordEntity
+        {
+            Id = Guid.NewGuid(),
+            SeedId = seed.Id,
+            KeywordId = relatedKeyword.Id,
+            MatchType = "partialMatch",
+            CreatedAt = startedAt.AddMinutes(1)
+        });
+        dbContext.Questions.Add(new QuestionEntity
+        {
+            Id = Guid.NewGuid(),
+            ProjectId = projectId,
+            SeedId = linkQuestionToSeed ? seed.Id : null,
+            SeedKeywordId = seedKeyword.Id,
+            QuestionText = question,
+            Source = "question",
+            Importance = 0.5m,
+            CreatedAt = startedAt.AddMinutes(2)
+        });
+        await dbContext.SaveChangesAsync();
+        return new SeededRun(withJob ? job.Id : null, seed.Id);
+    }
+
+    private sealed record SeededRun(Guid? JobId, Guid SeedId);
+
+    private static async Task<KeywordEntity> FindOrAddKeywordAsync(SeoIntelligenceDbContext dbContext, string text, DateTime createdAt)
+    {
+        var normalized = KeywordNormalizer.Normalize(text);
+        var existing = await dbContext.Keywords.SingleOrDefaultAsync(entity => entity.NormalizedText == normalized && entity.Language == "ja");
+        if (existing is not null) return existing;
+        var keyword = new KeywordEntity
+        {
+            Id = Guid.NewGuid(),
+            NormalizedText = normalized,
+            Language = "ja",
+            TextHash = $"{normalized}-hash",
+            CreatedAt = createdAt
+        };
+        dbContext.Keywords.Add(keyword);
+        await dbContext.SaveChangesAsync();
+        return keyword;
+    }
+
+    private static async Task<string> DispatchAndReadCsvAsync(DataExportApiFactory factory, HttpResponseMessage registerResponse)
+    {
+        using var registerDocument = await ReadJsonAsync(registerResponse);
+        Assert.Equal(HttpStatusCode.Accepted, registerResponse.StatusCode);
+        var jobId = registerDocument.RootElement.GetProperty("data").GetProperty("jobId").GetGuid();
+        await DispatchAsync(factory, jobId);
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<SeoIntelligenceDbContext>();
+        var exportId = (await dbContext.Jobs.AsNoTracking().SingleAsync(entity => entity.Id == jobId)).ResultResourceId!.Value;
+        var export = await dbContext.DataExports.AsNoTracking().SingleAsync(entity => entity.Id == exportId);
+        Assert.Equal(StatusValues.Succeeded, export.Status);
+        var storage = scope.ServiceProvider.GetRequiredService<IObjectStorage>();
+        await using var stream = await storage.OpenReadAsync(ResolveStorageObjectKey(export.FileUri!));
+        using var reader = new StreamReader(stream);
+        return await reader.ReadToEndAsync();
+    }
+
+    private static async Task AssertNoExportRegisteredAsync(DataExportApiFactory factory, Guid projectId)
+    {
+        await using var scope = factory.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<SeoIntelligenceDbContext>();
+        Assert.False(await dbContext.DataExports.AnyAsync(entity => entity.ProjectId == projectId));
     }
 
     private static async Task<Guid> SeedProjectWithKeywordMetricsAsync(DataExportApiFactory factory)

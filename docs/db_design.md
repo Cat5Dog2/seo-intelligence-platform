@@ -18,6 +18,7 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | --- | --- | --- | --- |
 | 1.0 | 2026-05-30 | 初版作成。論理テーブル、主要カラム、制約、インデックス、保持方針を定義。 | ChatGPT |
 | 1.1 | 2026-08-17 | ラッコキーワードAPI v1.14.0対応。`questions.first_seen_range`と`rank_results.entry_no`を追加。 | Claude |
+| 1.2 | 2026-09-28 | `questions.seed_id`を追加し、よくある質問をキーワード探索1回分（`keyword_seeds`）へ紐づけた。 | Claude |
 
 ## 1. 目的
 
@@ -112,7 +113,7 @@ identity_users
 | `project_keyword_scores` | `id uuid PK`, `project_id uuid FK`, `keyword_id uuid FK`, `location text`, `language text`, `source_call_id uuid NULL FK`, `opportunity_score numeric(8,4)`, `score_components_json jsonb`, `scored_at timestamptz` | プロジェクト別の機会スコア正本。関連度や係数がプロジェクト依存のため`keyword_metrics`から分離する。 |
 | `keyword_suggestions` | `id uuid PK`, `seed_id uuid FK`, `keyword_id uuid FK`, `engine text`, `suggest_class text`, `engine_count integer`, `first_seen_range text`, `created_at` | サジェスト結果。 |
 | `related_keywords` | `id uuid PK`, `seed_id uuid FK`, `keyword_id uuid FK`, `match_type text`, `metrics_snapshot_json jsonb`, `created_at` | 関連語結果。 |
-| `questions` | `id uuid PK`, `project_id uuid FK`, `seed_keyword_id uuid NULL FK`, `question_text text`, `source text`, `importance numeric(8,4)`, `first_seen_range text NULL`, `created_at` | FAQ/PAA質問。`importance`はラッコキーワードAPI v1.14.0の相対需要(1〜100)を0〜1へ正規化した値。相対需要が無い場合は0.5。 |
+| `questions` | `id uuid PK`, `project_id uuid FK`, `seed_id uuid NULL FK`, `seed_keyword_id uuid NULL FK`, `question_text text`, `source text`, `importance numeric(8,4)`, `first_seen_range text NULL`, `created_at` | FAQ/PAA質問。`importance`はラッコキーワードAPI v1.14.0の相対需要(1〜100)を0〜1へ正規化した値。相対需要が無い場合は0.5。`seed_id`は質問を取得したキーワード探索のシード。追加前（2026-09-28より前）の行はNULLで、`seed_keyword_id`と探索ジョブの実行期間から帰属を推定する。 |
 | `lsi_paa_items` | `id uuid PK`, `seed_keyword_id uuid FK`, `type text`, `keyword_id uuid NULL FK`, `question_text text`, `importance numeric(8,4)`, `created_at` | LSI/PAA。 |
 | `ranking_keywords` | `id uuid PK`, `seed_keyword_id uuid FK`, `keyword_id uuid FK`, `word_count integer`, `relevance numeric(8,4)`, `metrics_snapshot_json jsonb`, `created_at` | 同時ランクイン語。 |
 | `search_volume_jobs` | `job_id uuid PK/FK`, `location text`, `language text`, `aggregation_months integer`, `request_options_json jsonb`, `status_json jsonb` | `job_id -> jobs.id`。 |
@@ -182,6 +183,7 @@ ASP.NET Core Identityの標準スキーマを本設計のsnake_case規約へマ�
 | `projects -> sites` | プロジェクト配下の自社/競合/参考サイト。 |
 | `projects -> jobs` | ジョブはプロジェクトに紐付く。マスタ同期などは`project_id` NULLを許可。 |
 | `jobs -> job_external_requests` | 一括処理の分割requestIdを保持する。 |
+| `keyword_seeds -> keyword_suggestions/related_keywords/questions` | キーワード探索1回分の候補。非同期の探索は`jobs.result_resource_id`がシードを指し、同期の探索はシードだけを持つ。 |
 | `external_api_calls -> api_contract_scopes` | 外部API実行時の契約スコープを追跡する。 |
 | `external_connector_settings -> external_connector_runs` | Phase 3外部連携スタブの設定と実行履歴。 |
 | `keywords -> keyword_metrics` | グローバルキーワードに対して地域/言語/契約スコープ別の指標を持つ。 |
@@ -208,6 +210,7 @@ ASP.NET Core Identityの標準スキーマを本設計のsnake_case規約へマ�
 | `keyword_monthly_volumes` | `INDEX(keyword_id, location, language, contract_scope_key, year_month, fetched_at DESC)`, `INDEX(source_call_id)` | 月別推移、取得回ごとの履歴参照。 |
 | `project_keyword_scores` | `UNIQUE(project_id, keyword_id, location, language)`, `INDEX(project_id, opportunity_score DESC)`, `INDEX(source_call_id)` | 機会スコア上位、再計算根拠追跡。 |
 | `search_volume_results` | `INDEX(job_id)`, `INDEX(keyword_id)`, `INDEX(cache_hit)` | 調査結果表示。 |
+| `questions` | `INDEX(project_id)`, `INDEX(seed_id)`, `INDEX(seed_keyword_id)` | 探索1回分の質問取得、候補語CSV、再試行時の取得済み判定。 |
 | `rank_results` | `INDEX(project_id, keyword_id, target, checked_at DESC)`, `INDEX(position)`, `INDEX(source_call_id)`, `INDEX(contract_scope_key)` | 順位履歴、順位帯抽出、外部API出自追跡。 |
 | `cannibalization_candidates` | `INDEX(project_id, keyword_id, detected_at DESC)`, `INDEX(project_id, status, severity_score DESC)` | カニバリ候補一覧。 |
 | `alert_events` | `INDEX(project_id, triggered_at DESC)`, `INDEX(alert_id, triggered_at DESC)`, `INDEX(notification_delivery_id)` | アラート発火履歴、定義別履歴、通知結果追跡。 |
