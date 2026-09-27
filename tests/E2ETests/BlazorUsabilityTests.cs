@@ -26,6 +26,15 @@ public sealed class BlazorUsabilityTests
         Assert.Equal("完了", UiText.Status("completed"));
     }
 
+    [Fact]
+    [Trait("Category", "UI")]
+    public async Task DemoWalkthroughQuotesTheSeededSampleSize()
+    {
+        var size = GuestDemoSession.SampleSize;
+        var html = await RenderAsync<DemoWalkthrough>(new());
+        Assert.Contains($"初期デモに{size.Themes}テーマ・{size.Keywords}キーワードを収録。", html);
+    }
+
     [Theory]
     [Trait("Category", "UI")]
     [InlineData("jp", "ja", "日本", "日本語")]
