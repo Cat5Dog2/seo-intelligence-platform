@@ -25,6 +25,10 @@
                     <a class="table-action" data-testid="job-download-link" href="@downloadHref" target="_top">ダウンロード</a>
                 }
                 @ResultActions?.Invoke(job)
+                @if (ResearchResultLinks.ForJob(job) is { } resultHref)
+                {
+                    <a class="table-action" href="@resultHref">結果を開く</a>
+                }
                 <AuditLink ResourceType="job" ResourceId="@job.JobId.ToString("D")" />
             </div>
         </RowActions>
@@ -32,9 +36,10 @@
 </section>
 
 @code {
-    private static readonly IReadOnlyList<DataTableColumn<JobDetails>> JobColumns =
+    private readonly Dictionary<Guid, string> ExportLabels = [];
+    private IReadOnlyList<DataTableColumn<JobDetails>> JobColumns =>
     [
-        new("種別", job => UiText.JobType(job.JobType)),
+        new("種別", job => ExportLabels.GetValueOrDefault(job.JobId) ?? UiText.JobType(job.JobType)),
         new("状態", job => UiText.Status(job.Status), "table-status"),
         new("進捗", job => $"{job.Progress}%"),
         new("再試行", job => job.RetryCount.ToString()),
@@ -119,6 +124,20 @@
         if (result.IsSuccess)
         {
             Jobs = result.Data ?? [];
+            if (IsGuest)
+            {
+                foreach (var job in Jobs.Where(job => job.JobType == "DataExportJob" && job.ProjectId.HasValue && job.ResultResource is not null && !ExportLabels.ContainsKey(job.JobId)))
+                {
+                    var export = await ApiClient.GetExportAsync(job.ProjectId!.Value, job.ResultResource!.ResourceId);
+                    if (loadVersion != LoadVersion) return;
+                    if (export.Data is { } data) ExportLabels[job.JobId] = data.ExportType switch
+                    {
+                        "keyword_candidates" => "CSV出力（キーワード候補）",
+                        "search_volume_results" => "CSV出力（検索ボリューム）",
+                        _ => "CSV出力"
+                    };
+                }
+            }
         }
         else
         {

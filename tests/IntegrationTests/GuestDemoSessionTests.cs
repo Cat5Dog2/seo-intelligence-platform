@@ -4,6 +4,7 @@ using System.Text.Json;
 using SeoIntelligence.Application.Jobs;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.DependencyInjection;
 using SeoIntelligence.Application.Security;
 using SeoIntelligence.Application.Services;
 using SeoIntelligence.Web.Security;
@@ -13,6 +14,31 @@ namespace IntegrationTests;
 
 public sealed class GuestDemoSessionTests
 {
+    [Fact]
+    [Trait("Category", "Security")]
+    public async Task ProjectSelectionSurvivesANewCircuitButRemainsSessionScoped()
+    {
+        using var sessions = new GuestDemoSessionStore(TimeProvider.System);
+        var principal = Guest(sessions.Create());
+        var router = new GuestApiRouter(new FixedAuthenticationState(principal), sessions);
+        using var handler = new RejectNetworkHandler();
+        using var http = new HttpClient(handler) { BaseAddress = new Uri("https://real-api.invalid") };
+        var client = new SeoIntelligenceApiClient(http, NullLogger<SeoIntelligenceApiClient>.Instance, router);
+        using var services = new ServiceCollection().AddSingleton<ISeoIntelligenceApiClient>(client).AddSingleton(router).BuildServiceProvider();
+        var added = sessions.Find(principal)!.Execute<ProjectDetails>(HttpMethod.Post, "/api/projects", new ProjectCreateRequest("選択したプロジェクト", "jp", "ja", null, null)).Data!;
+        var first = ActivatorUtilities.CreateInstance<ProjectSelectionState>(services);
+        await first.LoadAsync();
+        await first.SelectAsync(added.ProjectId);
+        var reloaded = ActivatorUtilities.CreateInstance<ProjectSelectionState>(services);
+        await reloaded.LoadAsync();
+        Assert.Equal(added.ProjectId, reloaded.SelectedProject?.ProjectId);
+        var other = sessions.Find(Guest(sessions.Create()))!;
+        var otherSelection = other.SelectedProjectId;
+        other.SelectProject(added.ProjectId);
+        Assert.Equal(otherSelection, other.SelectedProjectId);
+        Assert.Equal(0, handler.Calls);
+    }
+
     [Theory]
     [Trait("Category", "Unit")]
     [InlineData("", "", 1)]

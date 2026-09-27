@@ -6,10 +6,16 @@
 
 - プロジェクトとサイトの作成・編集・アーカイブ・復元。
 - キーワード探索と検索ボリューム調査。外部通信のない固定の模擬指標を返し、ジョブは即時完了する。
-- 候補語と検索ボリュームのCSV出力・ダウンロード。検索ボリュームの出力は指定ジョブとキーワード検索条件で絞る。
+- 候補語と検索ボリュームのCSV出力・ダウンロード。候補語は表示中の探索ジョブに限定し、検索ボリュームは指定ジョブとキーワード検索条件で絞る。出力履歴には候補語／検索ボリュームの種類を表示する。候補語CSVの`jobId`による限定はゲストMockだけの挙動で、通常ログインの候補語CSV出力は`jobId`を解釈しない。
 - 競合、獲得語/ページ、コンテンツ分析、クラスター、記事ブリーフ、順位、リライトの固定サンプル閲覧。
 
 デモは本番分析の結果や精度を再現するものではない。キーワード探索は入力シードから5件のGoogleサジェスト例を生成する。探索の詳細条件は模擬結果へ反映しない。その他の生成・更新、管理設定、通知送信、AI実行、共有URL発行、Excel/PDF出力はデモ対象外で、操作前に利用範囲を表示して非対応の操作欄を隠す。
+
+検索ボリュームの集計月数は1〜24か月を検証し、指定数の月別値を生成する。SEO難易度を取得しない場合はnullを返す。月別の全期間は結果行の折りたたみから確認する。
+
+選択プロジェクトはゲストセッション内で保持し、再読み込みでも復元する。新規作成後はそのプロジェクトを選択する。探索画面と検索ボリューム画面は、それぞれ最新の保存済み結果を開く（通常ログインでは自動表示せず、履歴から開く）。両画面の履歴とダッシュボードの結果リンクには`projectId`と`jobId`を含め、プロジェクト・ジョブ種別・所有範囲を検証する。探索から一括調査へ送った後には結果画面へのリンクを表示する。
+
+地域・言語マスタは通常ログインの同期済みマスタと同じ正準名（`Japan` / `Japanese`）を返し、初期プロジェクトとプロジェクト作成フォームの既定値も同じ値にそろえる。
 
 リライトは一覧と詳細で同じサンプルを表示し、状態は`active`とする。記事ブリーフのレビュー状態は一覧・詳細・版履歴すべて`pending`とし、画面では「確認待ち」と表示する。本文は概要・検索意図・見出しとして読み、JSONは詳細データの折りたたみ内で確認できる。レポート画面はゲスト向けの利用範囲とCSV対応画面へのリンクを表示し、生成・共有の操作欄や通知履歴は表示・取得しない。
 
@@ -28,7 +34,7 @@ GuestにはAdminロールを付与しない。管理画面・パスワード変�
 ## 検証
 
 ```powershell
-dotnet test tests/IntegrationTests/IntegrationTests.csproj --filter 'FullyQualifiedName~GuestDemoSessionTests|FullyQualifiedName~WebGuestLoginTests|FullyQualifiedName~WebAuthenticationTests|FullyQualifiedName~WebAccountAuthorizationTests|FullyQualifiedName~WebDownloadEndpointTests'
+dotnet test tests/IntegrationTests/IntegrationTests.csproj --filter 'FullyQualifiedName~GuestDemoSessionTests|FullyQualifiedName~GuestPortfolioTests|FullyQualifiedName~WebGuestLoginTests|FullyQualifiedName~WebAuthenticationTests|FullyQualifiedName~WebAccountAuthorizationTests|FullyQualifiedName~WebDownloadEndpointTests'
 ```
 
 ブラウザ確認は、起動済みWebに対して次を実行する。管理者パスワードやAPIサービスキーは不要。

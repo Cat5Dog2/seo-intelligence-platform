@@ -54,6 +54,21 @@ public static class UiText
         _ => value ?? "—"
     };
 
+    public static string GapType(string? value) => value switch
+    {
+        "competitor_only" => "競合のみ獲得",
+        "owned" => "自社で獲得",
+        "shared" => "自社・競合で獲得",
+        _ => value ?? "—"
+    };
+
+    public static string KeywordRole(string? value) => value switch
+    {
+        "representative" => "代表キーワード",
+        "related" or "member" => "関連キーワード",
+        _ => value ?? "—"
+    };
+
     public static string Status(string? value) => value switch
     {
         "active" => "有効",
@@ -66,7 +81,7 @@ public static class UiText
         "running" => "実行中",
         "waiting_external" => "外部処理待ち",
         "retrying" => "再試行中",
-        "succeeded" => "完了",
+        "succeeded" or "completed" => "完了",
         "failed" => "失敗",
         "failed_retryable" => "失敗（再試行可能）",
         "failed_fatal" => "失敗（要確認）",

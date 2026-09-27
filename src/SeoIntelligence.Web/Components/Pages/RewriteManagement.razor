@@ -40,7 +40,7 @@
     }
     else
     {
-        <section class="split-grid">
+        <section class="page-stack">
             <div class="panel">
                 <div class="section-heading">
                     <h2>リライト候補</h2>
@@ -101,11 +101,15 @@
                             <span>メモ</span>
                             <input @bind="TaskEditForm.Memo" />
                         </label>
-                        <label class="field wide-field json-field">
-                            <span>選定理由（JSON）</span>
-                            <textarea readonly>@FormatJson(SelectedTask.Reason)</textarea>
-                        </label>
                     </fieldset>
+                    <div class="reason-summary">
+                        <h3>改善を提案する理由</h3>
+                        <p>@JsonSummary(SelectedTask.Reason)</p>
+                        <details class="advanced-options">
+                            <summary>根拠データを表示</summary>
+                            <pre class="json-preview">@FormatJson(SelectedTask.Reason)</pre>
+                        </details>
+                    </div>
                 }
             </div>
         </section>
@@ -136,6 +140,8 @@
 @code {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
+        // Keep Japanese reasons readable instead of \uXXXX; Razor still HTML-encodes the rendered text.
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.Create(System.Text.Unicode.UnicodeRanges.All),
         WriteIndented = true
     };
 
@@ -386,8 +392,11 @@
             return "-";
         }
 
-        var raw = element.GetRawText();
-        return raw.Length <= 120 ? raw : $"{raw[..117]}...";
+        if (element.ValueKind == JsonValueKind.Object && element.TryGetProperty("summary", out var summary) && summary.ValueKind == JsonValueKind.String)
+            return summary.GetString() ?? "-";
+        if (element.ValueKind == JsonValueKind.String) return element.GetString() ?? "-";
+        if (element.ValueKind == JsonValueKind.Array) return string.Join("、", element.EnumerateArray().Select(JsonSummary));
+        return FormatJson(element);
     }
 
     private static string FormatJson(JsonElement element)

@@ -118,7 +118,7 @@
                 <div class="detail-list">
                     <div><span>代表語</span><strong>@(SelectedCluster.RepresentativeKeyword ?? "-")</strong></div>
                     <div><span>親クラスタ</span><strong>@(SelectedCluster.ParentName ?? "-")</strong></div>
-                    <div><span>検索意図</span><strong>@(SelectedCluster.IntentLabel ?? "-")</strong></div>
+                    <div><span>検索意図</span><strong>@UiText.SearchIntent(SelectedCluster.IntentLabel)</strong></div>
                     <div><span>機会スコア</span><strong>@SelectedCluster.Score.ToString("0.####")</strong></div>
                 </div>
 
@@ -143,18 +143,18 @@
         new("親", cluster => cluster.ParentName),
         new("キーワード", cluster => cluster.KeywordCount.ToString(), "table-number"),
         new("スコア", cluster => cluster.Score.ToString("0.####"), "table-number"),
-        new("検索意図", cluster => cluster.IntentLabel),
+        new("検索意図", cluster => UiText.SearchIntent(cluster.IntentLabel)),
         new("子", cluster => cluster.ChildCount.ToString(), "table-number")
     ];
 
     private static readonly IReadOnlyList<DataTableColumn<TopicClusterKeywordRow>> KeywordColumns =
     [
         new("キーワード", row => row.Keyword),
-        new("役割", row => row.Role),
+        new("役割", row => UiText.KeywordRole(row.Role)),
         new("スコア", row => row.OpportunityScore.ToString("0.####"), "table-number"),
         new("検索意図", row => UiText.SearchIntent(row.IntentLabel)),
         new("FAQ", row => row.Evidence.FaqCount.ToString(), "table-number"),
-        new("取得元", row => string.Join(", ", row.Evidence.Sources))
+        new("取得元", row => string.Join("、", row.Evidence.Sources.Select(UiText.DiscoverySource)))
     ];
 
     private static readonly IReadOnlyList<DataTableColumn<ArticleCandidateSummary>> ArticleCandidateColumns =

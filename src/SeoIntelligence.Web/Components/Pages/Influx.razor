@@ -103,7 +103,7 @@
         new("順位", row => row.Rank.ToString(), "table-number"),
         new("ランクインURL", row => row.RankedUrl),
         new("推定流入数", row => row.EstimatedTraffic.ToString("0.##"), "table-number"),
-        new("獲得状況", row => row.IsGap ? row.GapType : "owned"),
+        new("獲得状況", row => UiText.GapType(row.IsGap ? row.GapType : "owned")),
         new("作成日時", row => FormatDateTime(row.CreatedAt))
     ];
 

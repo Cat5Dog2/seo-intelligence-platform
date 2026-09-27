@@ -13,6 +13,19 @@ namespace E2ETests;
 
 public sealed class BlazorUsabilityTests
 {
+    [Fact]
+    [Trait("Category", "UI")]
+    public void RewriteReasonsAndCompletedStatusAreReadableJapanese()
+    {
+        var reason = System.Text.Json.JsonSerializer.SerializeToElement(new { summary = "検索意図に合わせて見出しを改善" });
+        var method = typeof(SeoIntelligence.Web.Components.Pages.RewriteManagement).GetMethod("JsonSummary", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!;
+        Assert.Equal("検索意図に合わせて見出しを改善", method.Invoke(null, [reason]));
+        var evidence = (string)typeof(SeoIntelligence.Web.Components.Pages.RewriteManagement).GetMethod("FormatJson", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!.Invoke(null, [reason])!;
+        Assert.Contains("\"summary\": \"検索意図に合わせて見出しを改善\"", evidence);
+        Assert.DoesNotContain("\\u", evidence);
+        Assert.Equal("完了", UiText.Status("completed"));
+    }
+
     [Theory]
     [Trait("Category", "UI")]
     [InlineData("jp", "ja", "日本", "日本語")]

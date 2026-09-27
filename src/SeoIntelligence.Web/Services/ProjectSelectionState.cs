@@ -5,10 +5,12 @@ namespace SeoIntelligence.Web.Services;
 public sealed class ProjectSelectionState
 {
     private readonly ISeoIntelligenceApiClient _apiClient;
+    private readonly GuestApiRouter? _guestRouter;
 
-    public ProjectSelectionState(ISeoIntelligenceApiClient apiClient)
+    public ProjectSelectionState(ISeoIntelligenceApiClient apiClient, GuestApiRouter? guestRouter = null)
     {
         _apiClient = apiClient;
+        _guestRouter = guestRouter;
     }
 
     public event Action? Changed;
@@ -36,7 +38,9 @@ public sealed class ProjectSelectionState
         if (result.IsSuccess)
         {
             Projects = result.Data ?? [];
-            SelectedProject = SelectCurrentProject(SelectedProject?.ProjectId);
+            var session = _guestRouter is null ? null : await _guestRouter.GetSessionAsync();
+            SelectedProject = SelectCurrentProject(SelectedProject?.ProjectId ?? session?.SelectedProjectId);
+            if (SelectedProject is { } selected) session?.SelectProject(selected.ProjectId);
         }
         else
         {
@@ -52,11 +56,20 @@ public sealed class ProjectSelectionState
     public async Task RefreshAsync(CancellationToken cancellationToken = default)
         => await LoadAsync(force: true, cancellationToken);
 
-    public Task SelectAsync(Guid projectId)
+    public async Task<bool> SelectFromQueryAsync(string? projectId)
     {
+        if (string.IsNullOrWhiteSpace(projectId)) return true;
+        if (!Guid.TryParse(projectId, out var id) || !Projects.Any(project => project.ProjectId == id && project.Status == "active")) return false;
+        if (SelectedProject?.ProjectId != id) await SelectAsync(id);
+        return true;
+    }
+
+    public async Task SelectAsync(Guid projectId)
+    {
+        if (!Projects.Any(project => project.ProjectId == projectId && project.Status == "active")) return;
         SelectedProject = SelectCurrentProject(projectId);
+        if (_guestRouter is not null) (await _guestRouter.GetSessionAsync())?.SelectProject(projectId);
         NotifyChanged();
-        return Task.CompletedTask;
     }
 
     private ProjectDetails? SelectCurrentProject(Guid? preferredProjectId)
