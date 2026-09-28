@@ -29,6 +29,19 @@
 
     @if (IsGuest)
     {
+        <section class="panel">
+            <span class="demo-eyebrow">固定サンプル · 出力機能は実行していません</span>
+            <h2>SEO学習メディアの調査サマリー</h2>
+            <p class="muted">初期デモを使ったレポートの完成イメージです。選択中プロジェクトの最新集計ではありません。</p>
+            <div class="metric-strip dashboard-metrics">
+                <div class="metric"><span>調査したキーワード</span><strong>@GuestDemoSession.SampleSize.Keywords</strong></div>
+                <div class="metric"><span>比較した競合</span><strong>@GuestDemoSession.SampleSize.Competitors</strong></div>
+                <div class="metric"><span>記事ブリーフ</span><strong>@GuestDemoSession.SampleSize.Briefs</strong></div>
+            </div>
+            <h3>次に取り組むこと</h3>
+            <p>「SEOの基礎」を入口に、キーワード選定と記事リライトへ導く構成を提案。重複する入門記事を整理し、関連する記事への内部リンクを追加します。</p>
+            <a class="text-button" href="/rewrite">具体的な改善案を見る →</a>
+        </section>
         <section class="panel" role="status">
             <h2>ゲストデモの利用範囲</h2>
             <p>ゲストデモではレポート生成・共有・通知履歴は利用できません。</p>

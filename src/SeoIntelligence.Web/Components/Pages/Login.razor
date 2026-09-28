@@ -22,6 +22,12 @@
         <div class="alert alert-error" role="alert">ログイン試行が多すぎます。しばらく待ってから再度お試しください。</div>
     }
 
+    <form method="post" action="/login/guest" class="auth-form guest-login guest-login-feature">
+        <AntiforgeryToken />
+        <input type="hidden" name="returnUrl" value="@ReturnUrl" />
+        <h2>サンプル入りのデモを体験</h2><p>@(GuestDemoSession.SampleSize.Themes)テーマ・@(GuestDemoSession.SampleSize.Keywords)キーワードから、競合分析、記事構成、改善案まで。登録不要で操作できます。</p><p class="muted">すべて架空のデータを使うMockモードです。実際のAPIクレジットは消費しません。</p>
+        <button type="submit" class="primary-button">登録不要でデモを試す</button>
+    </form>
     <form method="post" action="@GetFormAction()" class="auth-form">
         <AntiforgeryToken />
         <input type="hidden" name="returnUrl" value="@ReturnUrl" />
@@ -43,12 +49,7 @@
 
         <button type="submit" class="btn-primary">ログイン</button>
     </form>
-    <form method="post" action="/login/guest" class="auth-form guest-login">
-        <AntiforgeryToken />
-        <input type="hidden" name="returnUrl" value="@ReturnUrl" />
-        <p>アカウント不要で、通常データから分離したデモを試せます。Mockモードで動作し、実際のAPIクレジットは消費しません。</p>
-        <button type="submit" class="secondary-button">登録不要でデモを試す</button>
-    </form>
+
 </div>
 
 @code {

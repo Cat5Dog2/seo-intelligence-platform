@@ -19,6 +19,14 @@
     @if (IsGuest)
     {
         <GuestReadOnlyNotice Description="AI生成はデモでは実行できません。記事ブリーフ画面で構成のサンプルを確認できます。" />
+        <section class="panel">
+            <span class="demo-eyebrow">固定サンプル · AIは実行していません</span>
+            <h2>調査結果から記事案を考える</h2>
+            <p><strong>依頼例：</strong>「SEO 対策」の調査をもとに、初心者向けの記事構成を提案して。</p>
+            <h3>回答の完成イメージ</h3>
+            <p>読者が実践に進めるよう、基礎知識、調査手順、改善事例、効果測定の順で構成します。「キーワード選定」の記事へ内部リンクを置くと、次の学習につながります。</p>
+            <p class="muted">参照例：初期デモの候補語、競合の見出し、共起語。生成結果は人が根拠を確認する下書きとして扱います。</p>
+        </section>
         <a class="secondary-button" href="/briefs">記事ブリーフのサンプルを見る</a>
     }
     <ErrorSummary Errors="@Errors" />
