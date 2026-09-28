@@ -479,6 +479,42 @@ public sealed class BrowserQaRegressionTests
 
     [Fact]
     [Trait("Category", "UI")]
+    public async Task SignedInCandidateCsvIsLimitedToTheDisplayedExploration()
+    {
+        using var fixture = new UiFixture { JobType = "KeywordDiscoveryJob" };
+        var page = await fixture.CreateAsync<Keywords>();
+        Set(Get(page, "DiscoveryForm")!, "SeedKeyword", "QA search");
+        await InvokeAsync(page, "DiscoverAsync");
+        await InvokeAsync(page, "RefreshDiscoveryJobAsync");
+
+        await InvokeAsync(page, "CreateCandidateExportAsync");
+
+        var export = fixture.Posts.Last();
+        Assert.Equal("keyword_candidates", export.GetProperty("exportType").GetString());
+        var filter = export.GetProperty("filter");
+        Assert.Equal(fixture.JobId, filter.GetProperty("jobId").GetGuid());
+        Assert.False(filter.TryGetProperty("q", out _));
+    }
+
+    [Fact]
+    [Trait("Category", "UI")]
+    public async Task SynchronousCandidateCsvIsLimitedToItsSeed()
+    {
+        using var fixture = new UiFixture { SynchronousSeedId = Guid.NewGuid() };
+        var page = await fixture.CreateAsync<Keywords>();
+        Set(Get(page, "DiscoveryForm")!, "SeedKeyword", "QA search");
+        await InvokeAsync(page, "DiscoverAsync");
+
+        await InvokeAsync(page, "CreateCandidateExportAsync");
+
+        var filter = fixture.Posts.Last().GetProperty("filter");
+        Assert.Equal(fixture.SynchronousSeedId, filter.GetProperty("seedId").GetGuid());
+        Assert.False(filter.TryGetProperty("jobId", out _));
+        Assert.False(filter.TryGetProperty("q", out _));
+    }
+
+    [Fact]
+    [Trait("Category", "UI")]
     public async Task GuestKeywordRevisitReopensTheSavedExplorationAndLinksToVolumeInTheSameProject()
     {
         using var fixture = new UiFixture { JobType = "KeywordDiscoveryJob", HasResearchHistory = true, AsGuest = true };
@@ -616,6 +652,7 @@ public sealed class BrowserQaRegressionTests
         public string JobType { get; set; } = "RegisterSearchVolumeJob";
         public bool HasResearchHistory { get; set; }
         public bool AsGuest { get; init; }
+        public Guid? SynchronousSeedId { get; init; }
         public IReadOnlyDictionary<string, int>? VolumeMonths { get; set; }
         public Guid BriefId { get; } = Guid.NewGuid();
         public Guid ExportId { get; } = Guid.NewGuid();
@@ -737,7 +774,10 @@ public sealed class BrowserQaRegressionTests
                 }
                 if (path.EndsWith("/keyword-discovery/suggest", StringComparison.Ordinal))
                 {
-                    return Reply(new KeywordDiscoveryResult([], IsAccepted: true, JobId: jobId));
+                    // A synchronous discovery returns its candidates at once and has a seed but no job.
+                    return Reply(SynchronousSeedId is { } seedId
+                        ? new KeywordDiscoveryResult([new KeywordCandidate("QA keyword", "suggest", null, 80m)], SeedId: seedId)
+                        : new KeywordDiscoveryResult([], IsAccepted: true, JobId: jobId));
                 }
                 return Reply(new JobReference(jobId, "queued"));
             }

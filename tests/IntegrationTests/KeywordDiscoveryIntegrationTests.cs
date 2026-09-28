@@ -8,6 +8,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using SeoIntelligence.Application.RakkoKeyword;
+using SeoIntelligence.Application.Storage;
 using SeoIntelligence.Domain.Common;
 using SeoIntelligence.Infrastructure.Persistence;
 using SeoIntelligence.Infrastructure.Persistence.Entities;
@@ -82,6 +83,8 @@ public sealed class KeywordDiscoveryIntegrationTests
             var question = Assert.Single(await dbContext.Questions.Where(entity => entity.ProjectId == projectId).ToListAsync());
             Assert.Equal(0.87m, question.Importance);
             Assert.Equal("last_30_days", question.FirstSeenRange);
+            var seed = await dbContext.KeywordSeeds.SingleAsync(entity => entity.ProjectId == projectId);
+            Assert.Equal(seed.Id, question.SeedId);
             Assert.Equal(2, await dbContext.LsiPaaItems.CountAsync());
             Assert.Equal(1, await dbContext.RankingKeywords.CountAsync());
             Assert.Equal(5, await dbContext.ExternalApiCalls.CountAsync(entity => entity.ProjectId == projectId));
@@ -246,6 +249,209 @@ public sealed class KeywordDiscoveryIntegrationTests
         {
             DeleteTempStoragePath(factory.StoragePath);
         }
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task QueuedRunsOfTheSameSeedKeywordEachFetchTheirOwnQuestions()
+    {
+        await using var factory = new KeywordDiscoveryApiFactory();
+        using var client = CreateClient(factory);
+        var projectId = await SeedProjectAsync(factory);
+
+        try
+        {
+            // Different sources give the runs different idempotency keys, so both are queued.
+            var first = await QueueDiscoveryAsync(client, projectId, ["question"]);
+            var second = await QueueDiscoveryAsync(client, projectId, ["question", "suggest"]);
+
+            // The later run saves its questions first; the earlier run must still fetch its own.
+            foreach (var jobId in new[] { second, first })
+            {
+                await using var scope = factory.Services.CreateAsyncScope();
+                await scope.ServiceProvider.GetRequiredService<IJobDispatcher>().DispatchAsync(jobId);
+            }
+
+            foreach (var jobId in new[] { first, second })
+            {
+                using var response = await client.GetAsync($"/api/projects/{projectId}/keyword-discovery/jobs/{jobId}/results");
+                using var document = await ReadJsonAsync(response);
+                Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+                Assert.Contains(document.RootElement.GetProperty("data").GetProperty("candidates").EnumerateArray(),
+                    candidate => candidate.GetProperty("source").GetString() == "question");
+            }
+
+            await using var dbScope = factory.Services.CreateAsyncScope();
+            var dbContext = dbScope.ServiceProvider.GetRequiredService<SeoIntelligenceDbContext>();
+            var seedIds = await dbContext.Jobs
+                .Where(entity => entity.Id == first || entity.Id == second)
+                .Select(entity => entity.ResultResourceId)
+                .ToListAsync();
+            foreach (var seedId in seedIds)
+            {
+                Assert.True(await dbContext.Questions.AnyAsync(entity => entity.SeedId == seedId));
+            }
+        }
+        finally
+        {
+            DeleteTempStoragePath(factory.StoragePath);
+        }
+    }
+
+    [Theory]
+    [Trait("Category", "Integration")]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CandidateCsvForADiscoveryRunMatchesTheDisplayedCandidates(bool synchronous)
+    {
+        await using var factory = new KeywordDiscoveryApiFactory();
+        using var client = CreateClient(factory);
+        var projectId = await SeedProjectAsync(factory);
+
+        try
+        {
+            // Every fetched source is stored, but the screen shows the run's filtered, one-row-per-keyword result:
+            // the queued run hides the related keyword and question, and the synchronous run merges both engines.
+            using var discoveryResponse = await client.PostAsJsonAsync(
+                $"/api/projects/{projectId}/keyword-discovery/suggest",
+                new
+                {
+                    seedKeyword = "SEO",
+                    sources = synchronous ? new[] { "suggest" } : new[] { "suggest", "related", "question" },
+                    engines = new[] { "google", "bing" },
+                    limit = 20,
+                    syncPreferred = true,
+                    language = "ja",
+                    location = "JP",
+                    filter = new { include = new[] { "guide" } }
+                });
+            using var discoveryDocument = await ReadJsonAsync(discoveryResponse);
+            var discovery = discoveryDocument.RootElement.GetProperty("data");
+            object runFilter;
+            string[] displayed;
+            if (synchronous)
+            {
+                Assert.Equal(HttpStatusCode.OK, discoveryResponse.StatusCode);
+                runFilter = new { seedId = discovery.GetProperty("seedId").GetGuid() };
+                displayed = KeywordsAndSources(discovery);
+            }
+            else
+            {
+                Assert.Equal(HttpStatusCode.Accepted, discoveryResponse.StatusCode);
+                var jobId = discovery.GetProperty("jobId").GetGuid();
+                await DispatchAsync(factory, jobId);
+                using var resultResponse = await client.GetAsync($"/api/projects/{projectId}/keyword-discovery/jobs/{jobId}/results");
+                using var resultDocument = await ReadJsonAsync(resultResponse);
+                runFilter = new { jobId };
+                displayed = KeywordsAndSources(resultDocument.RootElement.GetProperty("data"));
+            }
+
+            using var exportResponse = await client.PostAsJsonAsync(
+                $"/api/projects/{projectId}/exports/csv",
+                new { exportType = "keyword_candidates", filter = runFilter });
+            var csv = await DispatchAndReadCsvAsync(factory, exportResponse);
+
+            Assert.Equal(new[] { "SEO guide|suggest" }, displayed);
+            Assert.Equal(displayed, CsvKeywordsAndSources(csv));
+        }
+        finally
+        {
+            DeleteTempStoragePath(factory.StoragePath);
+        }
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task CandidateCsvForADiscoveryRunKeepsTheDisplayedOrderAndSources()
+    {
+        await using var factory = new KeywordDiscoveryApiFactory();
+        using var client = CreateClient(factory);
+        var projectId = await SeedProjectAsync(factory);
+
+        try
+        {
+            // Keyword descending is the reverse of the stored rows' order, and only the saved result carries
+            // the ranking keyword.
+            var jobId = await QueueDiscoveryAsync(client, projectId, ["suggest", "related", "ranking"], sortBy: "keyword", orderBy: "desc");
+            await DispatchAsync(factory, jobId);
+            using var resultResponse = await client.GetAsync($"/api/projects/{projectId}/keyword-discovery/jobs/{jobId}/results");
+            using var resultDocument = await ReadJsonAsync(resultResponse);
+            var displayed = KeywordsAndSources(resultDocument.RootElement.GetProperty("data"));
+
+            using var exportResponse = await client.PostAsJsonAsync(
+                $"/api/projects/{projectId}/exports/csv",
+                new { exportType = "keyword_candidates", filter = new { jobId } });
+            var csv = await DispatchAndReadCsvAsync(factory, exportResponse);
+
+            Assert.Equal(new[] { "seo ranking|ranking", "seo guide|suggest", "seo comparison|related" }, displayed);
+            Assert.Equal(displayed, CsvKeywordsAndSources(csv));
+        }
+        finally
+        {
+            DeleteTempStoragePath(factory.StoragePath);
+        }
+    }
+
+    private static string[] KeywordsAndSources(JsonElement result)
+        => result.GetProperty("candidates").EnumerateArray()
+            .Select(candidate => $"{candidate.GetProperty("keyword").GetString()}|{candidate.GetProperty("source").GetString()}")
+            .ToArray();
+
+    // The keyword and source columns come first and the mock's values contain no commas.
+    private static string[] CsvKeywordsAndSources(string csv)
+        => csv.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Skip(1)
+            .Select(line => string.Join('|', line.Split(',').Take(2)))
+            .ToArray();
+
+    private static async Task DispatchAsync(KeywordDiscoveryApiFactory factory, Guid jobId)
+    {
+        await using var scope = factory.Services.CreateAsyncScope();
+        await scope.ServiceProvider.GetRequiredService<IJobDispatcher>().DispatchAsync(jobId);
+    }
+
+    private static async Task<string> DispatchAndReadCsvAsync(KeywordDiscoveryApiFactory factory, HttpResponseMessage registerResponse)
+    {
+        using var registerDocument = await ReadJsonAsync(registerResponse);
+        Assert.Equal(HttpStatusCode.Accepted, registerResponse.StatusCode);
+        var jobId = registerDocument.RootElement.GetProperty("data").GetProperty("jobId").GetGuid();
+        await DispatchAsync(factory, jobId);
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<SeoIntelligenceDbContext>();
+        var exportId = (await dbContext.Jobs.AsNoTracking().SingleAsync(entity => entity.Id == jobId)).ResultResourceId!.Value;
+        var export = await dbContext.DataExports.AsNoTracking().SingleAsync(entity => entity.Id == exportId);
+        Assert.Equal(StatusValues.Succeeded, export.Status);
+        var storage = scope.ServiceProvider.GetRequiredService<IObjectStorage>();
+        await using var stream = await storage.OpenReadAsync(new StorageObjectKey(new Uri(export.FileUri!).AbsolutePath.Trim('/')));
+        using var reader = new StreamReader(stream);
+        return await reader.ReadToEndAsync();
+    }
+
+    private static async Task<Guid> QueueDiscoveryAsync(
+        HttpClient client,
+        Guid projectId,
+        string[] sources,
+        string? sortBy = null,
+        string? orderBy = null)
+    {
+        using var response = await client.PostAsJsonAsync(
+            $"/api/projects/{projectId}/keyword-discovery/suggest",
+            new
+            {
+                seedKeyword = "seo",
+                sources,
+                engines = new[] { "google" },
+                limit = 10,
+                syncPreferred = false,
+                language = "ja",
+                location = "JP",
+                sortBy,
+                orderBy
+            });
+        using var document = await ReadJsonAsync(response);
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        return document.RootElement.GetProperty("data").GetProperty("jobId").GetGuid();
     }
 
     private static async Task<Guid> SeedProjectAsync(KeywordDiscoveryApiFactory factory)

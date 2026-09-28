@@ -346,6 +346,7 @@ public sealed class SeoIntelligenceDbContext(DbContextOptions<SeoIntelligenceDbC
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Id).HasColumnName("id").ValueGeneratedNever();
             entity.Property(e => e.ProjectId).HasColumnName("project_id");
+            entity.Property(e => e.SeedId).HasColumnName("seed_id");
             entity.Property(e => e.SeedKeywordId).HasColumnName("seed_keyword_id");
             entity.Property(e => e.QuestionText).HasColumnName("question_text").IsRequired();
             entity.Property(e => e.Source).HasColumnName("source").IsRequired();
@@ -354,8 +355,10 @@ public sealed class SeoIntelligenceDbContext(DbContextOptions<SeoIntelligenceDbC
             entity.Property(e => e.CreatedAt).HasColumnName("created_at").HasColumnType("timestamptz");
 
             entity.HasIndex(e => e.ProjectId).HasDatabaseName("ix_questions_project_id");
+            entity.HasIndex(e => e.SeedId).HasDatabaseName("ix_questions_seed_id");
             entity.HasIndex(e => e.SeedKeywordId).HasDatabaseName("ix_questions_seed_keyword_id");
             entity.HasOne<ProjectEntity>().WithMany().HasForeignKey(e => e.ProjectId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<KeywordSeedEntity>().WithMany().HasForeignKey(e => e.SeedId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<KeywordEntity>().WithMany().HasForeignKey(e => e.SeedKeywordId).OnDelete(DeleteBehavior.Restrict);
         });
     }

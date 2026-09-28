@@ -415,6 +415,7 @@ internal sealed class KeywordDiscoveryService(
                 {
                     Id = UuidV7.New(),
                     ProjectId = context.ProjectId!.Value,
+                    SeedId = seed.Id,
                     SeedKeywordId = seedKeyword.Id,
                     QuestionText = questionText,
                     Source = "question",
@@ -597,19 +598,44 @@ internal sealed class KeywordDiscoveryService(
         candidates.Add(ToCandidate(keyword, item, "ranking", SuggestClass: null));
     }
 
+    // LSI/PAA items, ranking keywords and questions saved before questions.seed_id existed reference the
+    // shared seed keyword instead of the seed row, so a run owns the ones saved from just before its seed.
+    internal static DateTime RunStartedAt(KeywordSeedEntity seed) => seed.CreatedAt.AddSeconds(-1);
+
+    // The memo keeps the filtered, sorted result the screen shows. Memos written before result snapshots have
+    // none, and a seed imported from CSV can carry free text instead of a memo.
+    internal static KeywordDiscoveryResult? ReadSavedResult(KeywordSeedEntity seed)
+    {
+        if (string.IsNullOrWhiteSpace(seed.Memo))
+        {
+            return null;
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<KeywordDiscoverySeedMemo>(seed.Memo, JsonOptions)?.Result;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
     private async Task<bool> SourceAlreadyFetchedAsync(
         KeywordSeedEntity seed,
         Guid seedKeywordId,
         string source,
         CancellationToken cancellationToken)
     {
-        var createdAt = seed.CreatedAt.AddSeconds(-1);
+        var createdAt = RunStartedAt(seed);
         return source switch
         {
             "suggest" => await dbContext.KeywordSuggestions.AnyAsync(entity => entity.SeedId == seed.Id, cancellationToken),
             "related" => await dbContext.RelatedKeywords.AnyAsync(entity => entity.SeedId == seed.Id, cancellationToken),
             "other" => await dbContext.LsiPaaItems.AnyAsync(entity => entity.SeedKeywordId == seedKeywordId && entity.CreatedAt >= createdAt, cancellationToken),
-            "question" => await dbContext.Questions.AnyAsync(entity => entity.SeedKeywordId == seedKeywordId && entity.CreatedAt >= createdAt, cancellationToken),
+            "question" => await dbContext.Questions.AnyAsync(entity =>
+                entity.SeedId == seed.Id ||
+                (entity.SeedId == null && entity.SeedKeywordId == seedKeywordId && entity.CreatedAt >= createdAt), cancellationToken),
             "ranking" => await dbContext.RankingKeywords.AnyAsync(entity => entity.SeedKeywordId == seedKeywordId && entity.CreatedAt >= createdAt, cancellationToken),
             _ => false
         };

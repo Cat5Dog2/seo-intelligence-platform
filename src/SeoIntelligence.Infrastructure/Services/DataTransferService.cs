@@ -134,6 +134,7 @@ internal sealed class DataTransferService(
         var exportType = NormalizeExportType(request.ExportType, errors);
         var format = forceCsv ? CsvFormat : NormalizeExportFormat(request.Format, errors);
         var filterJson = NormalizeFilterJson(request.Filter, errors);
+        var discoveryRun = NormalizeDiscoveryRunKey(exportType, request.Filter, errors);
         var columns = exportType is null
             ? []
             : NormalizeColumns(exportType, request.Columns, errors);
@@ -159,6 +160,11 @@ internal sealed class DataTransferService(
         if (!projectExists)
         {
             return Failure<JobReference>(ErrorCode.NotFound, "Project was not found.");
+        }
+
+        if (discoveryRun is not null && await FindDiscoveryRunAsync(context, discoveryRun, cancellationToken) is null)
+        {
+            return Failure<JobReference>(ErrorCode.NotFound, "Keyword discovery run was not found.");
         }
 
         using var filterDocument = JsonDocument.Parse(filterJson);
@@ -906,6 +912,58 @@ internal sealed class DataTransferService(
         var projectId = context.ProjectId!.Value;
         var filters = ExportFilters.From(snapshot.Filter);
         var seedQuery = dbContext.KeywordSeeds.AsNoTracking().Where(seed => seed.ProjectId == projectId);
+        var questionQuery = dbContext.Questions.AsNoTracking().Where(entity => entity.ProjectId == projectId);
+        if (filters.JobId.HasValue || filters.SeedId.HasValue)
+        {
+            // Registration checked the run. If it is gone now, export nothing rather than every run.
+            if (await FindDiscoveryRunAsync(context, new DiscoveryRunKey(filters.JobId, filters.SeedId), cancellationToken) is not { } run)
+            {
+                return new CsvExportTable(snapshot.Columns, []);
+            }
+
+            // The saved result is what the screen shows: the run's filter, sort and limit applied, one row per
+            // keyword across engines. Runs without one (older or unfinished) export what was stored for the seed.
+            if (KeywordDiscoveryService.ReadSavedResult(run.Seed) is { } saved)
+            {
+                var runAt = FormatDateTime(run.EndedAt ?? run.Seed.CreatedAt);
+                var displayedRows = saved.Candidates.Select(candidate => new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["keyword"] = candidate.Keyword,
+                    ["source"] = candidate.Source,
+                    ["suggestClass"] = candidate.SuggestClass,
+                    ["seed"] = run.Seed.Seed,
+                    ["engine"] = candidate.Engine,
+                    ["firstSeenRange"] = candidate.FirstSeenRange,
+                    ["createdAt"] = runAt
+                });
+                return new CsvExportTable(snapshot.Columns, FilterCandidateRows(displayedRows, filters).ToArray());
+            }
+
+            var seedId = run.Seed.Id;
+            seedQuery = seedQuery.Where(seed => seed.Id == seedId);
+            if (run.EndedAt is { } runEndedAt)
+            {
+                // Questions saved before questions.seed_id existed reference only the seed keyword, so the
+                // job's window attributes them. Runs without a job cannot bound them and skip them.
+                var seedKeyword = KeywordNormalizer.Normalize(run.Seed.Seed);
+                var seedKeywordIds = dbContext.Keywords
+                    .AsNoTracking()
+                    .Where(keyword => keyword.NormalizedText == seedKeyword)
+                    .Select(keyword => (Guid?)keyword.Id);
+                var runStartedAt = KeywordDiscoveryService.RunStartedAt(run.Seed);
+                questionQuery = questionQuery.Where(entity =>
+                    entity.SeedId == seedId ||
+                    (entity.SeedId == null &&
+                        seedKeywordIds.Contains(entity.SeedKeywordId) &&
+                        entity.CreatedAt >= runStartedAt &&
+                        entity.CreatedAt <= runEndedAt));
+            }
+            else
+            {
+                questionQuery = questionQuery.Where(entity => entity.SeedId == seedId);
+            }
+        }
+
         var suggestions = await dbContext.KeywordSuggestions
             .AsNoTracking()
             .Join(seedQuery, suggestion => suggestion.SeedId, seed => seed.Id, (suggestion, seed) => new { suggestion, seed })
@@ -937,9 +995,7 @@ internal sealed class DataTransferService(
                     item.related.CreatedAt
                 })
             .ToArrayAsync(cancellationToken);
-        var questions = await dbContext.Questions
-            .AsNoTracking()
-            .Where(entity => entity.ProjectId == projectId)
+        var questions = await questionQuery
             .Select(entity => new
             {
                 Keyword = entity.QuestionText,
@@ -979,16 +1035,19 @@ internal sealed class DataTransferService(
             ["createdAt"] = FormatDateTime(item.CreatedAt)
         });
 
-        var rows = suggestionRows
-            .Concat<IReadOnlyDictionary<string, string?>>(relatedRows)
-            .Concat(questionRows)
-            .Where(row => MatchesTextFilter(row["keyword"], filters.Q))
-            .Where(row => filters.Source is null || string.Equals(row["source"], filters.Source, StringComparison.OrdinalIgnoreCase))
+        var rows = FilterCandidateRows(suggestionRows.Concat<IReadOnlyDictionary<string, string?>>(relatedRows).Concat(questionRows), filters)
             .OrderBy(row => row["keyword"], StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
         return new CsvExportTable(snapshot.Columns, rows);
     }
+
+    private static IEnumerable<IReadOnlyDictionary<string, string?>> FilterCandidateRows(
+        IEnumerable<IReadOnlyDictionary<string, string?>> rows,
+        ExportFilters filters)
+        => rows
+            .Where(row => MatchesTextFilter(row["keyword"], filters.Q))
+            .Where(row => filters.Source is null || string.Equals(row["source"], filters.Source, StringComparison.OrdinalIgnoreCase));
 
     private async Task<CsvExportTable> BuildExternalApiCallsTableAsync(
         ProjectExecutionContext context,
@@ -1051,6 +1110,43 @@ internal sealed class DataTransferService(
         }
 
         return await source.SingleOrDefaultAsync(cancellationToken);
+    }
+
+    // A queued discovery run is a job pointing at the seed it created; a synchronous run is only that seed.
+    // Suggestions, related keywords and questions reference the seed.
+    private async Task<DiscoveryRun?> FindDiscoveryRunAsync(
+        ProjectExecutionContext context,
+        DiscoveryRunKey key,
+        CancellationToken cancellationToken)
+    {
+        var jobs = dbContext.Jobs
+            .AsNoTracking()
+            .Where(entity =>
+                entity.WorkspaceId == context.WorkspaceId &&
+                entity.ProjectId == context.ProjectId &&
+                entity.JobType == KeywordDiscoveryJob.JobType &&
+                entity.ResultResourceType == KeywordDiscoveryService.ResultResourceType);
+        jobs = key.JobId is { } jobId
+            ? jobs.Where(entity => entity.Id == jobId)
+            : jobs.Where(entity => entity.ResultResourceId == key.SeedId);
+        var job = await jobs
+            .Select(entity => new { entity.ResultResourceId, EndedAt = entity.CompletedAt ?? entity.UpdatedAt })
+            .FirstOrDefaultAsync(cancellationToken);
+        var seedId = key.JobId.HasValue ? job?.ResultResourceId : key.SeedId;
+        if (seedId is null)
+        {
+            return null;
+        }
+
+        var seed = await dbContext.KeywordSeeds
+            .AsNoTracking()
+            .SingleOrDefaultAsync(
+                entity =>
+                    entity.Id == seedId &&
+                    entity.ProjectId == context.ProjectId &&
+                    entity.Source == KeywordDiscoveryService.SeedSource,
+                cancellationToken);
+        return seed is null ? null : new DiscoveryRun(seed, job?.EndedAt);
     }
 
     private async Task<ProjectEntity?> FindActiveProjectAsync(
@@ -1121,6 +1217,42 @@ internal sealed class DataTransferService(
         }
 
         return filter.Value.GetRawText();
+    }
+
+    // Keyword candidates can be limited to one discovery run: its job when queued, its seed when run
+    // synchronously. A malformed id is rejected instead of ignored, because ignoring it exports every run.
+    private static DiscoveryRunKey? NormalizeDiscoveryRunKey(string? exportType, JsonElement? filter, ValidationErrors errors)
+    {
+        if (exportType != "keyword_candidates" || filter is not { ValueKind: JsonValueKind.Object } value)
+        {
+            return null;
+        }
+
+        var jobId = ReadDiscoveryRunId(value, "jobId", errors);
+        var seedId = ReadDiscoveryRunId(value, "seedId", errors);
+        if (jobId.HasValue && seedId.HasValue)
+        {
+            errors.Add(nameof(DataExportRequest.Filter), "filter.jobId and filter.seedId cannot be combined.");
+            return null;
+        }
+
+        return jobId.HasValue || seedId.HasValue ? new DiscoveryRunKey(jobId, seedId) : null;
+    }
+
+    private static Guid? ReadDiscoveryRunId(JsonElement filter, string propertyName, ValidationErrors errors)
+    {
+        if (!filter.TryGetProperty(propertyName, out var property) || property.ValueKind == JsonValueKind.Null)
+        {
+            return null;
+        }
+
+        if (property.ValueKind == JsonValueKind.String && Guid.TryParse(property.GetString(), out var id))
+        {
+            return id;
+        }
+
+        errors.Add(nameof(DataExportRequest.Filter), $"filter.{propertyName} must be a UUID.");
+        return null;
     }
 
     private static IReadOnlyList<string> NormalizeColumns(
@@ -2315,6 +2447,11 @@ internal sealed class DataTransferService(
         decimal? Competition,
         string? FirstSeenRange);
 
+    private sealed record DiscoveryRunKey(Guid? JobId, Guid? SeedId);
+
+    // EndedAt is known only for runs with a job, and bounds the questions saved before questions.seed_id existed.
+    private sealed record DiscoveryRun(KeywordSeedEntity Seed, DateTime? EndedAt);
+
     private sealed record ExportFilters(
         string? Q,
         string? Location,
@@ -2322,6 +2459,7 @@ internal sealed class DataTransferService(
         decimal? MinSearchVolume,
         decimal? MinOpportunityScore,
         Guid? JobId,
+        Guid? SeedId,
         string? Source,
         string? Provider,
         int? StatusCode)
@@ -2334,6 +2472,7 @@ internal sealed class DataTransferService(
                 ReadDecimal(filter, "minSearchVolume"),
                 ReadDecimal(filter, "minOpportunityScore"),
                 ReadGuid(filter, "jobId"),
+                ReadGuid(filter, "seedId"),
                 ReadString(filter, "source"),
                 ReadString(filter, "provider"),
                 ReadInt(filter, "statusCode"));

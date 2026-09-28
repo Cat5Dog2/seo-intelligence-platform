@@ -125,6 +125,29 @@ public sealed class MvpDatabaseSchemaTests
 
     [Fact]
     [Trait("Category", "Integration")]
+    public void QuestionsLinkToTheirDiscoverySeedThroughANullableColumn()
+    {
+        using var context = CreateContext();
+        var seedId = context.Model.FindEntityType(typeof(QuestionEntity))!.FindProperty(nameof(QuestionEntity.SeedId))!;
+        Assert.True(seedId.IsNullable);
+        Assert.Equal("seed_id", seedId.GetColumnName());
+
+        var sql = context.GetService<IMigrator>().GenerateScript(options: MigrationsSqlGenerationOptions.Idempotent);
+        Assert.Contains("ix_questions_seed_id", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("FK_questions_keyword_seeds_seed_id", sql, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public void ModelHasNoChangesMissingFromMigrations()
+    {
+        using var context = CreateContext();
+
+        Assert.False(context.Database.HasPendingModelChanges());
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
     public void RakkoV1120BackfillMigrationTargetsOnlyLegacyJobsAndKeepsAuditStateInSync()
     {
         using var context = CreateContext();

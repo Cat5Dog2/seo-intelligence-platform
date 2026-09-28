@@ -87,10 +87,12 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | T-MVP-006 | Discord通知設定テスト | `notification_deliveries`に履歴が残る。 |
 | T-MVP-007 | キーワード探索同期条件 | 軽量条件では200、重い条件では202とjobId/statusUrlを返す。 |
 | T-MVP-008 | キーワード探索保存 | `keywords`に正規化、各結果テーブルに保存される。 |
+| T-MVP-008a | 同じシードキーワードの探索の並行実行 | 待機中の探索が同じシードキーワードで複数あっても、各ジョブが自分の質問を取得し、`questions.seed_id`に自分のシードを保存する。 |
 | T-MVP-009 | 一括検索ボリューム登録 | `jobs`と`search_volume_jobs`が作成される。 |
 | T-MVP-010 | 外部requestId保存 | `job_external_requests.external_request_id`が保存される。 |
 | T-MVP-011 | 結果取得 | `search_volume_results`、`keyword_metrics`、`keyword_monthly_volumes`、`project_keyword_scores`が更新される。 |
 | T-MVP-012 | CSV出力 | `data_exports`とStorageファイル、`audit_logs`が作成される。 |
+| T-MVP-012a | 候補語CSVの探索指定 | `filter.jobId`（非同期）または`filter.seedId`（同期）指定時は、画面に表示中の候補（探索時の絞り込み・並び順・件数上限を適用し、エンジン別の行をまとめた保存済み結果）と同じ行を出力する。保存済み結果の無い探索（旧データ・実行中）は、そのシードに保存したサジェスト・関連語・質問を出力し、同じシードキーワードの探索が重なっても質問を取り違えない。`seed_id`の無い既存の質問はジョブの実行期間で帰属させる。別プロジェクト・別種別・存在しない探索は404、形式不正と両方指定は400で、いずれもエクスポートを登録しない。未指定・`null`は従来どおり全探索を出力する。 |
 | T-MVP-013 | CSV入力 | ブラウザ内でCSVをパースし、APIへは`keywords` JSON配列だけが送信される。 |
 | T-MVP-014 | Idempotency-Key重複登録 | 同一スコープ・同一request hashでは既存ジョブが返り、二重登録されない。 |
 | T-MVP-015 | waiting_externalジョブのキャンセル | ポーリング/結果取込が停止し、後続結果が業務テーブルへ保存されない。 |

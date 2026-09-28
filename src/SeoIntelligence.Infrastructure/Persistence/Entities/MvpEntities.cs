@@ -254,6 +254,7 @@ public sealed class QuestionEntity
 {
     public Guid Id { get; set; }
     public Guid ProjectId { get; set; }
+    public Guid? SeedId { get; set; }
     public Guid? SeedKeywordId { get; set; }
     public string QuestionText { get; set; } = string.Empty;
     public string Source { get; set; } = string.Empty;

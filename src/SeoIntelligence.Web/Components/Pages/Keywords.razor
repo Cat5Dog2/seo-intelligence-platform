@@ -500,8 +500,11 @@
         IsExporting = true;
         Errors = [];
         Message = null;
-        var filter = IsGuest && DiscoveryResult?.JobId is { } discoveryJobId
+        // Export only the displayed run: a queued run by its job, a synchronous run by its seed.
+        var filter = DiscoveryResult?.JobId is { } discoveryJobId
             ? JsonSerializer.SerializeToElement(new { jobId = discoveryJobId }, JsonOptions)
+            : DiscoveryResult?.SeedId is { } discoverySeedId
+            ? JsonSerializer.SerializeToElement(new { seedId = discoverySeedId }, JsonOptions)
             : JsonSerializer.SerializeToElement(
             new
             {
