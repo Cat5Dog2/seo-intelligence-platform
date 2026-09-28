@@ -24,6 +24,7 @@ public sealed partial class GuestDemoSession
     private readonly Dictionary<Guid, IReadOnlyList<SearchVolumeResultRow>> _volumes = [];
     private readonly Dictionary<Guid, DataExportDetails> _exports = [];
     private readonly Dictionary<Guid, string> _files = [];
+    private readonly int _seedJobCount;
     private Guid? _selectedProjectId;
     private static readonly JsonElement EmptyJson = JsonSerializer.SerializeToElement(new { });
 
@@ -32,6 +33,8 @@ public sealed partial class GuestDemoSession
         ExpiresAt = expiresAt;
         var project = NewProject("デモプロジェクト", "Japan", "Japanese", EmptyJson, "ゲスト専用のサンプルデータです。");
         _projects.Add(project.ProjectId, project);
+        SeedPortfolio(project);
+        _seedJobCount = _jobs.Count;
         _selectedProjectId = project.ProjectId;
     }
 
@@ -118,7 +121,7 @@ public sealed partial class GuestDemoSession
 
             if (method == HttpMethod.Post)
             {
-                if (_jobs.Count >= MaxJobs) return Limit<T>("デモでの実行は50回までです。ゲストログインし直すと初期化されます。");
+                if (_jobs.Count - _seedJobCount >= MaxJobs) return Limit<T>("デモでの実行は50回までです。ゲストログインし直すと初期化されます。");
                 if (route == "keyword-discovery/suggest" && body is KeywordDiscoveryRequest discovery)
                 {
                     var seed = discovery.SeedKeyword ?? discovery.Seeds?.FirstOrDefault();
@@ -188,8 +191,7 @@ public sealed partial class GuestDemoSession
                 {
                     var discoveries = _discoveries.Where(pair => _jobs[pair.Key].ProjectId == projectId).Select(pair => pair.Value).ToArray();
                     var volumes = _volumes.Where(pair => _jobs[pair.Key].ProjectId == projectId).Select(pair => pair.Value).ToArray();
-                    return Ok<T>(new DashboardSnapshot(discoveries.Sum(item => item.Candidates.Count), 0, 0, 0,
-                        discoveries.Length, volumes.Length, volumes.Sum(item => item.Count)));
+                    return Ok<T>(PortfolioDashboard(projectId, discoveries, volumes));
                 }
                 if (parts.Length >= 6 && parts[4] == "jobs" && Guid.TryParse(parts[5], out var id))
                 {

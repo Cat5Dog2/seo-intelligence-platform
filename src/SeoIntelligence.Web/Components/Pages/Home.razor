@@ -1,6 +1,7 @@
 @page "/"
 @attribute [Authorize(Policy = ApplicationPolicies.RequireWorkspaceAccess)]
 @using System.Text.Json
+@inherits WorkspaceComponentBase
 @implements IDisposable
 @inject ISeoIntelligenceApiClient ApiClient
 @inject ProjectSelectionState ProjectState
@@ -20,7 +21,8 @@
 
     @if (!ProjectState.IsLoading && ProjectState.ErrorMessage is null)
     {
-        <GettingStarted HasProject="@(ProjectState.SelectedProject is not null)" />
+        @if (IsGuest) { <DemoWalkthrough /> }
+        else { <GettingStarted HasProject="@(ProjectState.SelectedProject is not null)" /> }
     }
 
     <section class="split-grid">
@@ -230,6 +232,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        await base.OnInitializedAsync();
         ProjectState.Changed += OnProjectStateChanged;
         await LoadProjectsAsync();
         await ProjectState.LoadAsync();

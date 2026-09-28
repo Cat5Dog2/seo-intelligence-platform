@@ -140,6 +140,7 @@
             </div>
         </details>
         }
+        @if (IsGuest) { <DemoMetricGuide /> }
         <DataTable Items="@Results" Columns="@ResultColumns" MobileCards="true" IsLoading="@IsResultLoading" EmptyText="検索ボリューム結果はありません。">
             <RowActions Context="row">
                 @if (row.MonthlySearchVolume is { Count: > 0 } monthly)

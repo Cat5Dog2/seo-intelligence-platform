@@ -41,7 +41,7 @@ public sealed class GuestDemoSessionTests
 
     [Theory]
     [Trait("Category", "Unit")]
-    [InlineData("", "", 1)]
+    [InlineData("", "", 3)]
     [InlineData("pending", "SEO", 1)]
     [InlineData("reviewed", "", 0)]
     [InlineData("rejected", "", 0)]
@@ -64,6 +64,7 @@ public sealed class GuestDemoSessionTests
     {
         var session = NewSession();
         var project = Assert.Single(session.Execute<IReadOnlyList<ProjectDetails>>(HttpMethod.Get, "/api/projects", null).Data!);
+        project = session.Execute<ProjectDetails>(HttpMethod.Post, "/api/projects", new ProjectCreateRequest("履歴検証", "jp", "ja", null, null)).Data!;
         var jobs = new List<JobDetails>();
         for (var index = 0; index < 6; index++)
         {
@@ -181,7 +182,7 @@ public sealed class GuestDemoSessionTests
         var session = NewSession();
         var project = Assert.Single(session.Execute<IReadOnlyList<ProjectDetails>>(HttpMethod.Get, "/api/projects", null).Data!);
         var prefix = $"/api/projects/{project.ProjectId}/rewrite/tasks";
-        var sample = Assert.Single(session.Execute<IReadOnlyList<RewriteTaskDetails>>(HttpMethod.Get, prefix, null).Data!);
+        var sample = Assert.Single(session.Execute<IReadOnlyList<RewriteTaskDetails>>(HttpMethod.Get, prefix, null).Data!, row => row.TargetUrl.EndsWith("/seo", StringComparison.Ordinal));
 
         var result = session.Execute<RewriteTaskDetails>(HttpMethod.Get, $"{prefix}/{sample.TaskId}", null);
 
@@ -211,7 +212,7 @@ public sealed class GuestDemoSessionTests
         var session = NewSession();
         var project = Assert.Single(session.Execute<IReadOnlyList<ProjectDetails>>(HttpMethod.Get, "/api/projects", null).Data!);
         var prefix = $"/api/projects/{project.ProjectId}/briefs";
-        var sample = Assert.Single(session.Execute<IReadOnlyList<ArticleBriefSummary>>(HttpMethod.Get, prefix, null).Data!);
+        var sample = Assert.Single(session.Execute<IReadOnlyList<ArticleBriefSummary>>(HttpMethod.Get, prefix, null).Data!, row => row.TargetKeyword == "SEO 対策");
         var details = session.Execute<ArticleBriefDetails>(HttpMethod.Get, $"{prefix}/{sample.BriefId}", null).Data!;
         var version = Assert.Single(session.Execute<IReadOnlyList<ArticleBriefVersionDetails>>(HttpMethod.Get,
             $"{prefix}/{sample.BriefId}/versions", null).Data!);
@@ -286,7 +287,7 @@ public sealed class GuestDemoSessionTests
         Assert.Equal(HttpStatusCode.NotFound, session.Execute<JobReference>(HttpMethod.Get, $"/api/projects/{second.ProjectId}/search-volume/jobs/{volume.JobId}", null).StatusCode);
         var export = session.Execute<JobReference>(HttpMethod.Post, $"/api/projects/{second.ProjectId}/exports/csv", new DataExportRequest("search_volume_results", JsonSerializer.SerializeToElement(new { jobId = volume.JobId })));
         Assert.Equal(HttpStatusCode.NotFound, export.StatusCode);
-        var sample = Assert.Single(session.Execute<IReadOnlyList<TopicClusterSummary>>(HttpMethod.Get, $"/api/projects/{first.ProjectId}/clusters", null).Data!);
+        var sample = Assert.Single(session.Execute<IReadOnlyList<TopicClusterSummary>>(HttpMethod.Get, $"/api/projects/{first.ProjectId}/clusters", null).Data!, row => row.RepresentativeKeyword == "SEO 対策");
         Assert.Equal(HttpStatusCode.NotFound, session.Execute<TopicClusterDetails>(HttpMethod.Get, $"/api/projects/{second.ProjectId}/clusters/{sample.ClusterId}", null).StatusCode);
     }
 

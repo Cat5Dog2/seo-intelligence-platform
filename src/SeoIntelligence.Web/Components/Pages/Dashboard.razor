@@ -13,6 +13,7 @@
         <button type="button" class="text-button" @onclick="LoadAsync" disabled="@(ProjectState.SelectedProject is null || IsLoading)">更新</button>
     </header>
     <ErrorSummary Errors="@Errors" />
+    @if (IsGuest) { <DemoWalkthrough /> }
     @if (!string.IsNullOrWhiteSpace(Message)) { <div class="state-row" role="status">@Message</div> }
     @if (ProjectState.SelectedProject is null)
     {
@@ -42,15 +43,23 @@
         <section class="metric-strip dashboard-metrics dashboard-primary-metrics" aria-label="調査の状況">
             <div class="metric"><span>キーワード探索</span><strong>@Snapshot.KeywordDiscoveryCount</strong></div>
             <div class="metric"><span>検索ボリューム結果</span><strong>@Snapshot.SearchVolumeResultCount</strong></div>
-            <div class="metric"><span>実行中の調査</span><strong>@Snapshot.RunningJobCount</strong></div>
-            <div class="metric"><span>確認が必要な失敗</span><strong>@Snapshot.FailedJobCount</strong></div>
+            @if (IsGuest)
+            {
+                <div class="metric"><span>競合サイト</span><strong>@(Snapshot.CompetitorSummary?.CompetitorCount ?? 0)</strong></div>
+                <div class="metric"><span>記事ブリーフ</span><strong>@(Snapshot.BriefSummary?.BriefCount ?? 0)</strong></div>
+            }
+            else
+            {
+                <div class="metric"><span>実行中の調査</span><strong>@Snapshot.RunningJobCount</strong></div>
+                <div class="metric"><span>確認が必要な失敗</span><strong>@Snapshot.FailedJobCount</strong></div>
+            }
         </section>
         <section class="panel">
             <div class="section-heading"><h2>次のアクション</h2></div>
-            <div class="button-row"><a class="primary-button" href="/keywords">キーワードを探す</a><a class="text-button" href="/search-volume">検索ボリュームを調べる</a></div>
+            <div class="button-row"><a class="primary-button" href="/keywords">キーワードを探す</a><a class="text-button" href="/search-volume">検索ボリュームを調べる</a><a class="text-button" href="/clusters">テーマ別に整理する</a><a class="text-button" href="/rewrite">記事の改善案を見る</a></div>
         </section>
         <section class="panel">
-            <JobProgressPanel Title="直近の調査・出力" ProjectScoped="true" PageSize="5" />
+            <JobProgressPanel Title="直近の調査・出力" ProjectScoped="true" PageSize="6" />
         </section>
         @if (TopOpportunityScores.Count > 0)
         {
@@ -59,6 +68,7 @@
                     <h2>機会スコア上位</h2>
                     @if (!IsGuest) { <button type="button" class="secondary-button" @onclick="CreateKeywordMetricsExportAsync" disabled="@IsExporting">CSV出力</button> }
                 </div>
+                @if (IsGuest) { <DemoMetricGuide /> }
                 <DataTable Items="@TopOpportunityScores" Columns="@OpportunityColumns" EmptyText="機会スコアはありません。" />
             </section>
         }
