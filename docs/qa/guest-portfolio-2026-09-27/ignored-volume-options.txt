@@ -1,0 +1,139 @@
+- banner:
+  - link "SEO Intelligence":
+    - /url: /
+  - generic: ゲスト・Mock
+  - generic: 選択中のプロジェクト
+  - combobox "選択中のプロジェクト":
+    - option "デモプロジェクト" [selected]
+    - option "QA-Portfolio-Edited"
+  - button "設定・アカウント"
+- navigation "メインメニュー":
+  - link "プロジェクト":
+    - /url: /
+  - link "ダッシュボード":
+    - /url: /dashboard
+  - heading "調査・分析" [level=2]
+  - link "キーワード":
+    - /url: /keywords
+  - link "検索ボリューム":
+    - /url: /search-volume
+  - link "競合分析":
+    - /url: /competitors
+  - link "獲得語/ページ":
+    - /url: /influx
+  - link "コンテンツ分析":
+    - /url: /content-analysis
+  - heading "コンテンツ" [level=2]
+  - link "トピッククラスター":
+    - /url: /clusters
+  - link "記事ブリーフ":
+    - /url: /briefs
+  - link "リライト管理":
+    - /url: /rewrite
+  - link "AIアシスタント":
+    - /url: /ai-assistant
+  - heading "監視・レポート" [level=2]
+  - link "順位監視":
+    - /url: /rank-monitoring
+  - link "レポート":
+    - /url: /reports
+- main:
+  - heading "検索ボリューム" [level=1]
+  - paragraph: "選択中プロジェクト: デモプロジェクト"
+  - status:
+    - generic: 調査が完了しました。結果を確認できます。
+    - link "結果を見る":
+      - /url: /search-volume#search-volume-results
+  - generic "入力・調査条件（完了）" [active]
+  - paragraph: 1件 / 空欄 0 / 重複 0
+  - generic: キーワード貼付
+  - textbox "キーワード貼付": SEO test
+  - generic "CSV・調査条件（日本・日本語）"
+  - generic: CSVファイル
+  - button "CSVファイル"
+  - generic: 地域
+  - combobox "地域":
+    - option "日本" [selected]
+  - generic: 言語
+  - combobox "言語":
+    - option "日本語" [selected]
+  - generic: 集計月数
+  - spinbutton "集計月数": "3"
+  - checkbox "SEO難易度を取得"
+  - generic: SEO難易度を取得
+  - button "検索ボリュームを調べる"
+  - button "入力クリア"
+  - region "調査の進捗":
+    - heading "調査の進捗" [level=2]
+    - button "状態を再確認"
+    - status:
+      - strong: 完了
+      - progressbar "調査の進捗"
+      - generic: 100%
+  - generic "過去の調査を開く"
+  - region "結果 1 件":
+    - heading "結果 1 件" [level=2]:
+      - text: 結果
+      - generic: 1 件
+    - button "CSV出力"
+    - generic "絞り込み・並べ替え"
+    - option "キーワード" [selected]
+    - option "検索ボリューム"
+    - option "SEO難易度"
+    - option "CPC"
+    - option "広告競合性"
+    - option "昇順" [selected]
+    - option "降順"
+    - region "データ一覧":
+      - table:
+        - rowgroup:
+          - row "キーワード 検索ボリューム SEO難易度 CPC 広告競合性 取得元 キャッシュ 月別推移":
+            - columnheader "キーワード"
+            - columnheader "検索ボリューム"
+            - columnheader "SEO難易度"
+            - columnheader "CPC"
+            - columnheader "広告競合性"
+            - columnheader "取得元"
+            - columnheader "キャッシュ"
+            - columnheader "月別推移"
+        - rowgroup:
+          - row "SEO test 1200 30 0.5 0.3 Mock 新規取得 -":
+            - cell "SEO test"
+            - cell "1200"
+            - cell "30"
+            - cell "0.5"
+            - cell "0.3"
+            - cell "Mock"
+            - cell "新規取得"
+            - cell "-"
+  - heading "CSV出力" [level=2]
+  - button "更新"
+  - region "データ一覧":
+    - table:
+      - rowgroup:
+        - row "種別 状態 進捗 再試行 更新 操作":
+          - columnheader "種別"
+          - columnheader "状態"
+          - columnheader "進捗"
+          - columnheader "再試行"
+          - columnheader "更新"
+          - columnheader "操作"
+      - rowgroup:
+        - row "CSV出力 完了 100% 0 2026-09-27 06:22 ダウンロード":
+          - cell "CSV出力"
+          - cell "完了"
+          - cell "100%"
+          - cell "0"
+          - cell "2026-09-27 06:22"
+          - cell "ダウンロード":
+            - link "ダウンロード":
+              - /url: /downloads/projects/9b5654e4-c0aa-4088-9e49-702b997d69f4/exports/ae65c9c4-e5bf-4dbf-b598-e3541cdf5ee1
+        - row "CSV出力 完了 100% 0 2026-09-27 06:15 ダウンロード":
+          - cell "CSV出力"
+          - cell "完了"
+          - cell "100%"
+          - cell "0"
+          - cell "2026-09-27 06:15"
+          - cell "ダウンロード":
+            - link "ダウンロード":
+              - /url: /downloads/projects/9b5654e4-c0aa-4088-9e49-702b997d69f4/exports/5c680847-0a5a-460c-b138-fe6a7fd7b605

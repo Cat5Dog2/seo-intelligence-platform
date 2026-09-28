@@ -1024,3 +1024,10 @@ body:has(dialog[open]) { overflow: hidden; }
     .research-flow { padding: 0.75rem; }
     .result-filters { font-size: 0.9rem; }
 }
+
+.reason-summary { padding-top: 1rem; line-height: 1.8; }
+.json-preview { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .85rem; max-width: 100%; }
+.monthly-detail summary { cursor: pointer; color: var(--accent); white-space: nowrap; }
+.monthly-detail dl { min-width: 12rem; }
+.monthly-detail dl > div { display: flex; justify-content: space-between; gap: 1rem; line-height: 1.8; }
+.monthly-detail dd { margin: 0; }

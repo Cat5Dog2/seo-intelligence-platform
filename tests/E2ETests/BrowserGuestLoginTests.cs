@@ -28,10 +28,16 @@ public sealed class BrowserGuestLoginTests
         await page.GetByLabel("プロジェクト名（必須）", new() { Exact = true }).PressAsync("Tab");
         await page.GetByRole(AriaRole.Button, new() { Name = "プロジェクトを作成", Exact = true }).ClickAsync();
         await Expect(page.GetByRole(AriaRole.Cell, new() { Name = projectName, Exact = true })).ToBeVisibleAsync();
+        await Expect(page.GetByRole(AriaRole.Combobox, new() { Name = "選択中のプロジェクト", Exact = true }).Locator("option:checked")).ToHaveTextAsync(projectName);
+        await page.ReloadAsync();
+        await Expect(page.GetByRole(AriaRole.Combobox, new() { Name = "選択中のプロジェクト", Exact = true }).Locator("option:checked")).ToHaveTextAsync(projectName);
 
         await page.GetByRole(AriaRole.Link, new() { Name = "キーワード", Exact = true }).ClickAsync();
         await page.GetByLabel("シードキーワード", new() { Exact = true }).FillAsync("珈琲");
         await page.GetByTestId("keyword-discovery-run-button").ClickAsync();
+        await Expect(page.GetByRole(AriaRole.Cell, new() { Name = "珈琲 とは", Exact = true })).ToBeVisibleAsync();
+        await page.GetByRole(AriaRole.Link, new() { Name = "ダッシュボード", Exact = true }).ClickAsync();
+        await page.GetByRole(AriaRole.Link, new() { Name = "結果を開く", Exact = true }).ClickAsync();
         await Expect(page.GetByRole(AriaRole.Cell, new() { Name = "珈琲 とは", Exact = true })).ToBeVisibleAsync();
         await page.GetByTestId("keyword-candidates-export-button").ClickAsync();
         var download = await page.RunAndWaitForDownloadAsync(async () =>
@@ -46,9 +52,12 @@ public sealed class BrowserGuestLoginTests
         await page.GetByTestId("search-volume-keywords-input").FillAsync("珈琲 豆\n珈琲 入れ方");
         await page.GetByTestId("search-volume-register-button").ClickAsync();
         await Expect(page.GetByRole(AriaRole.Cell, new() { Name = "珈琲 豆", Exact = true })).ToBeVisibleAsync();
+        await page.ReloadAsync();
+        await Expect(page.GetByRole(AriaRole.Cell, new() { Name = "珈琲 豆", Exact = true })).ToBeVisibleAsync();
 
         await page.GotoAsync(webUrl + "/admin");
         await Expect(page.GetByRole(AriaRole.Heading, new() { Name = "権限がありません", Exact = true })).ToBeVisibleAsync();
+        await page.GetByTestId("forbidden-back-link").ClickAsync();
         await page.Locator(".settings-trigger").ClickAsync();
         await page.GetByRole(AriaRole.Button, new() { Name = "ログアウト", Exact = true }).ClickAsync();
         await Expect(page.GetByRole(AriaRole.Button, new() { Name = "登録不要でデモを試す", Exact = true })).ToBeVisibleAsync();

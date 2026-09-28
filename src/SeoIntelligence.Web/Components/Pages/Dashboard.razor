@@ -50,14 +50,7 @@
             <div class="button-row"><a class="primary-button" href="/keywords">キーワードを探す</a><a class="text-button" href="/search-volume">検索ボリュームを調べる</a></div>
         </section>
         <section class="panel">
-            <JobProgressPanel Title="直近の調査・出力" ProjectScoped="true" PageSize="5">
-                <ResultActions Context="job">
-                    @if (job.JobType == "RegisterSearchVolumeJob")
-                    {
-                        <a class="table-action" href="@($"/search-volume?jobId={job.JobId:D}")">結果を開く</a>
-                    }
-                </ResultActions>
-            </JobProgressPanel>
+            <JobProgressPanel Title="直近の調査・出力" ProjectScoped="true" PageSize="5" />
         </section>
         @if (TopOpportunityScores.Count > 0)
         {
@@ -158,9 +151,9 @@
     [
         new("キーワード", row => row.Keyword),
         new("スコア", row => row.OpportunityScore.ToString("0.####"), "table-number"),
-        new("地域", row => row.Location),
-        new("言語", row => row.Language),
-        new("scored", row => FormatDateTime(row.ScoredAt))
+        new("地域", row => UiText.Location(row.Location)),
+        new("言語", row => UiText.Language(row.Language)),
+        new("算出日時", row => FormatDateTime(row.ScoredAt))
     ];
 
     private DashboardSnapshot? Snapshot { get; set; }

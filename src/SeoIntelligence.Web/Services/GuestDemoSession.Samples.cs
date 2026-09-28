@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using SeoIntelligence.Application.Services;
 
@@ -7,6 +8,11 @@ public sealed partial class GuestDemoSession
 {
     private readonly Dictionary<Guid, (Guid KeywordId, Guid ResourceId)> _sampleIds = [];
     private readonly DateTime _sampleTime = DateTime.UtcNow;
+
+    private static IReadOnlyDictionary<string, int> MonthlyVolumes(int baseline, int months)
+        => Enumerable.Range(1, months).ToDictionary(
+            offset => DateTime.UtcNow.AddMonths(-months + offset - 1).ToString("yyyyMM", CultureInfo.InvariantCulture),
+            offset => baseline * (80 + offset * 2) / 100);
 
     private ApiClientResult<T> ReadSample<T>(string route, Guid projectId, Dictionary<string, string> query)
     {

@@ -177,8 +177,8 @@
     private static readonly IReadOnlyList<DataTableColumn<ProjectDetails>> ProjectColumns =
     [
         new("名称", project => project.Name),
-        new("地域", project => project.DefaultLocation),
-        new("言語", project => project.DefaultLanguage),
+        new("地域", project => UiText.Location(project.DefaultLocation)),
+        new("言語", project => UiText.Language(project.DefaultLanguage)),
         new("状態", project => UiText.Status(project.Status)),
         new("更新", project => FormatDateTime(project.UpdatedAt))
     ];
@@ -319,6 +319,7 @@
             {
                 ClearProjectForm();
                 await ProjectState.RefreshAsync();
+                if (!isEditing && result.Data is { } created) await ProjectState.SelectAsync(created.ProjectId);
                 await LoadProjectsAsync();
                 ProjectSuccess = isEditing ? "プロジェクトを更新しました。" : "プロジェクトを作成しました。キーワード探索へ進めます。";
             }

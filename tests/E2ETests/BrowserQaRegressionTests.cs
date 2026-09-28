@@ -1,18 +1,22 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Reflection;
+using System.Security.Claims;
 using System.Text.Json;
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.JSInterop;
 using SeoIntelligence.Application.Jobs;
+using SeoIntelligence.Application.Security;
 using SeoIntelligence.Application.Services;
 using SeoIntelligence.Contracts.Api;
 using SeoIntelligence.Web.Components.Pages;
 using SeoIntelligence.Web.Components.Common;
+using SeoIntelligence.Web.Security;
 using SeoIntelligence.Web.Services;
 
 namespace E2ETests;
@@ -462,6 +466,7 @@ public sealed class BrowserQaRegressionTests
     public async Task CompletedKeywordDiscoveryRefreshLoadsCandidatesWithoutRunningAnotherSearch(string status)
     {
         using var fixture = new UiFixture();
+        fixture.JobType = "KeywordDiscoveryJob";
         fixture.JobStatus = status;
         var page = await fixture.CreateAsync<Keywords>();
         Set(Get(page, "DiscoveryForm")!, "SeedKeyword", "QA search");
@@ -470,6 +475,99 @@ public sealed class BrowserQaRegressionTests
         var candidates = (IReadOnlyList<KeywordCandidate>)Get(page, "Candidates")!;
         Assert.Equal("QA keyword", Assert.Single(candidates).Keyword);
         Assert.Single(fixture.Posts);
+    }
+
+    [Fact]
+    [Trait("Category", "UI")]
+    public async Task GuestKeywordRevisitReopensTheSavedExplorationAndLinksToVolumeInTheSameProject()
+    {
+        using var fixture = new UiFixture { JobType = "KeywordDiscoveryJob", HasResearchHistory = true, AsGuest = true };
+        await fixture.RenderAsync<Keywords>(async (page, state) =>
+        {
+            Assert.Equal("QA keyword", Assert.Single((IReadOnlyList<KeywordCandidate>)Get(page, "Candidates")!).Keyword);
+            Assert.Empty(fixture.Posts);
+            await InvokeAsync(page, "RegisterCandidateSearchVolumeAsync");
+            Assert.Equal($"/search-volume?projectId={fixture.ProjectId:D}&jobId={fixture.JobId:D}", GetField(page, "VolumeResultHref"));
+        });
+    }
+
+    [Fact]
+    [Trait("Category", "UI")]
+    public async Task SignedInKeywordRevisitLeavesSavedExplorationsInTheHistory()
+    {
+        using var fixture = new UiFixture { JobType = "KeywordDiscoveryJob", HasResearchHistory = true };
+        await fixture.RenderAsync<Keywords>((page, state) =>
+        {
+            Assert.Empty((IReadOnlyList<KeywordCandidate>)Get(page, "Candidates")!);
+            Assert.DoesNotContain(fixture.GetPaths, path => path.EndsWith($"/keyword-discovery/jobs/{fixture.JobId:D}/results", StringComparison.Ordinal));
+            return Task.CompletedTask;
+        });
+    }
+
+    [Theory]
+    [Trait("Category", "UI")]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ScopedVolumeLinkRestoresItsProjectAndRejectsUnknownProjects(bool invalid)
+    {
+        using var fixture = new UiFixture();
+        await fixture.RenderSearchVolumeAsync(async (page, state) =>
+        {
+            await state.SelectAsync(fixture.OtherProjectId);
+            page.InitialProjectId = invalid ? Guid.NewGuid().ToString() : fixture.ProjectId.ToString();
+            page.InitialJobId = fixture.JobId.ToString();
+            await InvokeAsync(page, "OnParametersSetAsync");
+            var results = (IReadOnlyList<SearchVolumeResultRow>)Get(page, "Results")!;
+            if (invalid)
+            {
+                Assert.Empty(results);
+                Assert.Equal(fixture.OtherProjectId, state.SelectedProject?.ProjectId);
+                Assert.Contains((IReadOnlyList<ApiError>)Get(page, "Errors")!, error => error.Code == "Resource.NotFound");
+            }
+            else
+            {
+                Assert.Equal(fixture.ProjectId, state.SelectedProject?.ProjectId);
+                Assert.Equal("QA volume", Assert.Single(results).Keyword);
+            }
+        });
+    }
+
+    private static object? GetField(object target, string name)
+        => target.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(target);
+
+    [Fact]
+    [Trait("Category", "UI")]
+    public async Task MonthlyResultDetailsShowTheCountAndEveryRequestedMonth()
+    {
+        using var fixture = new UiFixture { VolumeMonths = new Dictionary<string, int> { ["202601"] = 120, ["202602"] = 140, ["202603"] = 160 } };
+        await fixture.RenderSearchVolumeAsync(async (page, state) =>
+        {
+            Set(page, "JobIdText", fixture.JobId.ToString());
+            await DispatchAsync(page, "RefreshJobAsync");
+            var html = fixture.ReadHtml!();
+            Assert.Contains("月別推移（全3か月）", html);
+            Assert.Contains("2026年1月", html);
+            Assert.Contains("2026年2月", html);
+            Assert.Contains("2026年3月", html);
+            Assert.DoesNotContain("@monthly", html);
+        });
+    }
+
+    [Fact]
+    [Trait("Category", "UI")]
+    public async Task InvalidResultLinkDoesNotLeaveAPreviousJobsResultsVisible()
+    {
+        using var fixture = new UiFixture();
+        await fixture.RenderSearchVolumeAsync(async (page, state) =>
+        {
+            Set(page, "JobIdText", fixture.JobId.ToString());
+            await InvokeAsync(page, "RefreshJobAsync");
+            Assert.Single((IReadOnlyList<SearchVolumeResultRow>)Get(page, "Results")!);
+            page.InitialJobId = "invalid-id";
+            await InvokeAsync(page, "OnParametersSetAsync");
+            Assert.Empty((IReadOnlyList<SearchVolumeResultRow>)Get(page, "Results")!);
+            Assert.NotEmpty((IReadOnlyList<ApiError>)Get(page, "Errors")!);
+        });
     }
 
     private static Task DispatchAsync(IHandleEvent component, string method)
@@ -515,6 +613,10 @@ public sealed class BrowserQaRegressionTests
         public TaskCompletionSource<string> PendingRequestStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource ResultsRequested { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public string JobStatus { get; set; } = "succeeded";
+        public string JobType { get; set; } = "RegisterSearchVolumeJob";
+        public bool HasResearchHistory { get; set; }
+        public bool AsGuest { get; init; }
+        public IReadOnlyDictionary<string, int>? VolumeMonths { get; set; }
         public Guid BriefId { get; } = Guid.NewGuid();
         public Guid ExportId { get; } = Guid.NewGuid();
         public bool ExportCreated { get; set; }
@@ -531,7 +633,7 @@ public sealed class BrowserQaRegressionTests
         public SeoIntelligenceApiClient CreateClient()
             => new(http, NullLogger<SeoIntelligenceApiClient>.Instance);
 
-        public JobDetails Job() => new(jobId, Guid.NewGuid(), ProjectId, "RegisterSearchVolumeJob", JobStatus, 100,
+        public JobDetails Job() => new(jobId, Guid.NewGuid(), ProjectId, JobType, JobStatus, 100,
             $"/api/jobs/{jobId:D}", null, null, 0, null, null, "developer", DateTime.UtcNow, DateTime.UtcNow, DateTime.UtcNow);
 
         public Task RenderSearchVolumeAsync(Func<SearchVolume, ProjectSelectionState, Task> action)
@@ -548,6 +650,12 @@ public sealed class BrowserQaRegressionTests
             services.AddSingleton(state);
             services.AddSingleton<IComponentActivator>(activator);
             services.AddSingleton<IJSRuntime, UnusedJsRuntime>();
+            if (AsGuest)
+            {
+                // Components read guest mode from the cascading authentication state, as they do in the app.
+                services.AddCascadingAuthenticationState();
+                services.AddSingleton<AuthenticationStateProvider, GuestAuthenticationState>();
+            }
             await using var provider = services.BuildServiceProvider();
             await using var renderer = new HtmlRenderer(provider, provider.GetRequiredService<ILoggerFactory>());
             await renderer.Dispatcher.InvokeAsync(async () =>
@@ -594,7 +702,7 @@ public sealed class BrowserQaRegressionTests
                 }
                 if (path == "/api/jobs") return Reply(ExportCreated
                     ? new[] { Job() with { JobType = "DataExportJob", ResultResource = new JobResultResource("data_export", ExportId) } }
-                    : Array.Empty<JobDetails>());
+                    : HasResearchHistory ? new[] { Job() } : Array.Empty<JobDetails>());
                 if (path.EndsWith("/dashboard", StringComparison.Ordinal)) return Reply(Dashboard);
                 if (path.EndsWith("/briefs", StringComparison.Ordinal)) return Reply(Array.Empty<ArticleBriefSummary>());
                 if (path.EndsWith($"/briefs/{BriefId:D}", StringComparison.Ordinal)) return Reply(Brief());
@@ -608,7 +716,7 @@ public sealed class BrowserQaRegressionTests
                     if (FailResults) return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
                     { Content = JsonContent.Create(ApiResponseEnvelope<object>.Failure("qa", [new ApiError("Unavailable", "結果を取得できません。")])) };
                     ResultsRequested.TrySetResult();
-                    return Reply(new[] { new SearchVolumeResultRow("QA volume", 900, null, null, null) });
+                    return Reply(new[] { new SearchVolumeResultRow("QA volume", 900, null, null, null, VolumeMonths) });
                 }
                 if (path.EndsWith($"/keyword-discovery/jobs/{jobId:D}/results", StringComparison.Ordinal))
                 {
@@ -648,6 +756,16 @@ public sealed class BrowserQaRegressionTests
             if (disposing) http.Dispose();
             base.Dispose(disposing);
         }
+    }
+
+    private sealed class GuestAuthenticationState : AuthenticationStateProvider
+    {
+        public override Task<AuthenticationState> GetAuthenticationStateAsync()
+            => Task.FromResult(new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity(
+            [
+                new Claim(ClaimTypes.Role, ApplicationRoles.Guest),
+                new Claim(GuestAuthentication.ModeClaim, GuestAuthentication.MockMode)
+            ], "test"))));
     }
 
     private sealed class UnusedJsRuntime : IJSRuntime

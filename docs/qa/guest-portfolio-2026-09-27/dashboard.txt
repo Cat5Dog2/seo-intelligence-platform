@@ -1,0 +1,155 @@
+- banner:
+  - link "SEO Intelligence":
+    - /url: /
+  - generic: ゲスト・Mock
+  - generic: 選択中のプロジェクト
+  - combobox "選択中のプロジェクト":
+    - option "デモプロジェクト" [selected]
+    - option "QA-Portfolio-Edited"
+  - button "設定・アカウント"
+- navigation "メインメニュー":
+  - link "プロジェクト":
+    - /url: /
+  - link "ダッシュボード":
+    - /url: /dashboard
+  - heading "調査・分析" [level=2]
+  - link "キーワード":
+    - /url: /keywords
+  - link "検索ボリューム":
+    - /url: /search-volume
+  - link "競合分析":
+    - /url: /competitors
+  - link "獲得語/ページ":
+    - /url: /influx
+  - link "コンテンツ分析":
+    - /url: /content-analysis
+  - heading "コンテンツ" [level=2]
+  - link "トピッククラスター":
+    - /url: /clusters
+  - link "記事ブリーフ":
+    - /url: /briefs
+  - link "リライト管理":
+    - /url: /rewrite
+  - link "AIアシスタント":
+    - /url: /ai-assistant
+  - heading "監視・レポート" [level=2]
+  - link "順位監視":
+    - /url: /rank-monitoring
+  - link "レポート":
+    - /url: /reports
+- main:
+  - heading "ダッシュボード" [level=1]
+  - paragraph: デモプロジェクト
+  - button "更新"
+  - region "調査の状況":
+    - generic: キーワード探索
+    - strong: "3"
+    - generic: 検索ボリューム結果
+    - strong: "8"
+    - generic: 実行中の調査
+    - strong: "0"
+    - generic: 確認が必要な失敗
+    - strong: "0"
+  - heading "次のアクション" [level=2]
+  - link "キーワードを探す":
+    - /url: /keywords
+  - link "検索ボリュームを調べる":
+    - /url: /search-volume
+  - heading "直近の調査・出力" [level=2]
+  - button "更新"
+  - region "データ一覧":
+    - table:
+      - rowgroup:
+        - row "種別 状態 進捗 再試行 更新 操作":
+          - columnheader "種別"
+          - columnheader "状態"
+          - columnheader "進捗"
+          - columnheader "再試行"
+          - columnheader "更新"
+          - columnheader "操作"
+      - rowgroup:
+        - row "キーワード探索 完了 100% 0 2026-09-27 06:23":
+          - cell "キーワード探索"
+          - cell "完了"
+          - cell "100%"
+          - cell "0"
+          - cell "2026-09-27 06:23"
+          - cell
+        - row "CSV出力 完了 100% 0 2026-09-27 06:22 ダウンロード":
+          - cell "CSV出力"
+          - cell "完了"
+          - cell "100%"
+          - cell "0"
+          - cell "2026-09-27 06:22"
+          - cell "ダウンロード":
+            - link "ダウンロード":
+              - /url: /downloads/projects/9b5654e4-c0aa-4088-9e49-702b997d69f4/exports/ae65c9c4-e5bf-4dbf-b598-e3541cdf5ee1
+        - row "検索ボリューム調査 完了 100% 0 2026-09-27 06:16 結果を開く":
+          - cell "検索ボリューム調査"
+          - cell "完了"
+          - cell "100%"
+          - cell "0"
+          - cell "2026-09-27 06:16"
+          - cell "結果を開く":
+            - link "結果を開く":
+              - /url: /search-volume?jobId=bb520021-f8f0-4f82-8b31-2a9ee47fffd1
+        - row "検索ボリューム調査 完了 100% 0 2026-09-27 06:15 結果を開く":
+          - cell "検索ボリューム調査"
+          - cell "完了"
+          - cell "100%"
+          - cell "0"
+          - cell "2026-09-27 06:15"
+          - cell "結果を開く":
+            - link "結果を開く":
+              - /url: /search-volume?jobId=21c3be45-f5ab-4a85-a36c-9bddb0efbb60
+        - row "キーワード探索 完了 100% 0 2026-09-27 06:15":
+          - cell "キーワード探索"
+          - cell "完了"
+          - cell "100%"
+          - cell "0"
+          - cell "2026-09-27 06:15"
+          - cell
+  - generic "分析・運用の指標" [active]
+  - region "利用状況":
+    - generic: 一括調査
+    - strong: "2"
+    - generic: 機会スコア
+    - strong: "0"
+    - generic: 消費クレジット
+    - strong: "0"
+    - generic: 通知失敗
+    - strong: "0"
+  - region "分析・コンテンツの指標":
+    - generic: 競合サイト
+    - strong: "0"
+    - generic: 獲得語
+    - strong: "0"
+    - generic: 獲得ページ
+    - strong: "0"
+    - generic: コンテンツ分析
+    - strong: "0"
+    - generic: 記事ブリーフ
+    - strong: "0"
+    - generic: 順位チェック
+    - strong: "0"
+    - generic: 順位結果
+    - strong: "0"
+    - generic: 未解決アラート
+    - strong: "0"
+  - region "運用の指標":
+    - generic: リライトタスク
+    - strong: "0"
+    - generic: 対応中リライト
+    - strong: "0"
+    - generic: 最大優先度
+    - strong: "0"
+    - generic: カニバリ候補
+    - strong: "0"
+    - generic: 有効カニバリ候補
+    - strong: "0"
+    - generic: 共有レポート
+    - strong: "0"
+    - generic: AIメッセージ
+    - strong: "0"
+    - generic: AIレビュー待ち
+    - strong: "0"

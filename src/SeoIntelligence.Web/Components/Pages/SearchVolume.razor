@@ -1,6 +1,7 @@
 @page "/search-volume"
 @attribute [Authorize(Policy = ApplicationPolicies.RequireWorkspaceAccess)]
 @using System.Text.Json
+@inherits WorkspaceComponentBase
 @implements IDisposable
 @inject ISeoIntelligenceApiClient ApiClient
 @inject ProjectSelectionState ProjectState
@@ -97,6 +98,7 @@
     </details>
         <details class="advanced-options research-history">
             <summary>過去の調査を開く</summary>
+            <JobProgressPanel @ref="ResearchPanel" Title="検索ボリュームの履歴" ProjectScoped="true" JobType="RegisterSearchVolumeJob" />
             <div class="form-grid">
                 <label class="field wide-field"><span>ジョブID</span><input data-testid="search-volume-job-id-input" @bind="JobIdText" /></label>
                 <button type="button" class="secondary-button" @onclick="RefreshJobAsync" disabled="@(!HasCurrentJob || IsJobLoading)">読み込み</button>
@@ -138,7 +140,17 @@
             </div>
         </details>
         }
-        <DataTable Items="@Results" Columns="@ResultColumns" MobileCards="true" IsLoading="@IsResultLoading" EmptyText="検索ボリューム結果はありません。" />
+        <DataTable Items="@Results" Columns="@ResultColumns" MobileCards="true" IsLoading="@IsResultLoading" EmptyText="検索ボリューム結果はありません。">
+            <RowActions Context="row">
+                @if (row.MonthlySearchVolume is { Count: > 0 } monthly)
+                {
+                    <details class="monthly-detail">
+                        <summary>月別推移（全@(monthly.Count)か月）</summary>
+                        <dl>@foreach (var month in monthly.OrderByDescending(pair => pair.Key)) { <div><dt>@FormatMonth(month.Key)</dt><dd>@month.Value.ToString("N0") 回</dd></div> }</dl>
+                    </details>
+                }
+            </RowActions>
+        </DataTable>
     </section>
     @if (ProjectState.SelectedProject is not null)
     {
@@ -152,14 +164,49 @@
     [SupplyParameterFromQuery(Name = "jobId")]
     public string? InitialJobId { get; set; }
 
+    [SupplyParameterFromQuery(Name = "projectId")]
+    public string? InitialProjectId { get; set; }
+
     private string? LoadedQueryJobId;
+    private bool ApplyingQuery;
+    private JobProgressPanel? ResearchPanel;
 
     protected override async Task OnParametersSetAsync()
     {
-        if (string.IsNullOrWhiteSpace(InitialJobId) || InitialJobId == LoadedQueryJobId) return;
-        LoadedQueryJobId = InitialJobId;
-        JobIdText = InitialJobId;
-        await RefreshJobAsync();
+        var query = $"{InitialProjectId}/{InitialJobId}";
+        if (query == LoadedQueryJobId) return;
+        LoadedQueryJobId = query;
+        ApplyingQuery = true;
+        var valid = await ProjectState.SelectFromQueryAsync(InitialProjectId);
+        ApplyingQuery = false;
+        if (!valid)
+        {
+            ClearInput();
+            Errors = [new("Resource.NotFound", "指定されたプロジェクトは利用できません。")];
+            return;
+        }
+        if (!string.IsNullOrWhiteSpace(InitialJobId))
+        {
+            if (!Guid.TryParse(InitialJobId, out _))
+            {
+                ClearInput();
+                Errors = [new("Validation.JobId", "ジョブIDの形式を確認してください。")];
+                return;
+            }
+            JobIdText = InitialJobId;
+            await RefreshJobAsync();
+        }
+        else if (IsGuest) await LoadLatestVolumeAsync();
+    }
+
+    private async Task LoadLatestVolumeAsync()
+    {
+        if (ProjectState.SelectedProject is not { } project) return;
+        var version = ProjectVersion;
+        var jobs = await ApiClient.SearchJobsAsync(projectId: project.ProjectId, jobType: "RegisterSearchVolumeJob", pageSize: 1);
+        if (version != ProjectVersion) return;
+        if (!jobs.IsSuccess) Errors = jobs.Errors;
+        else if (jobs.Data?.FirstOrDefault() is { } job) { await LoadJobAsync(job.JobId); StartPolling(); }
     }
 
     private const string CsvInputId = "search-volume-csv-file";
@@ -234,19 +281,20 @@
         => Guid.TryParse(JobIdText, out _);
 
     private bool CanCancel
-        => CurrentJob is not null &&
+        => !IsGuest && CurrentJob is not null &&
             (string.Equals(CurrentJob.Status, "queued", StringComparison.OrdinalIgnoreCase) ||
              string.Equals(CurrentJob.Status, "waiting_external", StringComparison.OrdinalIgnoreCase));
 
     private bool CanRetry
-        => CurrentJob is not null &&
+        => !IsGuest && CurrentJob is not null &&
             string.Equals(CurrentJob.Status, "failed_retryable", StringComparison.OrdinalIgnoreCase);
 
     protected override async Task OnInitializedAsync()
     {
-        ProjectState.Changed += OnProjectStateChanged;
+        await base.OnInitializedAsync();
         await ProjectState.LoadAsync();
         SyncDefaultsFromProject();
+        ProjectState.Changed += OnProjectStateChanged;
     }
 
     private async Task ReadCsvFileAsync()
@@ -297,6 +345,7 @@
             JobIdText = job.JobId.ToString("D");
             Message = "調査を開始しました。";
             await LoadJobAsync(job.JobId);
+            if (ResearchPanel is not null && projectVersion == ProjectVersion) await ResearchPanel.RefreshAsync();
             if (projectVersion == ProjectVersion) StartPolling();
         }
         else
@@ -548,8 +597,14 @@
 
     private void OnProjectStateChanged()
     {
+        var changed = SelectedProjectId != ProjectState.SelectedProject?.ProjectId;
         SyncDefaultsFromProject();
-        _ = InvokeAsync(StateHasChanged);
+        var loadLatest = changed && !ApplyingQuery && IsGuest;
+        _ = InvokeAsync(async () =>
+        {
+            if (loadLatest) await LoadLatestVolumeAsync();
+            StateHasChanged();
+        });
     }
 
     private void SyncDefaultsFromProject()
@@ -627,7 +682,11 @@
     private static string FormatMonthly(IReadOnlyDictionary<string, int>? values)
         => values is null || values.Count == 0
             ? "-"
-            : string.Join(", ", values.OrderByDescending(pair => pair.Key).Take(6).Select(pair => $"{pair.Key}:{pair.Value}"));
+            : $"{values.Count}か月・直近 {FormatMonth(values.Keys.Max()!)}";
+
+    private static string FormatMonth(string value)
+        => DateTime.TryParseExact(value, "yyyyMM", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var month)
+            ? month.ToString("yyyy年M月") : value;
 
     private static string FormatDateTime(DateTime value)
         => value.ToLocalTime().ToString("yyyy-MM-dd HH:mm");

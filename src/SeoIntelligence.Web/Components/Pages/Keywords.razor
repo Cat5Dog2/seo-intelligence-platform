@@ -5,7 +5,6 @@
 @implements IDisposable
 @inject ISeoIntelligenceApiClient ApiClient
 @inject ProjectSelectionState ProjectState
-@inject NavigationManager Navigation
 
 <PageTitle>キーワード探索 - SEO Intelligence</PageTitle>
 
@@ -24,7 +23,10 @@
     }
     @if (!string.IsNullOrWhiteSpace(Message))
     {
-        <div class="state-row" data-testid="keyword-status-message">@Message</div>
+        <div class="state-row" role="status" data-testid="keyword-status-message">
+            @Message
+            @if (VolumeResultHref is { } href) { <a class="primary-button" href="@href">検索ボリュームの結果を見る</a> }
+        </div>
     }
 
     <section class="panel">
@@ -196,11 +198,22 @@
         <section class="panel">
             <JobProgressPanel @ref="ExportPanel" Title="CSV出力" ProjectScoped="true" JobType="DataExportJob" />
         </section>
+        <details class="panel research-history">
+            <summary>保存済みの探索を開く</summary>
+            <JobProgressPanel @ref="DiscoveryPanel" Title="探索履歴" ProjectScoped="true" JobType="KeywordDiscoveryJob" />
+        </details>
     }
 </div>
 
 @code {
     private JobProgressPanel? ExportPanel;
+    private JobProgressPanel? DiscoveryPanel;
+    private string? VolumeResultHref;
+    [SupplyParameterFromQuery(Name = "jobId")] public string? InitialJobId { get; set; }
+    [SupplyParameterFromQuery(Name = "projectId")] public string? InitialProjectId { get; set; }
+    private string? LoadedQuery;
+    private Guid? SelectedProjectId;
+    private bool ApplyingQuery;
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -281,7 +294,7 @@
 
     private string LocationLanguageLabel
         => ProjectState.SelectedProject is { } project
-            ? $"{project.DefaultLocation} / {project.DefaultLanguage}"
+            ? $"{UiText.Location(project.DefaultLocation)} / {UiText.Language(project.DefaultLanguage)}"
             : "プロジェクト未選択";
 
     private string CandidateCountLabel
@@ -290,8 +303,41 @@
     protected override async Task OnInitializedAsync()
     {
         await base.OnInitializedAsync();
-        ProjectState.Changed += OnProjectStateChanged;
         await ProjectState.LoadAsync();
+        SelectedProjectId = ProjectState.SelectedProject?.ProjectId;
+        ProjectState.Changed += OnProjectStateChanged;
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var query = $"{InitialProjectId}/{InitialJobId}";
+        if (query == LoadedQuery) return;
+        LoadedQuery = query;
+        ++RequestVersion;
+        Errors = [];
+        Message = null;
+        VolumeResultHref = null;
+        IsLoading = IsSendingToSearchVolume = IsExporting = false;
+        ApplyingQuery = true;
+        var valid = await ProjectState.SelectFromQueryAsync(InitialProjectId);
+        ApplyingQuery = false;
+        if (!valid) { DiscoveryResult = null; DiscoveryJob = null; Errors = [new("Resource.NotFound", "指定されたプロジェクトは利用できません。")]; return; }
+        DiscoveryResult = null;
+        DiscoveryJob = null;
+        // Like search volume, only guests reopen the latest result; signed-in users pick one from the history.
+        if (string.IsNullOrWhiteSpace(InitialJobId)) { if (IsGuest) await LoadLatestDiscoveryAsync(); }
+        else if (Guid.TryParse(InitialJobId, out var id)) await LoadDiscoveryJobAsync(id);
+        else Errors = [new("Validation.JobId", "ジョブIDの形式を確認してください。")];
+    }
+
+    private async Task LoadLatestDiscoveryAsync()
+    {
+        if (ProjectState.SelectedProject is not { } project) return;
+        var version = RequestVersion;
+        var jobs = await ApiClient.SearchJobsAsync(projectId: project.ProjectId, jobType: "KeywordDiscoveryJob", pageSize: 1);
+        if (version != RequestVersion || project.ProjectId != ProjectState.SelectedProject?.ProjectId) return;
+        if (!jobs.IsSuccess) Errors = jobs.Errors;
+        else if (jobs.Data?.FirstOrDefault() is { } job) await LoadDiscoveryJobAsync(job.JobId);
     }
 
     private async Task DiscoverAsync()
@@ -305,6 +351,7 @@
         var requestVersion = ++RequestVersion;
         Errors = [];
         Message = null;
+        VolumeResultHref = null;
         DiscoveryJob = null;
         DiscoveryResult = null;
 
@@ -343,6 +390,7 @@
         }
 
         IsLoading = false;
+        if (DiscoveryPanel is not null) await DiscoveryPanel.RefreshAsync();
     }
 
     private async Task RefreshDiscoveryJobAsync()
@@ -375,7 +423,7 @@
         {
             return;
         }
-        if (result.IsSuccess)
+        if (result.IsSuccess && result.Data is { } loadedJob && loadedJob.ProjectId == project.ProjectId && loadedJob.JobType == "KeywordDiscoveryJob")
         {
             DiscoveryJob = result.Data;
             if (DiscoveryJob is { Status: "succeeded" or "failed_retryable" or "failed_fatal" } && DiscoveryJob.ProjectId == project.ProjectId)
@@ -388,6 +436,7 @@
                 if (results.IsSuccess)
                 {
                     DiscoveryResult = results.Data;
+                    if (results.Data?.SeedKeyword is { } seed) DiscoveryForm.SeedKeyword = seed;
                     Errors = [];
                 }
                 else
@@ -398,7 +447,9 @@
         }
         else
         {
-            Errors = result.Errors;
+            DiscoveryJob = null;
+            DiscoveryResult = null;
+            Errors = result.IsSuccess ? [new("Resource.NotFound", "選択中プロジェクトの探索結果が見つかりません。")] : result.Errors;
         }
     }
 
@@ -417,14 +468,18 @@
         }
 
         IsSendingToSearchVolume = true;
+        var requestVersion = RequestVersion;
         Errors = [];
         Message = null;
+        VolumeResultHref = null;
         var result = await ApiClient.RegisterSearchVolumeJobAsync(
             project.ProjectId,
             new SearchVolumeJobRequest(keywords, project.DefaultLocation, project.DefaultLanguage));
+        if (requestVersion != RequestVersion || project.ProjectId != ProjectState.SelectedProject?.ProjectId) return;
         if (result.IsSuccess && result.Data is { } job)
         {
-            Message = $"検索ボリュームジョブを登録しました: {job.JobId:D}";
+            Message = "候補語の検索ボリューム調査を開始しました。";
+            VolumeResultHref = $"/search-volume?projectId={project.ProjectId:D}&jobId={job.JobId:D}";
         }
         else
         {
@@ -444,7 +499,9 @@
         IsExporting = true;
         Errors = [];
         Message = null;
-        var filter = JsonSerializer.SerializeToElement(
+        var filter = IsGuest && DiscoveryResult?.JobId is { } discoveryJobId
+            ? JsonSerializer.SerializeToElement(new { jobId = discoveryJobId }, JsonOptions)
+            : JsonSerializer.SerializeToElement(
             new
             {
                 q = DiscoveryForm.SeedKeyword,
@@ -531,14 +588,20 @@
 
     private async void OnProjectStateChanged()
     {
-        await InvokeAsync(() =>
+        if (SelectedProjectId == ProjectState.SelectedProject?.ProjectId) return;
+        SelectedProjectId = ProjectState.SelectedProject?.ProjectId;
+        var loadLatest = !ApplyingQuery && IsGuest;
+        await InvokeAsync(async () =>
         {
             RequestVersion++;
             DiscoveryResult = null;
             DiscoveryJob = null;
             Errors = [];
             Message = null;
+            VolumeResultHref = null;
             IsLoading = false;
+            IsSendingToSearchVolume = IsExporting = false;
+            if (loadLatest) await LoadLatestDiscoveryAsync();
             StateHasChanged();
         });
     }

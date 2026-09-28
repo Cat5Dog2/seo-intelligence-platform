@@ -24,16 +24,27 @@ public sealed partial class GuestDemoSession
     private readonly Dictionary<Guid, IReadOnlyList<SearchVolumeResultRow>> _volumes = [];
     private readonly Dictionary<Guid, DataExportDetails> _exports = [];
     private readonly Dictionary<Guid, string> _files = [];
+    private Guid? _selectedProjectId;
     private static readonly JsonElement EmptyJson = JsonSerializer.SerializeToElement(new { });
 
     public GuestDemoSession(DateTimeOffset expiresAt)
     {
         ExpiresAt = expiresAt;
-        var project = NewProject("デモプロジェクト", "jp", "ja", EmptyJson, "ゲスト専用のサンプルデータです。");
+        var project = NewProject("デモプロジェクト", "Japan", "Japanese", EmptyJson, "ゲスト専用のサンプルデータです。");
         _projects.Add(project.ProjectId, project);
+        _selectedProjectId = project.ProjectId;
     }
 
     public DateTimeOffset ExpiresAt { get; }
+
+    public Guid? SelectedProjectId { get { lock (_gate) return _selectedProjectId; } }
+
+    public void SelectProject(Guid projectId)
+    {
+        lock (_gate)
+            if (_projects.TryGetValue(projectId, out var project) && project.Status == "active")
+                _selectedProjectId = projectId;
+    }
 
     public ApiClientResult<T> Execute<T>(HttpMethod method, string path, object? body)
     {
@@ -46,10 +57,11 @@ public sealed partial class GuestDemoSession
             {
                 switch (uri.AbsolutePath)
                 {
+                    // Mirror the synchronized master: since Rakko Keyword API v1.12.0 the metadata name is the code.
                     case "/api/master-data/locations":
-                        return Ok<T>(new LocationSummary[] { new("rakko_keyword", "jp", "日本", "JP", "active") });
+                        return Ok<T>(new LocationSummary[] { new("rakko_keyword", "Japan", "Japan", "JP", "active") });
                     case "/api/master-data/languages":
-                        return Ok<T>(new LanguageSummary[] { new("rakko_keyword", "ja", "日本語", "active") });
+                        return Ok<T>(new LanguageSummary[] { new("rakko_keyword", "Japanese", "Japanese", "active") });
                     case "/api/admin/external-api-calls":
                         return Ok<T>(Array.Empty<ExternalApiCallDetails>());
                     case "/api/admin/notification-channels":
@@ -125,9 +137,11 @@ public sealed partial class GuestDemoSession
                     if (volume.Keywords is null || volume.Keywords.Count is < 1 or > MaxKeywords || volume.Keywords.Any(keyword => string.IsNullOrWhiteSpace(keyword) || keyword.Length > 100)
                         || string.IsNullOrWhiteSpace(volume.Location) || string.IsNullOrWhiteSpace(volume.Language))
                         return Invalid<T>("デモの一括調査は1〜100件、各キーワード100文字以内で指定してください。地域・言語は必須です。");
+                    if (volume.AggregationPeriodMonths is < 1 or > 24) return Invalid<T>("集計期間は1〜24か月で指定してください。");
                     var job = AddJob(projectId, "RegisterSearchVolumeJob");
                     _volumes.Add(job.JobId, volume.Keywords.Select(keyword => keyword.Trim()).Distinct(StringComparer.Ordinal).Select((keyword, index) =>
-                        new SearchVolumeResultRow(keyword, 1200 + index * 100, 30, 0.5m, 0.3m, DataSource: "Mock", KeywordId: Guid.NewGuid())).ToArray());
+                        new SearchVolumeResultRow(keyword, 1200 + index * 100, volume.SeoDifficulty ? 30 : null, 0.5m, 0.3m,
+                            MonthlyVolumes(1200 + index * 100, volume.AggregationPeriodMonths), DataSource: "Mock", KeywordId: Guid.NewGuid())).ToArray());
                     return Ok<T>(new JobReference(job.JobId, job.Status));
                 }
                 if (route == "exports/csv" && body is DataExportRequest export)
@@ -149,7 +163,14 @@ public sealed partial class GuestDemoSession
                     else
                     {
                         var source = JsonText(filter, "source");
-                        var candidates = _discoveries.Where(pair => _jobs[pair.Key].ProjectId == projectId).SelectMany(pair => pair.Value.Candidates)
+                        Guid? discoveryJobId = null;
+                        if (JsonText(filter, "jobId") is { } jobIdText)
+                        {
+                            if (!Guid.TryParse(jobIdText, out var sourceDiscoveryId)) return Invalid<T>("探索ジョブIDの形式を確認してください。");
+                            if (!_discoveries.ContainsKey(sourceDiscoveryId) || _jobs[sourceDiscoveryId].ProjectId != projectId) return Missing<T>();
+                            discoveryJobId = sourceDiscoveryId;
+                        }
+                        var candidates = _discoveries.Where(pair => _jobs[pair.Key].ProjectId == projectId && (discoveryJobId is null || pair.Key == discoveryJobId)).SelectMany(pair => pair.Value.Candidates)
                             .Where(candidate => candidate.Keyword.Contains(q, StringComparison.OrdinalIgnoreCase) && (source is null || source == candidate.Source));
                         csv = "keyword,source,searchVolume,seoDifficulty,dataSource\r\n" + string.Join("\r\n", candidates.Select(candidate =>
                             string.Join(',', CsvCell(candidate.Keyword), CsvCell(candidate.Source), Number(candidate.SearchVolume), Number(candidate.SeoDifficulty), "Mock")));

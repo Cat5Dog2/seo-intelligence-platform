@@ -15,6 +15,12 @@ public sealed class GuestApiRouter(AuthenticationStateProvider authenticationSta
     // This router is scoped, so this principal stays within that download request.
     internal void UseRequestPrincipal(ClaimsPrincipal principal) => _requestPrincipal = principal;
 
+    public async Task<GuestDemoSession?> GetSessionAsync()
+    {
+        var principal = _requestPrincipal ?? (await authenticationState.GetAuthenticationStateAsync()).User;
+        return GuestAuthentication.IsGuest(principal) ? sessions.Find(principal) : null;
+    }
+
     public async Task<ApiClientResult<T>?> RouteAsync<T>(
         HttpMethod method, string path, object? body, CancellationToken cancellationToken)
     {
