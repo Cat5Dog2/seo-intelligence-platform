@@ -21,6 +21,7 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | 1.3 | 2026-07-12 | レビュー反映。VPS手順を`docker_deployment.md`へ一本化し、Compose overlay構成、`/readyz`の未適用Migration検知、`container-smoke.sh`を反映。 | Claude |
 | 1.4 | 2026-09-13 | CDリリース候補通知（`release-candidate-notify.yaml`）の追加を反映。設定するVariable/Secret、GitHub App権限、有効化手順、通知失敗時の再実行方法を7.4に追記。 | Claude |
 | 1.5 | 2026-09-14 | レビュー反映。送信成功（204）と受信側の反応は別であることを明記し、infra側の受信workflowがdefault branch上に必要な旨と、有効化時にinfra側の実行も確認する手順を7.4に追加。 | Claude |
+| 1.6 | 2026-10-02 | CIで検出したOpenSSL脆弱性への対応を7.3に記録。アプリ共通イメージのパッケージ更新と、RedisのDTLS/QUIC限定CVEの受容根拠・見直し条件を追加。 | Codex |
 
 ## 1. 目的
 
@@ -181,6 +182,8 @@ VPSの初回デプロイ・更新・バックアップの正本手順は `docs/d
 | `dev` | `rustfs/rustfs:1.0.0-rc.6` | 開発専用の任意profileで、本番Composeは起動しない。報告のみでゲートしない。 |
 | `drift` | `postgres:16-alpine` / `redis:7-alpine` のタグ | 上流タグが指すindexと、その中の当該プラットフォーム（linux/amd64）imageを `image-digests.lock` のdigestと比較する。indexだけが動いてimageが同一ならexit 0で報告のみ、imageが変わっていればexit 2。CIはexit 2をwarning annotationとstep summaryに出すだけでゲートしない。レジストリに直接問い合わせ、pullもスキャンもしない。 |
 
+アプリ4イメージの共通 `runtime-base` は、curlだけでは依存条件を満たす既存のOpenSSLが更新されないため、curlと `openssl` / `libssl3t64` を明示して更新する。ただし、この更新はapt層が実行されたときだけ有効である。2026-10-02のCIではGHAキャッシュからOpenSSL `3.0.13-0ubuntu3.15` を含む層が復元され、aptは再実行されず、`CVE-2026-84782` が各イメージで2件ずつ検出された。今回の修正で `RUN` の文字列が変わったためキャッシュが無効になり、Ubuntu 24.04の修正版 [`3.0.13-0ubuntu3.16`](https://ubuntu.com/security/CVE-2026-84782) が導入された。パッケージの修正版公開だけではキャッシュは無効にならず、CIとVPSのビルドで再発する余地がある。apt層を毎回実行する恒久策は `todo.md` の ISSUE-SEC-008 で扱う。アプリのCVE受容は追加せず、再ビルド後の `app` ゲートで解消を確認する。
+
 MinIO CommunityのEOLと公式Docker Hubリポジトリ消失を受け、開発用S3互換環境はRustFSへ移行した。RustFSはまだ安定版前のため、レビュー済みの`1.0.0-rc.6`をmanifest digest `sha256:97171b3d72cd47dc81000f92ea84de25608bfc35a94c965501afaeb5d99f6035`で固定する。これは開発・接続確認専用であり、本番ストレージには使用しない。参照を更新する場合はrelease notesと既知のセキュリティ問題を確認し、`compose.override.yaml`と`scripts/scan-container-images.sh`を同時に変更して、`bash scripts/verify-development-image-pins.sh`で一致と固定形式を検証する。
 
 RustFSは非root UID/GID `10001:10001`で実行する。`rustfs-volume-init`はnamed volumeの所有権設定だけを行い、`rustfs-init`は同じ固定image内のSigV4対応curlで`seo-intelligence` bucketを冪等作成する。旧`minio-data` volumeは自動削除も再利用もしない。必要な開発データがある場合は、旧環境を保持したままS3 API経由で手動移行し、確認が終わるまでvolumeを削除しない。
@@ -198,6 +201,11 @@ bash scripts/scan-container-images.sh runtime
 | 対象 | 受容コンポーネント | 件数 | 判断 | 記録日 |
 | --- | --- | --- | --- | --- |
 | `postgres:16-alpine` | `usr/local/bin/gosu` の `stdlib` | 22件（Critical 1 / High 21） | **受容**。`gosu`はentrypointが起動時にrootからpostgresへ権限降格するためだけに1回`exec`する補助バイナリで、ネットワーク通信を一切行わない。受容した22件はいずれもGo標準ライブラリのTLS/HTTP/暗号系であり、到達するコードパスが存在しない。CVE IDの一覧は `scripts/scan-container-images.sh` の `RUNTIME_ACCEPTED` を正本とする。 | 2026-08-22 |
+| `redis:7-alpine` | `/scan/image.tar (alpine 3.21.8)` の `libcrypto3` / `libssl3` | 4件（High 4） | **受容**。`CVE-2026-75804` はQUIC、`CVE-2026-84782` はDTLSの処理に限定され、Redis 7.4のTCP/TLS通信からは到達しない。各CVE・各パッケージを個別登録する。 | 2026-10-02 |
+
+Redisの判断根拠: [OpenSSLの2026-09-29アドバイザリ](https://openssl-library.org/news/secadv/20260929.txt) は、上記CVEをそれぞれQUICの接続単位フロー制御不足、DTLSハンドシェイク再送時の読み取り範囲不正としている。[Redis 7.4.11のTLS実装](https://github.com/redis/redis/blob/7.4.11/src/tls.c) は `SSLv23_method()` による通常のTLSを使用し、DTLS/QUICのコンテキストを作成しない。このComposeの起動引数は `redis-server --appendonly yes`、接続先は `redis:6379` で、TLSも有効化していない。本番ではホストへRedisポートを公開しない。
+
+2026-10-02の実測では、固定中と上流タグのlinux/amd64 manifestは同一で、どちらもRedis 7.4.11 / OpenSSL `3.3.7-r1` / Alpine 3.21.8だった。indexだけを更新しても解消しないためdigestは据え置く。上流の修正イメージ採用時に4件の受容を削除する。受容はこのimage/CVE/target/packageだけに限定され、新しいCVEや別パッケージ、別Alpineバージョンへは適用しない。
 
 2026-09-19: `postgres:16-alpine` のdigestが更新され、Alpine 3.24.1 → 3.24.2相当のパッケージ更新を含んでいたため、以下2項目(計9件)は受容判断ごと不要になった。
 
@@ -208,6 +216,8 @@ bash scripts/scan-container-images.sh runtime
 
 受容を見直す条件:
 
+- Redisの通信実装がDTLS/QUICを使用するようになった場合、または追加モジュールなどで該当OpenSSL処理を呼ぶ場合。
+- Redisの起動引数・TLS設定・公開範囲を変更した場合。パッチ済みイメージを採用して検出が消えた場合は、Redisの4件の受容を削除する。
 - `gosu`の用途がentrypointの権限降格以外へ広がった場合。
 - 上流イメージがパッチ済みGoで再ビルドされ、そのdigestへ更新した場合（受容を解除する）。どの検出にも一致しなくなった受容は `runtime` が失敗として列挙するので、残したままにはできない。
 - 新しいCVEが検出された場合。**自動的には除外されない**ため、CIが失敗して個別判断を促す。特に`os/exec`、ファイルシステム、引数処理など`gosu`から到達し得る領域の脆弱性は受容しない。
@@ -225,7 +235,7 @@ bash scripts/scan-container-images.sh runtime
 
 上流タグが動いたこと自体は失敗にしない。lockが固定しているのはマルチプラットフォームのindexのdigestで、他プラットフォームやattestationが再ビルドされるだけで変わる。Alpine系の公式イメージは数日おきに再ビルドされ、その大半はこのスタックが動かすlinux/amd64のimageを1バイトも変えない（2026-09-21の再ビルドはpostgres/redisともlinux/amd64のmanifest digestが旧indexと同一だった）。以前はこれで `container-scan` が失敗し、required checkのため無関係な全PRのマージとリリース候補通知が止まっていた。タグの移動は `drift` モードが報告し、当該プラットフォームのimageが実際に変わった場合だけnightlyのwarning annotationに出る。
 
-`scripts/verify-production-compose.sh` が、Composeの**レンダリング結果**を同ファイルと完全一致で照合する。ソースへのgrepではないため、コメント行に期待値があっても通らない。`scripts/verify-runtime-scan.sh` が、`runtime` / `unfixed` がlockのdigestだけをpullすること、タグの移動では失敗しないこと、一致しなくなった受容で失敗すること、`drift` がレジストリに問い合わせてindexの移動とimageの変更を区別することを fake docker で固定する。
+`scripts/verify-production-compose.sh` が、Composeの**レンダリング結果**を同ファイルと完全一致で照合する。ソースへのgrepではないため、コメント行に期待値があっても通らない。`scripts/verify-runtime-scan.sh` が、`runtime` / `unfixed` がlockのdigestだけをpullすること、タグの移動では失敗しないこと、一致しなくなった受容で失敗すること、`drift` がレジストリに問い合わせてindexの移動とimageの変更を区別することを fake docker で固定する。同スクリプトは現在の受容リストからfixtureを生成し、4項目を1つずつ変えた検出がゲートされることをstderr全体の一致で検証する。受容の追加・削除にfixtureも追従し、空リストも扱う。
 
 更新手順:
 
