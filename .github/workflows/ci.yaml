@@ -63,6 +63,7 @@ jobs:
           bash scripts/verify-production-lock.sh
           bash scripts/verify-source-revision.sh
           bash scripts/verify-dockerfile-restore.sh
+          bash scripts/verify-runtime-os-refresh.sh
           bash scripts/verify-scanner-isolation.sh
           bash scripts/verify-runtime-scan.sh
           bash scripts/verify-development-image-pins.sh
@@ -87,6 +88,7 @@ jobs:
             migrate
           load: true
           set: |
+            *.args.RUNTIME_OS_REFRESH=${{ github.run_id }}-${{ github.run_attempt }}
             *.cache-from=type=gha
             *.cache-to=type=gha,mode=max
 

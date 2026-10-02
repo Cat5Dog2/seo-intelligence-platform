@@ -2336,21 +2336,41 @@ CI失敗の是正:
 
 範囲:
 
-- [ ] CIのBakeとVPSのComposeビルドで `runtime-base` のapt層を毎回実行する方法を選定・実装する。Bake用HCLの `no-cache-filter` 等は実際のビルド定義と実行ログで有効性を確認する。
-- [ ] OpenSSL以外のOSパッケージも更新する `apt-get upgrade` の適用範囲を検討し、Runbookへ更新方針を記録する。
-- [ ] NuGet restore・共有build層のキャッシュを維持し、ビルド時間への影響を確認する。
+- [x] CIのBakeとVPSのComposeビルドで `runtime-base` のapt層を毎回実行する方法を選定・実装する。両経路で使える `RUNTIME_OS_REFRESH` 引数を採用し、実ビルド定義と実行ログで有効性を確認した。
+- [x] OpenSSL以外のOSパッケージも更新する `apt-get upgrade` の適用範囲を検討し、Runbookへ更新方針を記録する。
+- [ ] NuGet restore・共有build層のキャッシュを維持し、ビルド時間への影響を確認する（ローカル測定済み、GHA/実VPSでの確認は未実行）。
 
 受入条件:
 
 - [ ] 同じソース・ベースdigestで2回ビルドしてもapt層は毎回実行されることを、CIとVPS双方のログで確認する。
-- [ ] アプリ脆弱性ゲートと隔離コンテナスモークが成功し、ゲート失敗時には起動が中断される。
+- [x] アプリ脆弱性ゲートと隔離コンテナスモークが成功し、ゲート失敗時には起動が中断される。
 
 検証:
 
 - [ ] CIとVPSの双方で同じソース・ベースdigestを2回ビルドし、`runtime-base` のapt層が `CACHED` にならず、aptの実行出力が毎回残ることを確認する。
-- [ ] `bash scripts/scan-container-images.sh app`
-- [ ] `CONTAINER_SMOKE_SKIP_BUILD=true bash scripts/container-smoke.sh`
-- [ ] `bash scripts/verify-deployment-guards.sh`
+- [x] 補助検証としてCI用BakeとVPS用Composeをローカルで各2回ビルドした。aptは全回実行され、restore/buildの `RUN` は全回 `CACHED`。このローカルビルドは `type=gha` を使っていないため、実CIの受入確認とは区別する。
+- [x] `bash scripts/verify-runtime-os-refresh.sh`
+- [x] `bash scripts/scan-container-images.sh app`
+- [x] `CONTAINER_SMOKE_SKIP_BUILD=true APP_ENV_FILE=.env.example bash scripts/container-smoke.sh`（当初はWindows curl向けwrapperで成功。別途のスモーク修正を保持し、SEC-008レビュー反映後はwrapper無しで再実行して成功。）
+- [x] `bash scripts/verify-deployment-guards.sh`（Git Bashに `flock` が無いため既存の同時実行チェックのみskip。）
+- [ ] PRのCIと再実行1回でaptの毎回実行・restore/buildのGHAキャッシュ再利用を確認し、実VPSでも2回のビルドログを確認する（実VPSの検証・本番デプロイは未実行）。
+
+実装・検証記録（2026-10-02）:
+
+- GitHub Issue: [#163](https://github.com/Cat5Dog2/seo-intelligence-platform/issues/163)。作業ブランチ: `fix/issue-sec-008-runtime-os-updates`。
+- CIはrun IDとattempt、VPSはビルドごとに生成する時刻・PID・乱数を4ターゲットへ渡す。引数は `runtime-base` だけに宣言し、GHAキャッシュのimport/exportは維持した。
+- 4イメージの所要時間はBakeが27秒/19秒、Composeが18秒/18秒。更新引数を再利用した対照ビルドは3秒でaptもキャッシュされ、増分は約15〜24秒。実VPS/GHAの所要時間は未測定。
+- ログは `artifacts/runtime-os-refresh/` に保存した（Git管理対象外）。
+
+レビュー反映（2026-10-02）:
+
+- `apt-get update --error-on=any -o Acquire::Retries=3` を使用し、securityインデックスだけ取得不能でもビルドを中断する。同じベースで通常のupdateはexit 0、strict設定はexit 100となることを再現し、修正後のDockerfileでもRUNがexit 100で失敗することを確認した。正常系の4イメージビルドも成功し、restore/buildは `CACHED`。
+- CIのビルド定義を `(run_id, attempt)=(100,1)/(101,1)/(100,2)` で描画し、全値の一意性を検証する。run ID欠落の見逃しを修正前に再現し、run ID/attempt/strict apt設定の欠落を検出する回帰テストを `verify-deployment-guards.sh` へ追加した。
+- 手動ビルド例は `seo-os-refresh-check-*` タグと専用projectを使う。例を `build --print` で描画し、本番の固定タグを上書きしないことを確認した。デプロイ手順のmigrate指定理由と、テスト対象失敗時の診断出力も復元・追加した。
+- 目的・実環境の受入条件は未完了へ戻した。ローカルの測定/検証結果は補助検証として記録し、GHAキャッシュを使ったCI再実行と実VPSでの確認を残す。
+- レビュー反映後のログは `artifacts/runtime-os-refresh/review/` に保存した（Git管理対象外）。
+- 再レビューの軽微な指摘も反映した。Dockerfileのコメントを除外して継続行を連結し、runtime-baseのRUN内のコマンドと引数を検査する。コメント・LABEL・echoだけにstrict設定がある3ケースと、有効な継続行のケースを追加し、修正前の失敗と修正後の成功を確認した（`guards-decoy-red.log` / `guards-decoy-green.log`）。
+- ガードのヘッダーと `docs/test_plan.md` の説明を更新し、手動確認用4イメージの削除コマンドを `docs/docker_deployment.md` に追記した。削除コマンド自体は実行していない。
 
 ### ISSUE-FIX-002 ブラウザQAで確認した不具合を修正する
 
