@@ -71,6 +71,15 @@ wait_for_http() {
   return 1
 }
 
+# Prints curl's --write-out value for one request. Like wait_for_http, it discards the body with a
+# shell redirect rather than `--output /dev/null`; %{stderr} routes the value around that redirect
+# so the caller still captures it. --silent keeps error text out of the value: a request that
+# fails reports http_code 000.
+response_info() {
+  local format="$1" url="$2"
+  curl --silent --write-out "%{stderr}${format}" "$url" 2>&1 > /dev/null
+}
+
 if [[ "${CONTAINER_SMOKE_SKIP_BUILD:-false}" != "true" ]]; then
   compose build api web worker migrate
 fi
@@ -86,11 +95,11 @@ wait_for_http \
   "http://127.0.0.1:${WEB_PORT}/login"
 
 # The API rejects calls without the service key, and the health probes stay open.
-test "$(curl --silent --output /dev/null --write-out '%{http_code}' "http://127.0.0.1:${API_PORT}/api/projects")" = "401"
-test "$(curl --silent --output /dev/null --write-out '%{http_code}' "http://127.0.0.1:${API_PORT}/healthz")" = "200"
+test "$(response_info '%{http_code}' "http://127.0.0.1:${API_PORT}/api/projects")" = "401"
+test "$(response_info '%{http_code}' "http://127.0.0.1:${API_PORT}/healthz")" = "200"
 
 # The Web host sends anonymous visitors to the sign-in page.
-test "$(curl --silent --output /dev/null --write-out '%{http_code}' "http://127.0.0.1:${WEB_PORT}/dashboard")" = "302"
+test "$(response_info '%{http_code}' "http://127.0.0.1:${WEB_PORT}/dashboard")" = "302"
 
 # A rendered login page does not prove that Blazor can start. Project-only restore
 # used to omit the boot script from the image while every HTML/health check passed.
@@ -99,20 +108,20 @@ login_html="$(curl --fail --silent --show-error "http://127.0.0.1:${WEB_PORT}/lo
 boot_script_path="$(printf '%s' "$login_html" | grep -oE 'src="_framework/blazor\.web(\.[a-zA-Z0-9]+)?\.js"' | cut -d '"' -f 2)"
 test -n "$boot_script_path"
 test "$(printf '%s\n' "$boot_script_path" | wc -l)" -eq 1
-boot_script_type="$(curl --fail --silent --show-error --output /dev/null \
-  --write-out '%{content_type}' "http://127.0.0.1:${WEB_PORT}/${boot_script_path}")"
-case "$boot_script_type" in
-  text/javascript*|application/javascript*) ;;
-  *) echo "Blazor boot script was not served as JavaScript: $boot_script_type" >&2; exit 1 ;;
+boot_script_response="$(response_info '%{http_code} %{content_type}' \
+  "http://127.0.0.1:${WEB_PORT}/${boot_script_path}")"
+case "$boot_script_response" in
+  "200 text/javascript"*|"200 application/javascript"*) ;;
+  *) echo "Blazor boot script was not served as JavaScript: $boot_script_response" >&2; exit 1 ;;
 esac
 
 # The download route is how generated files reach the browser, so the image has to carry it and
 # it has to be behind the sign-in. A 404 here would mean the route is missing from the build.
-test "$(curl --silent --output /dev/null --write-out '%{http_code}' \
+test "$(response_info '%{http_code}' \
   "http://127.0.0.1:${WEB_PORT}/downloads/projects/00000000-0000-0000-0000-000000000001/exports/00000000-0000-0000-0000-000000000002")" = "302"
 
 # The API file endpoint exists and stays behind the service key.
-test "$(curl --silent --output /dev/null --write-out '%{http_code}' \
+test "$(response_info '%{http_code}' \
   "http://127.0.0.1:${API_PORT}/api/projects/00000000-0000-0000-0000-000000000001/exports/00000000-0000-0000-0000-000000000002/content")" = "401"
 
 # Non-root execution.
