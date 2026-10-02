@@ -101,7 +101,11 @@ set_build_image_names() {
 build_and_scan() {
   set_build_image_names
   "${COMPOSE[@]}" config --quiet
-  "${COMPOSE[@]}" build api web worker migrate
+  # A fresh value invalidates only runtime-base's OS update layer. --pull alone cannot do that
+  # when the base digest is unchanged, and --no-cache would also discard the .NET build cache.
+  local runtime_os_refresh
+  runtime_os_refresh="$(date +%s%N)-$$-${RANDOM}"
+  "${COMPOSE[@]}" build --build-arg "RUNTIME_OS_REFRESH=$runtime_os_refresh" api web worker migrate
   # Scans what this host just built. The images CI scanned are not these images: the VPS rebuilds
   # from source, and the .NET base images, apt and NuGet restore are all mutable.
   #

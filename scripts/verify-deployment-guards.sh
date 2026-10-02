@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Regression test for the guards in verify-production-compose.sh.
+# Regression tests for verify-production-compose.sh, deployment control flow, and
+# verify-runtime-os-refresh.sh.
 #
 #   bash scripts/verify-deployment-guards.sh
 #
@@ -92,6 +93,103 @@ expect_failure "a digest that does not match the rendered image" \
   "the rendered images do not match the digest lock file" \
   "DIGEST_LOCK_FILE=$work/lock-wrong-digest"
 
+# --- OS update cache guard ----------------------------------------------------------------------
+
+# Render real build definitions in a scratch copy. A guard that checks only reruns misses an
+# attempt-only value: every new workflow run would restore the same OS update layer from GHA.
+refresh_fixture="$work/refresh"
+mkdir -p "$refresh_fixture/scripts" "$refresh_fixture/.github/workflows"
+cp scripts/verify-runtime-os-refresh.sh "$refresh_fixture/scripts/"
+cp Dockerfile compose.yaml compose.production.yaml .env.production.example \
+  .env.production.app.example "$refresh_fixture/"
+cp .github/workflows/ci.yaml "$refresh_fixture/.github/workflows/ci.yaml"
+if ! bash "$refresh_fixture/scripts/verify-runtime-os-refresh.sh" > "$work/refresh-output" 2>&1; then
+  echo "FAIL: the OS refresh guard does not pass on the unmodified build definitions." >&2
+  sed 's/^/      /' "$work/refresh-output" >&2
+  exit 1
+fi
+echo "ok: the OS refresh guard passes on the unmodified build definitions."
+
+for missing in run_id run_attempt; do
+  if [[ "$missing" == run_id ]]; then
+    sed 's/${{ github.run_id }}-${{ github.run_attempt }}/${{ github.run_attempt }}/' \
+      .github/workflows/ci.yaml > "$refresh_fixture/.github/workflows/ci.yaml"
+  else
+    sed 's/${{ github.run_id }}-${{ github.run_attempt }}/${{ github.run_id }}/' \
+      .github/workflows/ci.yaml > "$refresh_fixture/.github/workflows/ci.yaml"
+  fi
+  if cmp -s .github/workflows/ci.yaml "$refresh_fixture/.github/workflows/ci.yaml"; then
+    echo "FAIL: the $missing fixture did not change the CI refresh argument." >&2
+    failures=$((failures + 1))
+    continue
+  fi
+  refresh_status=0
+  bash "$refresh_fixture/scripts/verify-runtime-os-refresh.sh" > "$work/refresh-output" 2>&1 || refresh_status=$?
+  if [[ "$refresh_status" -eq 0 ]]; then
+    echo "FAIL: the OS refresh guard passed with $missing missing." >&2
+    failures=$((failures + 1))
+  elif ! grep -qF 'CI runs and reruns must use distinct OS refresh values' "$work/refresh-output"; then
+    echo "FAIL: missing $missing was rejected for an unrelated reason." >&2
+    sed 's/^/      /' "$work/refresh-output" >&2
+    failures=$((failures + 1))
+  else
+    echo "ok: a CI refresh argument missing $missing is caught."
+  fi
+done
+
+# Losing strict index fetching must also be detected before an image build reaches the gate.
+cp .github/workflows/ci.yaml "$refresh_fixture/.github/workflows/ci.yaml"
+sed 's/apt-get update --error-on=any/apt-get update/' Dockerfile > "$refresh_fixture/Dockerfile"
+refresh_status=0
+bash "$refresh_fixture/scripts/verify-runtime-os-refresh.sh" > "$work/refresh-output" 2>&1 || refresh_status=$?
+if [[ "$refresh_status" -eq 0 ]]; then
+  echo "FAIL: the OS refresh guard passed without strict index fetching." >&2
+  failures=$((failures + 1))
+elif ! grep -qF 'fail the OS update if any package index cannot be fetched' "$work/refresh-output"; then
+  echo "FAIL: missing strict index fetching was rejected for an unrelated reason." >&2
+  sed 's/^/      /' "$work/refresh-output" >&2
+  failures=$((failures + 1))
+else
+  echo "ok: missing strict index fetching is caught."
+fi
+
+# A comment, label or printed string must not substitute for an executed apt update option.
+for decoy in '# apt-get update --error-on=any' \
+  'LABEL guard.check="apt-get update --error-on=any"' \
+  'RUN echo "apt-get update --error-on=any"'; do
+  sed -e 's/apt-get update --error-on=any/apt-get update/' \
+    -e "/^RUN echo \"Refreshing runtime OS packages:/i\\$decoy" \
+    Dockerfile > "$refresh_fixture/Dockerfile"
+  if ! grep -qFx -- "$decoy" "$refresh_fixture/Dockerfile"; then
+    echo "FAIL: the strict index fetching decoy was not inserted." >&2
+    failures=$((failures + 1))
+    continue
+  fi
+  refresh_status=0
+  bash "$refresh_fixture/scripts/verify-runtime-os-refresh.sh" > "$work/refresh-output" 2>&1 || refresh_status=$?
+  if [[ "$refresh_status" -eq 0 ]]; then
+    echo "FAIL: the OS refresh guard accepted a strict index fetching decoy: $decoy" >&2
+    failures=$((failures + 1))
+  elif ! grep -qF 'fail the OS update if any package index cannot be fetched' "$work/refresh-output"; then
+    echo "FAIL: the strict index fetching decoy was rejected for an unrelated reason." >&2
+    sed 's/^/      /' "$work/refresh-output" >&2
+    failures=$((failures + 1))
+  else
+    echo "ok: a strict index fetching decoy is rejected: $decoy"
+  fi
+done
+
+# Valid Dockerfile continuations should still be accepted when an option moves to the next line.
+sed 's/apt-get update --error-on=any/apt-get update \\\n    --error-on=any/' \
+  Dockerfile > "$refresh_fixture/Dockerfile"
+if ! bash "$refresh_fixture/scripts/verify-runtime-os-refresh.sh" > "$work/refresh-output" 2>&1; then
+  echo "FAIL: the OS refresh guard rejected a continued apt update command." >&2
+  sed 's/^/      /' "$work/refresh-output" >&2
+  failures=$((failures + 1))
+else
+  echo "ok: a continued apt update command is accepted."
+fi
+
 # --- deployment script: what it actually runs ----------------------------------------------------
 
 # Verified by running it, not by pattern-matching its source. A source check finds the commands
@@ -135,7 +233,7 @@ expect_trace() {
   # The exit status has to be the script's, not grep's, so the output is captured first.
   local raw
   raw="$(PATH="$PWD/$work/bin:$PATH" PRODUCTION_LOCK_DIR="$PWD/$work/lock" ENV_FILE=.env.production.example bash "$script" "$mode" 2>&1)" || status=$?
-  actual="$(grep '^TRACE ' <<< "$raw" | sed -e 's/^TRACE //' || true)"
+  actual="$(grep '^TRACE ' <<< "$raw" | sed -e 's/^TRACE //' -e 's/RUNTIME_OS_REFRESH=[^ ]*/RUNTIME_OS_REFRESH=<refresh>/' || true)"
 
   if [[ "$status" -ne 0 ]]; then
     echo "FAIL: $description - the script exited $status." >&2
@@ -161,7 +259,7 @@ traceable="$work/deploy-traceable"
 make_traceable scripts/deploy-production.sh "$traceable"
 
 expect_trace "the first deployment builds and scans before anything starts"   "$traceable" initial   "compose config --quiet
-compose build api web worker migrate
+compose build --build-arg RUNTIME_OS_REFRESH=<refresh> api web worker migrate
 scan
 pin
 compose up -d postgres redis
@@ -171,7 +269,7 @@ verify
 compose ps"
 
 expect_trace "an update backs up while stopped and before migrating"   "$traceable" update   "compose config --quiet
-compose build api web worker migrate
+compose build --build-arg RUNTIME_OS_REFRESH=<refresh> api web worker migrate
 scan
 pin
 compose stop web api worker
@@ -188,6 +286,30 @@ backup
 compose up -d --wait api worker web
 verify
 compose ps"
+
+# Each deployment must refresh OS packages even for the same source and base digest. Verify the
+# real argument before normalising the trace, including a hostile inherited value.
+previous_refresh=""
+for refresh_mode in initial update; do
+  refresh_status=0
+  refresh_output="$(PATH="$PWD/$work/bin:$PATH" PRODUCTION_LOCK_DIR="$PWD/$work/lock" \
+    ENV_FILE=.env.production.example RUNTIME_OS_REFRESH=inherited-refresh \
+    bash "$traceable" "$refresh_mode" 2>&1)" || refresh_status=$?
+  if [[ "$refresh_status" -ne 0 ]]; then
+    echo "FAIL: $refresh_mode exited $refresh_status while checking the OS update argument." >&2
+    sed 's/^/      /' <<< "$refresh_output" >&2
+    failures=$((failures + 1))
+    continue
+  fi
+  refresh="$(sed -n 's/^TRACE compose build --build-arg RUNTIME_OS_REFRESH=\([^ ]*\) api web worker migrate$/\1/p' <<< "$refresh_output")"
+  if [[ -z "$refresh" || "$refresh" == inherited-refresh || "$refresh" == "$previous_refresh" ]]; then
+    echo "FAIL: $refresh_mode did not pass a fresh OS update argument to all four build targets." >&2
+    failures=$((failures + 1))
+  else
+    echo "ok: $refresh_mode passes a fresh OS update argument to all four build targets."
+  fi
+  previous_refresh="$refresh"
+done
 
 # The image variables are part of the Compose model, so pinning only after the build is too late:
 # inherited values would make Compose place the new build under other tags while the scanner keeps

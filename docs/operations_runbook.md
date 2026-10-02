@@ -22,6 +22,7 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | 1.4 | 2026-09-13 | CDリリース候補通知（`release-candidate-notify.yaml`）の追加を反映。設定するVariable/Secret、GitHub App権限、有効化手順、通知失敗時の再実行方法を7.4に追記。 | Claude |
 | 1.5 | 2026-09-14 | レビュー反映。送信成功（204）と受信側の反応は別であることを明記し、infra側の受信workflowがdefault branch上に必要な旨と、有効化時にinfra側の実行も確認する手順を7.4に追加。 | Claude |
 | 1.6 | 2026-10-02 | CIで検出したOpenSSL脆弱性への対応を7.3に記録。アプリ共通イメージのパッケージ更新と、RedisのDTLS/QUIC限定CVEの受容根拠・見直し条件を追加。 | Codex |
+| 1.7 | 2026-10-02 | ISSUE-SEC-008: CI/VPSでOS更新層を毎回実行するビルド引数、既存OSパッケージ全体の更新方針、インデックス取得失敗時の中断を7.3に記録。 | Codex |
 
 ## 1. 目的
 
@@ -182,7 +183,13 @@ VPSの初回デプロイ・更新・バックアップの正本手順は `docs/d
 | `dev` | `rustfs/rustfs:1.0.0-rc.6` | 開発専用の任意profileで、本番Composeは起動しない。報告のみでゲートしない。 |
 | `drift` | `postgres:16-alpine` / `redis:7-alpine` のタグ | 上流タグが指すindexと、その中の当該プラットフォーム（linux/amd64）imageを `image-digests.lock` のdigestと比較する。indexだけが動いてimageが同一ならexit 0で報告のみ、imageが変わっていればexit 2。CIはexit 2をwarning annotationとstep summaryに出すだけでゲートしない。レジストリに直接問い合わせ、pullもスキャンもしない。 |
 
-アプリ4イメージの共通 `runtime-base` は、curlだけでは依存条件を満たす既存のOpenSSLが更新されないため、curlと `openssl` / `libssl3t64` を明示して更新する。ただし、この更新はapt層が実行されたときだけ有効である。2026-10-02のCIではGHAキャッシュからOpenSSL `3.0.13-0ubuntu3.15` を含む層が復元され、aptは再実行されず、`CVE-2026-84782` が各イメージで2件ずつ検出された。今回の修正で `RUN` の文字列が変わったためキャッシュが無効になり、Ubuntu 24.04の修正版 [`3.0.13-0ubuntu3.16`](https://ubuntu.com/security/CVE-2026-84782) が導入された。パッケージの修正版公開だけではキャッシュは無効にならず、CIとVPSのビルドで再発する余地がある。apt層を毎回実行する恒久策は `todo.md` の ISSUE-SEC-008 で扱う。アプリのCVE受容は追加せず、再ビルド後の `app` ゲートで解消を確認する。
+2026-10-02のCIではGHAキャッシュからOpenSSL `3.0.13-0ubuntu3.15` を含む層が復元され、aptは再実行されず、`CVE-2026-84782` が各イメージで2件ずつ検出された。curlのインストールだけでは依存条件を満たす既存のOpenSSLが更新されないため、当初はOpenSSLを明示して更新し、Ubuntu 24.04の修正版 [`3.0.13-0ubuntu3.16`](https://ubuntu.com/security/CVE-2026-84782) を取り込んだ。パッケージの修正版公開だけではキャッシュは無効にならないため、ISSUE-SEC-008で以下の恒久策を適用した。
+
+アプリ4イメージの共通 `runtime-base` は、毎回 `apt-get update --error-on=any -o Acquire::Retries=3` → `apt-get upgrade -y --no-install-recommends` → curlのインストールを実行する。一時的な取得障害は再試行し、securityを含むいずれかの更新インデックスを取得できなければ `update` を失敗させてビルドを中断する。通常の `apt-get update` は一部取得失敗でも警告だけでexit 0になる場合があるため、`--error-on=any` を指定する。OpenSSLに限らず、そのベースに既にインストールされているOSパッケージ全体を、ベースの設定済みリポジトリ内で更新する。`upgrade` はパッケージの削除や新規インストールを必要とする更新を保留するため、`dist-upgrade`、ディストリビューション/リポジトリ変更は行わない。保留や未解消CVEはログと `app` ゲートで確認し、必要ならベース更新を別途判断する。SDKのビルドステージと、digest固定のPostgreSQL/Redisはこのapt更新の対象外である。
+
+CIのBakeには `RUNTIME_OS_REFRESH=<github.run_id>-<github.run_attempt>`、VPSのデプロイスクリプトにはビルドのたびに生成する時刻・PID・乱数の値を渡す。CIの再実行やnightly、新しいコミットを伴わないVPS再ビルドでも更新層が無効になる。`ARG` は `runtime-base` だけに宣言し、NuGet restoreと共有build層、GHAキャッシュのimport/exportは維持する。値は更新用の識別子でありSecretを含めない。通常の手動ビルドは既定値 `local` でキャッシュされるため、OS更新が必要なら必ず新しい値を渡す（手順と検証は [`docker_deployment.md`](docker_deployment.md) 3.2節）。
+
+この方法は[Dockerのビルド引数によるキャッシュ無効化](https://docs.docker.com/build/cache/invalidation/)を利用する。Bakeの `no-cache-filter` もステージ単位で有効だが、通常の[Compose build](https://docs.docker.com/reference/cli/docker/compose/build/)には同じオプションが無いため、両経路で使えるビルド引数を選んだ。`--pull` だけでは同じベースdigestのapt層は更新されず、全体の `--no-cache` はrestore/buildまで破棄する。更新にはaptリポジトリへの通信と追加のビルド時間が必要で、失敗時はビルドが中断する。OSパッケージ更新後もアプリのCVE受容は追加せず、起動前の `app` ゲートと隔離コンテナスモークで確認する。
 
 MinIO CommunityのEOLと公式Docker Hubリポジトリ消失を受け、開発用S3互換環境はRustFSへ移行した。RustFSはまだ安定版前のため、レビュー済みの`1.0.0-rc.6`をmanifest digest `sha256:97171b3d72cd47dc81000f92ea84de25608bfc35a94c965501afaeb5d99f6035`で固定する。これは開発・接続確認専用であり、本番ストレージには使用しない。参照を更新する場合はrelease notesと既知のセキュリティ問題を確認し、`compose.override.yaml`と`scripts/scan-container-images.sh`を同時に変更して、`bash scripts/verify-development-image-pins.sh`で一致と固定形式を検証する。
 

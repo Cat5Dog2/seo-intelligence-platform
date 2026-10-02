@@ -128,7 +128,7 @@ bash scripts/deploy-production.sh initial
 | --- | --- | --- |
 | 1 | build先を固定タグへ設定 | `API_IMAGE`等の継承値を無視し、Composeがbuildする4つの名前とスキャナが解決する名前を一致させる。 |
 | 2 | `config --quiet` | Compose定義の検証。 |
-| 3 | `build api web worker migrate` | **サービス名を明示する**。`migrate`は`tools` profile配下にあり、省略するとbuild対象から外れる。初回はmigrate imageが存在せず、更新時は前リリースのbundleでMigrationを実行してしまう。 |
+| 3 | `build --build-arg RUNTIME_OS_REFRESH=<毎回生成> api web worker migrate` | 共通OS更新層を毎回実行し、restore/build層のキャッシュを維持する。**サービス名を明示する**。`migrate`は`tools` profile配下にあり、省略するとbuild対象から外れる。初回はmigrate imageが存在せず、更新時は前リリースのbundleでMigrationを実行してしまう。 |
 | 4 | `scan-container-images.sh app` | **buildの後・起動の前**。前ならば前リリースのimageを、後ならば既に稼働中のimageを検査することになる。合格した4つのimage IDを`artifacts/scanned-images.tsv`へ記録する。 |
 | 5 | manifestの読み込みとexport | 4サービスが正確に1件ずつ記録されていることを確認し、image IDを`API_IMAGE`等へ設定する。manifestが無い・IDでない・欠落・重複なら**起動前に停止**する。 |
 | 6 | `up -d postgres redis` | 依存サービスの起動。 |
@@ -148,6 +148,33 @@ CIも同じスキャンを行うが、VPSは同じコミットから再buildす�
 MigrationはAPI起動時に自動適用しない。`migrate`はEF migration bundleを実行するone-shotコンテナで、適用完了後に終了する。API `/readyz`は未適用Migrationを検知してunhealthyを返すため、`migrate`を飛ばした場合はapiのhealthcheckが成功せず`up --wait`が失敗する。手順としてもMigration→起動の順序を守る。
 
 api/webにはコンテナhealthcheck（`/readyz`・`/healthz`）があり、`up -d --wait`はhealthyになるまで待つ。`ps`のSTATUSが`healthy`であることがデプロイ完了のシグナルである。
+
+#### OSパッケージ更新とビルドキャッシュ
+
+CIのBakeとVPSのComposeは、4ターゲットへ同じ `RUNTIME_OS_REFRESH` を渡す。CIは `github.run_id` と `github.run_attempt` の組、VPSはスクリプト内で毎回生成する時刻・PID・乱数を使用し、親shellの同名変数は採用しない。Dockerfileの `ARG` は `runtime-base` にだけ宣言しているため、OS更新層とそれに続く最終image層を再生成し、NuGet restore・共有build・publish・migration bundleのキャッシュは再利用する。
+
+OS更新は `apt-get update --error-on=any -o Acquire::Retries=3` と `apt-get upgrade -y --no-install-recommends` で既存パッケージ全体を対象にする。更新インデックスの一部だけ取得に失敗した場合も、再試行後に `update` を失敗させ、スキャンや起動へ進まない。ディストリビューション変更や `dist-upgrade` は行わない。詳細と保留パッケージの扱いは [`operations_runbook.md`](operations_runbook.md) 7.3節を参照する。
+
+通常の `docker compose build` は更新引数を渡さないためOS更新層もキャッシュされる。本番はデプロイスクリプトを使う。ビルドだけを手動検証するときは、次のように専用タグ・専用projectと新しい更新値を渡す。検証用imageは本番の固定タグを上書きせず、このコマンドは起動やMigrationを行わない。
+
+```bash
+runtime_os_refresh="$(date +%s%N)-$$-${RANDOM}"
+API_IMAGE=seo-os-refresh-check-api WEB_IMAGE=seo-os-refresh-check-web \
+WORKER_IMAGE=seo-os-refresh-check-worker MIGRATE_IMAGE=seo-os-refresh-check-migrate \
+docker compose --project-name seo-os-refresh-check --env-file .env.production \
+  -f compose.yaml -f compose.production.yaml build \
+  --build-arg "RUNTIME_OS_REFRESH=$runtime_os_refresh" api web worker migrate
+```
+
+手動確認が終わったら、確認用の4タグを削除する。
+
+```bash
+docker image rm seo-os-refresh-check-api seo-os-refresh-check-web seo-os-refresh-check-worker seo-os-refresh-check-migrate
+```
+
+配線の回帰確認は `bash scripts/verify-runtime-os-refresh.sh`（CIの設定を使って新規runと再実行のBake、本番Composeの実ビルド定義を描画）と `bash scripts/verify-deployment-guards.sh`（CI引数のrun ID/attempt欠落、初回/更新での引数再生成、ゲート失敗時の起動中断を検証）で行う。受入確認ではPRのCIと再実行1回、実VPSの2回のビルドで同じソース・ベースdigestを使い、`runtime-base` の `RUN` が `CACHED` にならずaptの出力があること、restoreとbuildの `RUN` がGHA/VPSのキャッシュから `CACHED` になることをログで確認する。
+
+2026-10-02のローカルDockerで、同一ソース・同一SDK/ASP.NETベースdigestを使った4イメージの連続ビルドは、CI用Bakeが27秒/19秒、VPS用Composeが18秒/18秒だった。すべてaptは実行され、restore/buildの `RUN` は `CACHED` だった。更新引数を再利用した対照ビルドは3秒でaptも `CACHED` となり、更新による増分は約15〜24秒だった。これはローカルのキャッシュと通信環境での測定であり、GHAキャッシュ転送や実VPSの所要時間は含まない。
 
 ### 3.3 Caddy設定例
 
