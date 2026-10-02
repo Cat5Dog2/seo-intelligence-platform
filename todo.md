@@ -1216,7 +1216,7 @@ ISSUE-MVP-00X の続きから再開してください。
 
 ### ISSUE-OPS-005 ビルドしたimage IDでスキャンと起動を同一成果物へ固定する
 
-参照ドキュメント: `docs/docker_deployment.md`, `docs/ci-cd-design.md`
+参照ドキュメント: `docs/docker_deployment.md`
 
 背景:
 
@@ -1251,7 +1251,7 @@ ISSUE-MVP-00X の続きから再開してください。
 
 ### ISSUE-OPS-006 Dependabotを有効化し、GitHub ActionsをSHA固定する
 
-参照ドキュメント: `docs/ci-cd-design.md`
+参照ドキュメント: `.github/dependabot.yml`, `.github/workflows/*.yaml`
 
 背景:
 
@@ -1281,7 +1281,7 @@ ISSUE-MVP-00X の続きから再開してください。
 
 ### ISSUE-OPS-007 ビルドがレイヤ外の状態に依存していた
 
-参照ドキュメント: `docs/ci-cd-design.md`, `Dockerfile`
+参照ドキュメント: `docs/environment_setup.md` 10章, `Dockerfile`
 
 背景:
 
@@ -1323,7 +1323,7 @@ ISSUE-MVP-00X の続きから再開してください。
 
 ### ISSUE-OPS-008 パッケージ版を集中管理し、依存更新が版を分裂させないようにする
 
-参照ドキュメント: `docs/ci-cd-design.md`
+参照ドキュメント: `Directory.Packages.props`, `.github/dependabot.yml`
 
 背景:
 
@@ -2108,7 +2108,7 @@ CI失敗の是正:
 
 ### ISSUE-SEC-002 runtimeイメージの未トリアージCVEを判断し、定期スキャンで再発を検知する
 
-参照ドキュメント: `docs/operations_runbook.md` 7.3節, `docs/ci-cd-design.md`
+参照ドキュメント: `docs/operations_runbook.md` 7.3節, `.github/workflows/ci.yaml`
 
 背景:
 
@@ -2167,7 +2167,7 @@ CI失敗の是正:
 
 ### ISSUE-SEC-003 Trivyスキャナの隔離とリソース制限を強化する
 
-参照ドキュメント: `docs/ci-cd-design.md`, `docs/operations_runbook.md`
+参照ドキュメント: `docs/operations_runbook.md` 7.3節, `scripts/scan-container-images.sh`
 
 背景:
 
