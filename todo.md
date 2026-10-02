@@ -1216,7 +1216,7 @@ ISSUE-MVP-00X の続きから再開してください。
 
 ### ISSUE-OPS-005 ビルドしたimage IDでスキャンと起動を同一成果物へ固定する
 
-参照ドキュメント: `docs/docker_deployment.md`, `docs/ci-cd-design.md`
+参照ドキュメント: `docs/docker_deployment.md`
 
 背景:
 
@@ -1251,7 +1251,7 @@ ISSUE-MVP-00X の続きから再開してください。
 
 ### ISSUE-OPS-006 Dependabotを有効化し、GitHub ActionsをSHA固定する
 
-参照ドキュメント: `docs/ci-cd-design.md`
+参照ドキュメント: `.github/dependabot.yml`, `.github/workflows/*.yaml`
 
 背景:
 
@@ -1281,7 +1281,7 @@ ISSUE-MVP-00X の続きから再開してください。
 
 ### ISSUE-OPS-007 ビルドがレイヤ外の状態に依存していた
 
-参照ドキュメント: `docs/ci-cd-design.md`, `Dockerfile`
+参照ドキュメント: `docs/environment_setup.md` 10章, `Dockerfile`
 
 背景:
 
@@ -1323,7 +1323,7 @@ ISSUE-MVP-00X の続きから再開してください。
 
 ### ISSUE-OPS-008 パッケージ版を集中管理し、依存更新が版を分裂させないようにする
 
-参照ドキュメント: `docs/ci-cd-design.md`
+参照ドキュメント: `Directory.Packages.props`, `.github/dependabot.yml`
 
 背景:
 
@@ -2108,7 +2108,7 @@ CI失敗の是正:
 
 ### ISSUE-SEC-002 runtimeイメージの未トリアージCVEを判断し、定期スキャンで再発を検知する
 
-参照ドキュメント: `docs/operations_runbook.md` 7.3節, `docs/ci-cd-design.md`
+参照ドキュメント: `docs/operations_runbook.md` 7.3節, `.github/workflows/ci.yaml`
 
 背景:
 
@@ -2160,9 +2160,14 @@ CI失敗の是正:
 
 - 受理には期限の考え方が要る。web-writing-tool 側は 2026-10-27 を期限にしている。同じ日付で揃えるかは、上流の修正見込みを見て決める。
 
+2026-10-02追加対応:
+
+- [x] Redis 7.4.11で到達しない `CVE-2026-75804`（QUIC）と `CVE-2026-84782`（DTLS）の4件を、image/CVE/target/package単位で受容し、Runbook 7.3に根拠と見直し条件を記録した。
+- [x] アプリ4イメージの共通apt層でOpenSSLを修正版へ更新し、`app` / `runtime` の実スキャンがexit 0になることを確認した。今回のキャッシュ無効化と、再発防止策（ISSUE-SEC-008）は区別する。
+
 ### ISSUE-SEC-003 Trivyスキャナの隔離とリソース制限を強化する
 
-参照ドキュメント: `docs/ci-cd-design.md`, `docs/operations_runbook.md`
+参照ドキュメント: `docs/operations_runbook.md` 7.3節, `scripts/scan-container-images.sh`
 
 背景:
 
@@ -2314,6 +2319,38 @@ CI失敗の是正:
 補足:
 
 - 今回は pin を動かしていない。#144 で判定した `3c5c8892…` / `520775a4…` のまま。上流の `721873c3…` / `858f009f…` へ更新するかは 7.3 の更新手順で別途判断する（実測ではパッケージ差分 0 件なので急ぐ理由は無い）。
+
+### ISSUE-SEC-008 CIとVPSでruntime-baseのOS更新層を毎回実行する
+
+参照ドキュメント: `docs/operations_runbook.md` 7.3節, `docs/docker_deployment.md`
+
+背景:
+
+- 2026-10-02のCIは修正版公開後もGHAキャッシュから旧OpenSSLを含むapt層を復元して失敗した。今回は `RUN` の変更で更新されたが、パッケージ公開だけではキャッシュは無効にならない。
+- VPSの `scripts/deploy-production.sh` もビルドキャッシュを使用する。ベースdigestが同じなら `--pull` だけではapt層の再実行を保証できない。脆弱性ゲートはデプロイを停止するが、更新を取り込む経路が必要である。
+
+目的:
+
+- [ ] ベースイメージの再公開を待たずにOS修正版を取り込み、キャッシュ由来の脆弱性ゲート失敗を防ぐ。
+- [ ] CIとVPSでOS更新方針を揃え、更新層以外のビルドキャッシュを維持する。
+
+範囲:
+
+- [ ] CIのBakeとVPSのComposeビルドで `runtime-base` のapt層を毎回実行する方法を選定・実装する。Bake用HCLの `no-cache-filter` 等は実際のビルド定義と実行ログで有効性を確認する。
+- [ ] OpenSSL以外のOSパッケージも更新する `apt-get upgrade` の適用範囲を検討し、Runbookへ更新方針を記録する。
+- [ ] NuGet restore・共有build層のキャッシュを維持し、ビルド時間への影響を確認する。
+
+受入条件:
+
+- [ ] 同じソース・ベースdigestで2回ビルドしてもapt層は毎回実行されることを、CIとVPS双方のログで確認する。
+- [ ] アプリ脆弱性ゲートと隔離コンテナスモークが成功し、ゲート失敗時には起動が中断される。
+
+検証:
+
+- [ ] CIとVPSの双方で同じソース・ベースdigestを2回ビルドし、`runtime-base` のapt層が `CACHED` にならず、aptの実行出力が毎回残ることを確認する。
+- [ ] `bash scripts/scan-container-images.sh app`
+- [ ] `CONTAINER_SMOKE_SKIP_BUILD=true bash scripts/container-smoke.sh`
+- [ ] `bash scripts/verify-deployment-guards.sh`
 
 ### ISSUE-FIX-002 ブラウザQAで確認した不具合を修正する
 

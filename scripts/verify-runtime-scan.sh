@@ -159,15 +159,15 @@ fi
 accepted_tsv="$work/accepted.tsv"
 extract_acceptances scripts/scan-container-images.sh > "$accepted_tsv"
 
-# Two fixture sets: every acceptance present as a finding, and the same minus the first acceptance
-# - which is then stale. Prints the CVE that was dropped.
-dropped="$("$python_bin" - "$accepted_tsv" "$work/reports-complete" "$work/reports-stale" <<'PY'
+# Fixtures follow the current acceptances: every finding accepted, one stale acceptance, and
+# findings that differ from the first acceptance in exactly one field. Prints the dropped CVE.
+dropped="$("$python_bin" - "$accepted_tsv" "$work/reports-complete" "$work/reports-stale" image-digests.lock <<'PY'
 import json
 import os
 import sys
 from collections import defaultdict
 
-tsv, complete_dir, stale_dir = sys.argv[1:4]
+tsv, complete_dir, stale_dir, lock = sys.argv[1:5]
 rows = []
 with open(tsv, encoding="utf-8") as handle:
     for line in handle:
@@ -191,6 +191,19 @@ def write(directory, rows):
 
 write(complete_dir, rows)
 write(stale_dir, rows[1:])
+
+if rows:
+    with open(lock, encoding="utf-8") as handle:
+        images = [line.strip().split("\t")[1] for line in handle if line.strip() and not line.startswith("#")]
+    other_image = next(image for image in images if image != rows[0][0])
+    for index, name in enumerate(("image", "cve", "target", "package")):
+        finding = list(rows[0])
+        finding[index] = other_image if index == 0 else finding[index] + "-unreviewed"
+        directory = complete_dir + "-" + name
+        write(directory, rows + [tuple(finding)])
+        image, cve, target, package = finding
+        with open(os.path.join(directory, "expected-stderr"), "w", encoding="utf-8") as handle:
+            handle.write(f"{image}: 1 gated finding(s):\n  HIGH {cve} {target} ({package})\n")
 print(rows[0][1] if rows else "")
 PY
 )"
@@ -238,6 +251,24 @@ assert_pulls_locked_digests() {
   fi
   pass "$mode pulls every runtime image at its locked digest and never the tag"
 }
+
+# --- runtime: changing any one acceptance field must gate exactly that finding ---
+
+if [ -z "$dropped" ]; then
+  echo "SKIP: RUNTIME_ACCEPTED is empty, so no acceptance fields can be varied."
+else
+  for fixture in image cve target package; do
+    run_scan runtime "$work/reports-complete-$fixture"
+    expected="$(tr -d '\r' < "$work/reports-complete-$fixture/expected-stderr")"
+    actual="$(tr -d '\r' < "$work/stderr")"
+    if [ "$scan_status" -ne 1 ] || [ "$actual" != "$expected" ]; then
+      fail "runtime did not report exactly the expected $fixture mismatch (exit $scan_status):"
+      printf '      expected:\n%s\n      actual:\n%s\n' "$expected" "$actual" >&2
+    else
+      pass "runtime gates exactly the finding with a different $fixture field"
+    fi
+  done
+fi
 
 # --- runtime: scans the locked digest, passes with the tag moved, and pins the reviewed image ---
 

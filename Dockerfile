@@ -101,8 +101,12 @@ WORKDIR /app
 # Single authoritative container port; matches the aspnet base-image default.
 ENV ASPNETCORE_HTTP_PORTS=8080
 # curl backs the Compose healthchecks for api/web.
+# openssl and libssl3t64 are already in the base image. Naming them makes apt upgrade them;
+# installing curl alone keeps any base version that satisfies curl's dependency. This only
+# takes effect when this layer executes, and a package release alone does not invalidate the
+# layer cache; see ISSUE-SEC-008 in todo.md.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl \
+    && apt-get install -y --no-install-recommends curl openssl libssl3t64 \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /data/storage /app/.data/data-protection-keys \
     && chown -R app:app /data /app/.data
