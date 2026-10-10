@@ -53,6 +53,10 @@ updates:
           - "Microsoft.NET.Test.Sdk"
           - "Testcontainers*"
           - "Microsoft.Playwright*"
+          # Ungrouped, coverlet.collector arrived as its own pull request (#160) on the same day as
+          # this group's (#159), both editing Directory.Packages.props, so one of them would have
+          # waited for the other's merge, a rebase and a second CI run.
+          - "coverlet*"
 
   # The base images the application is built from. compose.yaml pins postgres and redis by digest
   # and image-digests.lock is their single source of truth, so those are updated deliberately
