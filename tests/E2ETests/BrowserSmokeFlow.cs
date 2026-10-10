@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.RegularExpressions;
 using Microsoft.Playwright;
 
 namespace E2ETests;
@@ -12,7 +13,7 @@ internal sealed class BrowserSmokeFlow(
     public async Task CompleteAsync()
     {
         await SignInAsync();
-        await SelectProjectAsync();
+        await NavigateToProjectPageAsync(webUrl);
         await CompleteKeywordDiscoveryFlowAsync();
         await CompleteSearchVolumeFlowAsync();
         await CompleteAdminCredentialFlowAsync();
@@ -30,7 +31,9 @@ internal sealed class BrowserSmokeFlow(
         await page.FillAsync("#email", RequiredEnvironment("E2E_ADMIN_EMAIL"));
         await page.FillAsync("#password", RequiredEnvironment("E2E_ADMIN_PASSWORD"));
 
-        await page.ClickAsync("button[type='submit']");
+        // By name, not the first submit button: the guest demo form comes first on the page, and
+        // its button signs in as a guest with only the demo project.
+        await page.GetByRole(AriaRole.Button, new() { Name = "ログイン", Exact = true }).ClickAsync();
         await page.WaitForURLAsync(
             url => !url.Contains("/login", StringComparison.Ordinal),
             new PageWaitForURLOptions { WaitUntil = WaitUntilState.NetworkIdle });
@@ -44,49 +47,73 @@ internal sealed class BrowserSmokeFlow(
             : throw new InvalidOperationException($"{name} is required when E2E_BROWSER_ENABLED=true.");
     }
 
+    /// <summary>
+    /// Picking an option changes the select's value and text in the browser at once, so neither
+    /// shows that the server switched; the page header, rendered from the server's selection, does.
+    /// A pick made before the circuit is interactive never reaches the server, so the flow picks
+    /// again until the header names the project. When the prerendered page already has the
+    /// project selected, the header matches before the circuit is interactive; waiting for
+    /// interactivity itself is ISSUE-FIX-004 in todo.md.
+    /// </summary>
     private async Task SelectProjectAsync()
     {
-        await NavigateAsync(webUrl);
+        const int attempts = 3;
         var switcher = page.GetByTestId("project-switcher");
-        await switcher.WaitForAsync(new LocatorWaitForOptions { State = WaitForSelectorState.Visible });
-        await page.WaitForFunctionAsync(
-            """
-            ([selector, expectedValue]) => {
-                const select = document.querySelector(selector);
-                return !!select && Array.from(select.options).some(option => option.value === expectedValue);
+        // The whole text, not a substring: another project's name can contain this one's.
+        var selectedProjectHeader = page.Locator(".page-header p").Filter(new()
+        {
+            HasTextRegex = new Regex($@"^\s*選択中プロジェクト: {Regex.Escape(project.Name)}\s*$")
+        });
+        for (var attempt = 1; attempt <= attempts; attempt++)
+        {
+            // Waits until the switcher is enabled (it is disabled while the projects load) and
+            // lists the project.
+            await switcher.SelectOptionAsync(project.ProjectId);
+            if (await IsAttachedWithinAsync(selectedProjectHeader, timeoutMilliseconds: 5_000))
+            {
+                return;
             }
-            """,
-            new[] { "[data-testid='project-switcher']", project.ProjectId });
-        await switcher.SelectOptionAsync(project.ProjectId);
-        await page.WaitForFunctionAsync(
-            """
-            ([selector, expectedValue, expectedText]) => {
-                const select = document.querySelector(selector);
-                const option = select?.selectedOptions?.[0];
-                return select?.value === expectedValue && option?.textContent?.trim() === expectedText;
-            }
-            """,
-            new[] { "[data-testid='project-switcher']", project.ProjectId, project.Name });
+        }
+
+        throw new TimeoutException(
+            $"The page header did not show project {project.Name} after {attempts} selections. Current page text: {await ReadBodyTextAsync()}");
+    }
+
+    private static async Task<bool> IsAttachedWithinAsync(ILocator locator, float timeoutMilliseconds)
+    {
+        try
+        {
+            await locator.WaitForAsync(new() { State = WaitForSelectorState.Attached, Timeout = timeoutMilliseconds });
+            return true;
+        }
+        catch (TimeoutException)
+        {
+            return false;
+        }
     }
 
     private async Task CompleteKeywordDiscoveryFlowAsync()
     {
         var seed = $"browser smoke {DateTimeOffset.UtcNow:yyyyMMddHHmmss}";
-        await NavigateAsync($"{webUrl}/keywords");
+        await NavigateToProjectPageAsync($"{webUrl}/keywords");
         await page.GetByTestId("keyword-seed-input").FillAsync(seed);
         await page.Locator("summary").Filter(new() { HasText = "詳細条件" }).ClickAsync();
         await page.GetByTestId("keyword-limit-input").FillAsync("10");
         await WaitForEnabledAsync("keyword-discovery-run-button");
         await page.GetByTestId("keyword-discovery-run-button").ClickAsync();
 
-        await WaitForEnabledAsync("keyword-candidates-export-button");
+        // More than one source makes discovery a job, and the page loads the candidates (which the
+        // export button waits for) only when 状態更新 is pressed after the job has finished.
+        await ClickUntilEnabledAsync(
+            page.GetByRole(AriaRole.Button, new() { Name = "状態更新", Exact = true }),
+            "keyword-candidates-export-button");
         await page.GetByTestId("keyword-candidates-export-button").ClickAsync();
         await WaitForElementTextContainsAsync("keyword-status-message", "CSV");
     }
 
     private async Task CompleteSearchVolumeFlowAsync()
     {
-        await NavigateAsync($"{webUrl}/search-volume");
+        await NavigateToProjectPageAsync($"{webUrl}/search-volume");
         await page.GetByTestId("search-volume-keywords-input").FillAsync(
             """
             browser smoke keyword
@@ -99,7 +126,10 @@ internal sealed class BrowserSmokeFlow(
         await page.GetByTestId("search-volume-register-button").ClickAsync();
         await WaitForInputValueAsync("search-volume-job-id-input");
 
-        await WaitForEnabledAsync("search-volume-export-button");
+        // The export button waits for results, which arrive through a poll the worker runs
+        // SearchVolumeService.PollInterval (60 s) after registration and Hangfire picks up within
+        // 15 s of that. The page refreshes the job by itself, so waiting longer is enough.
+        await WaitForEnabledAsync("search-volume-export-button", timeoutMilliseconds: 120_000);
         await page.GetByTestId("search-volume-export-button").ClickAsync();
         await WaitForElementTextContainsAsync("search-volume-status-message", "CSV");
     }
@@ -123,7 +153,7 @@ internal sealed class BrowserSmokeFlow(
     private async Task CompleteRankMonitoringFlowAsync()
     {
         var stamp = DateTimeOffset.UtcNow.ToString("yyyyMMddHHmmss", CultureInfo.InvariantCulture);
-        await NavigateAsync($"{webUrl}/rank-monitoring");
+        await NavigateToProjectPageAsync($"{webUrl}/rank-monitoring");
         await page.GetByTestId("rank-keywords-input").FillAsync(
             $"""
             browser rank {stamp}
@@ -140,7 +170,7 @@ internal sealed class BrowserSmokeFlow(
 
     private async Task CompleteReportFlowAsync()
     {
-        await NavigateAsync($"{webUrl}/reports");
+        await NavigateToProjectPageAsync($"{webUrl}/reports");
         await page.GetByTestId("report-period-input").FillAsync(DateTime.UtcNow.ToString("yyyy-MM", CultureInfo.InvariantCulture));
         await page.GetByTestId("report-format-select").SelectOptionAsync("pdf");
         await page.GetByTestId("report-sections-input").FillAsync("summary, rank, rewrite, cannibalization");
@@ -195,6 +225,17 @@ internal sealed class BrowserSmokeFlow(
         return System.Text.Encoding.ASCII.GetString(buffer, 0, read);
     }
 
+    /// <summary>
+    /// A full navigation starts a new Blazor circuit, which selects the newest active project
+    /// again. The other browser tests create projects in parallel, so the flow selects its own
+    /// project on every project-scoped page instead of relying on the default.
+    /// </summary>
+    private async Task NavigateToProjectPageAsync(string url)
+    {
+        await NavigateAsync(url);
+        await SelectProjectAsync();
+    }
+
     private async Task NavigateAsync(string url)
     {
         await page.GotoAsync(url, new PageGotoOptions { WaitUntil = WaitUntilState.NetworkIdle });
@@ -202,7 +243,7 @@ internal sealed class BrowserSmokeFlow(
         await page.WaitForTimeoutAsync(500);
     }
 
-    private Task WaitForEnabledAsync(string testId)
+    private Task WaitForEnabledAsync(string testId, float? timeoutMilliseconds = null)
         => page.WaitForFunctionAsync(
             """
             selector => {
@@ -210,7 +251,28 @@ internal sealed class BrowserSmokeFlow(
                 return !!element && !element.disabled;
             }
             """,
-            TestIdSelector(testId));
+            TestIdSelector(testId),
+            new PageWaitForFunctionOptions { Timeout = timeoutMilliseconds });
+
+    /// <summary>
+    /// Presses a refresh control, as an operator would, until the job behind the page has
+    /// finished and the element it unlocks is enabled.
+    /// </summary>
+    private async Task ClickUntilEnabledAsync(ILocator refreshButton, string testId)
+    {
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(60);
+        var target = page.GetByTestId(testId);
+        while (!await target.IsEnabledAsync())
+        {
+            if (DateTimeOffset.UtcNow >= deadline)
+            {
+                throw new TimeoutException($"{testId} was not enabled within 60 seconds. Current page text: {await ReadBodyTextAsync()}");
+            }
+
+            await refreshButton.ClickAsync();
+            await page.WaitForTimeoutAsync(1_000);
+        }
+    }
 
     private Task WaitForInputValueAsync(string testId)
         => page.WaitForFunctionAsync(

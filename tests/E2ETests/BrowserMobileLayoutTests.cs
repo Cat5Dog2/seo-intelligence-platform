@@ -90,9 +90,15 @@ public sealed class BrowserMobileLayoutTests
         {
             await page.GetByRole(AriaRole.Button, new() { Name = tab, Exact = true }).TapAsync();
             await page.GetByRole(AriaRole.Heading, new() { Name = heading, Exact = true }).WaitForAsync();
-            foreach (var summary in await page.Locator("main details:not([open]) > summary").AllAsync())
+            // Always the first match: an opened section leaves this locator, so the Nth() locators
+            // AllAsync() returns shift down and run out halfway through.
+            var closedSummaries = page.Locator("main details:not([open]) > summary");
+            for (var closed = await closedSummaries.CountAsync(); closed > 0;)
             {
-                await summary.TapAsync();
+                await closedSummaries.First.TapAsync();
+                var stillClosed = await closedSummaries.CountAsync();
+                Assert.True(stillClosed < closed, $"Tapping a summary on admin/{tab} did not open its section.");
+                closed = stillClosed;
             }
             await AssertFitsAsync(page, $"admin/{tab}");
         }
