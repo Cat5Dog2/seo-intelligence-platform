@@ -2165,6 +2165,15 @@ CI失敗の是正:
 - [x] Redis 7.4.11で到達しない `CVE-2026-75804`（QUIC）と `CVE-2026-84782`（DTLS）の4件を、image/CVE/target/package単位で受容し、Runbook 7.3に根拠と見直し条件を記録した。
 - [x] アプリ4イメージの共通apt層でOpenSSLを修正版へ更新し、`app` / `runtime` の実スキャンがexit 0になることを確認した。今回のキャッシュ無効化と、再発防止策（ISSUE-SEC-008）は区別する。
 
+2026-10-10追加対応:
+
+- [x] 2026-10-09 nightly（run 37998102503）の `container-scan` 失敗を調査した。原因は2つで、イメージ側の変化は無い（固定digestと上流タグのlinux/amd64 imageは同一）。1つ目は、`gosu` のGo stdlibに2026-10-08公開の新規HIGH 3件（`CVE-2026-78667` / `CVE-2026-78669` / `CVE-2026-97031`）が検出されたこと。2つ目は、Trivy DBでMEDIUMへ再評価された `CVE-2026-75804` の受容2件がstaleになったこと。
+- [x] 固定imageから取り出した `gosu` のpclntabとGo脆弱性DBの影響シンボルを照合し、受容中の25件すべてで影響シンボルがリンクされていないことを確認した。新規3件を `RUNTIME_ACCEPTED` へ追加し、根拠と見直し条件をRunbook 7.3に記録した。
+- [x] Redisの `CVE-2026-75804`（`libcrypto3` / `libssl3`）の受容2件を削除した。Alpine 3.21の修正版 `3.3.7-r2` を含む上流イメージが出たら、7.3の更新手順で採用する。
+- [x] `bash scripts/scan-container-images.sh runtime`（修正前はCIと同じ内容でexit 1を再現、修正後はexit 0）
+- [x] `bash scripts/verify-runtime-scan.sh` / `bash scripts/verify-scanner-isolation.sh` / `bash scripts/verify-development-image-pins.sh`
+- [ ] main の nightly が緑になる
+
 ### ISSUE-SEC-003 Trivyスキャナの隔離とリソース制限を強化する
 
 参照ドキュメント: `docs/operations_runbook.md` 7.3節, `scripts/scan-container-images.sh`
