@@ -23,6 +23,7 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | 1.5 | 2026-09-14 | レビュー反映。送信成功（204）と受信側の反応は別であることを明記し、infra側の受信workflowがdefault branch上に必要な旨と、有効化時にinfra側の実行も確認する手順を7.4に追加。 | Claude |
 | 1.6 | 2026-10-02 | CIで検出したOpenSSL脆弱性への対応を7.3に記録。アプリ共通イメージのパッケージ更新と、RedisのDTLS/QUIC限定CVEの受容根拠・見直し条件を追加。 | Codex |
 | 1.7 | 2026-10-02 | ISSUE-SEC-008: CI/VPSでOS更新層を毎回実行するビルド引数、既存OSパッケージ全体の更新方針、インデックス取得失敗時の中断を7.3に記録。 | Codex |
+| 1.8 | 2026-10-10 | nightlyの `container-scan` 失敗に対応。`gosu` のGo stdlib新規HIGH 3件を受容し、影響シンボルが `gosu` にリンクされていない根拠を7.3に記録。MEDIUMへ再評価されたRedisの `CVE-2026-75804` の受容を削除。 | Claude |
 
 ## 1. 目的
 
@@ -207,12 +208,14 @@ bash scripts/scan-container-images.sh runtime
 
 | 対象 | 受容コンポーネント | 件数 | 判断 | 記録日 |
 | --- | --- | --- | --- | --- |
-| `postgres:16-alpine` | `usr/local/bin/gosu` の `stdlib` | 22件（Critical 1 / High 21） | **受容**。`gosu`はentrypointが起動時にrootからpostgresへ権限降格するためだけに1回`exec`する補助バイナリで、ネットワーク通信を一切行わない。受容した22件はいずれもGo標準ライブラリのTLS/HTTP/暗号系であり、到達するコードパスが存在しない。CVE IDの一覧は `scripts/scan-container-images.sh` の `RUNTIME_ACCEPTED` を正本とする。 | 2026-08-22 |
-| `redis:7-alpine` | `/scan/image.tar (alpine 3.21.8)` の `libcrypto3` / `libssl3` | 4件（High 4） | **受容**。`CVE-2026-75804` はQUIC、`CVE-2026-84782` はDTLSの処理に限定され、Redis 7.4のTCP/TLS通信からは到達しない。各CVE・各パッケージを個別登録する。 | 2026-10-02 |
+| `postgres:16-alpine` | `usr/local/bin/gosu` の `stdlib` | 25件（Critical 1 / High 24） | **受容**。`gosu`はentrypointが起動時にrootからpostgresへ権限降格するためだけに1回`exec`する補助バイナリで、ネットワーク通信を一切行わない。受容した25件は、Go脆弱性DBが影響箇所として挙げる関数がいずれも `gosu` バイナリにリンクされておらず、到達するコードパスが存在しない（2026-10-10に照合、下記）。CVE IDの一覧は `scripts/scan-container-images.sh` の `RUNTIME_ACCEPTED` を正本とする。 | 2026-08-22（2026-10-10に3件追加） |
+| `redis:7-alpine` | `/scan/image.tar (alpine 3.21.8)` の `libcrypto3` / `libssl3` | 2件（High 2） | **受容**。`CVE-2026-84782` はDTLSの処理に限定され、Redis 7.4のTCP/TLS通信からは到達しない。パッケージごとに個別登録する。MEDIUMへ再評価された `CVE-2026-75804`（QUIC）の2件は2026-10-10に削除した（下記）。 | 2026-10-02 |
 
-Redisの判断根拠: [OpenSSLの2026-09-29アドバイザリ](https://openssl-library.org/news/secadv/20260929.txt) は、上記CVEをそれぞれQUICの接続単位フロー制御不足、DTLSハンドシェイク再送時の読み取り範囲不正としている。[Redis 7.4.11のTLS実装](https://github.com/redis/redis/blob/7.4.11/src/tls.c) は `SSLv23_method()` による通常のTLSを使用し、DTLS/QUICのコンテキストを作成しない。このComposeの起動引数は `redis-server --appendonly yes`、接続先は `redis:6379` で、TLSも有効化していない。本番ではホストへRedisポートを公開しない。
+Redisの判断根拠: [OpenSSLの2026-09-29アドバイザリ](https://openssl-library.org/news/secadv/20260929.txt) は、`CVE-2026-84782` をDTLSハンドシェイク再送時の読み取り範囲不正、削除済みの `CVE-2026-75804` をQUICの接続単位フロー制御不足としている。[Redis 7.4.11のTLS実装](https://github.com/redis/redis/blob/7.4.11/src/tls.c) は `SSLv23_method()` による通常のTLSを使用し、DTLS/QUICのコンテキストを作成しない。このComposeの起動引数は `redis-server --appendonly yes`、接続先は `redis:6379` で、TLSも有効化していない。本番ではホストへRedisポートを公開しない。
 
-2026-10-02の実測では、固定中と上流タグのlinux/amd64 manifestは同一で、どちらもRedis 7.4.11 / OpenSSL `3.3.7-r1` / Alpine 3.21.8だった。indexだけを更新しても解消しないためdigestは据え置く。上流の修正イメージ採用時に4件の受容を削除する。受容はこのimage/CVE/target/packageだけに限定され、新しいCVEや別パッケージ、別Alpineバージョンへは適用しない。
+2026-10-02の実測では、固定中と上流タグのlinux/amd64 manifestは同一で、どちらもRedis 7.4.11 / OpenSSL `3.3.7-r1` / Alpine 3.21.8だった。indexだけを更新しても解消しないためdigestは据え置く。上流の修正イメージ採用時にRedisの受容を削除する。受容はこのimage/CVE/target/packageだけに限定され、新しいCVEや別パッケージ、別Alpineバージョンへは適用しない。
+
+2026-10-10: 2026-10-09のnightlyが取得したTrivy DBで `CVE-2026-75804` がMEDIUM（Red Hat CVSS 5.3）へ再評価され、HIGH/CRITICALだけを対象にする `runtime` に出なくなった（前日のnightlyは成功）。イメージは変わっておらず、OpenSSL `3.3.7-r1` に検出自体は残る。それでもゲート対象外の検出に受容を残すと、HIGHへ戻ったときに再判断なしで除外されるため、stale受容として失敗した `libcrypto3` / `libssl3` の2件を削除した。HIGH以上へ戻れば `runtime` が未受容として失敗するので、その時点で改めて判断する。Alpine 3.21では修正版 `3.3.7-r2`（`CVE-2026-84782` も修正）が公開済みだが、上流 `redis:7-alpine` は2026-09-21以降pushされておらず、linux/amd64 imageは固定中と同一である。`drift` がimageの変更を報告したら更新手順で採用し、残る2件の受容も削除する。
 
 2026-09-19: `postgres:16-alpine` のdigestが更新され、Alpine 3.24.1 → 3.24.2相当のパッケージ更新を含んでいたため、以下2項目(計9件)は受容判断ごと不要になった。
 
@@ -221,11 +224,14 @@ Redisの判断根拠: [OpenSSLの2026-09-29アドバイザリ](https://openssl-l
 
 `RUNTIME_ACCEPTED` から該当9件を削除済み。`gosu`/`stdlib` の22件は対象バイナリ(gosu本体)が変わっていないため据え置き。
 
+2026-10-10: Go脆弱性DBで2026-10-08に公開された3件が、`gosu`（1.19.0、go1.24.6・`CGO_ENABLED=0` でビルド）のstdlibにHIGHで検出され、nightlyの `runtime` が失敗した。`CVE-2026-78667`（`net/http` のRangeヘッダ解析によるCPU消費）、`CVE-2026-78669`（`net/http` のHTTP/2 SETTINGSフレームによるCPU消費）、`CVE-2026-97031`（`crypto/tls` のECH外部拡張参照によるメモリ消費）で、いずれもHTTP/TLSで通信するプロセスへのDoSである。固定digestのimageから `docker create` / `docker cp` で `gosu` を取り出し（実行はしない）、ELFの `.gopclntab` にある関数名と、[Go脆弱性DB](https://pkg.go.dev/vuln/) の各エントリが挙げる影響パッケージ・シンボルを照合した。リンクされているのは `os`（`Open` / `Stat` などの基本関数のみ）、`os/exec`（`LookPath` のみ）、`syscall`、`golang.org/x/sys/unix`、`github.com/moby/sys/user` などである。`net`、`net/http`、`crypto/*`、`net/url`、`net/mail`、`mime`、`encoding/asn1`、`encoding/xml`、`html/template` の関数は無く、`os.Root` 系の関数も無い。新規3件と既存22件の計25件すべてで影響シンボルがリンクされていないため、新規3件を受容した。
+
 受容を見直す条件:
 
 - Redisの通信実装がDTLS/QUICを使用するようになった場合、または追加モジュールなどで該当OpenSSL処理を呼ぶ場合。
-- Redisの起動引数・TLS設定・公開範囲を変更した場合。パッチ済みイメージを採用して検出が消えた場合は、Redisの4件の受容を削除する。
+- Redisの起動引数・TLS設定・公開範囲を変更した場合。パッチ済みイメージを採用して検出が消えた場合は、Redisの受容を削除する。
 - `gosu`の用途がentrypointの権限降格以外へ広がった場合。
+- digest更新で `gosu` のバージョンまたはビルドに使ったGoが変わった場合。受容が引き続き一致しても、影響シンボルがリンクされていないことを照合し直す。
 - 上流イメージがパッチ済みGoで再ビルドされ、そのdigestへ更新した場合（受容を解除する）。どの検出にも一致しなくなった受容は `runtime` が失敗として列挙するので、残したままにはできない。
 - 新しいCVEが検出された場合。**自動的には除外されない**ため、CIが失敗して個別判断を促す。特に`os/exec`、ファイルシステム、引数処理など`gosu`から到達し得る領域の脆弱性は受容しない。
 - `uuid-ossp` 拡張を作成した場合。`libuuid` の受容は「読み込まれるELFが無い」ことに依存しており、拡張を作った時点で前提が消える。

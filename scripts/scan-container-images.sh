@@ -84,12 +84,13 @@ RUNTIME_ACCEPTED=(
   "postgres:16-alpine	CVE-2026-56859	usr/local/bin/gosu	stdlib"
   "postgres:16-alpine	CVE-2026-56860	usr/local/bin/gosu	stdlib"
   "postgres:16-alpine	CVE-2026-56862	usr/local/bin/gosu	stdlib"
+  "postgres:16-alpine	CVE-2026-78667	usr/local/bin/gosu	stdlib"
+  "postgres:16-alpine	CVE-2026-78669	usr/local/bin/gosu	stdlib"
+  "postgres:16-alpine	CVE-2026-97031	usr/local/bin/gosu	stdlib"
 
-  # Redis 7.4 uses TCP (and optional TLS), never DTLS or QUIC. These protocol-specific OpenSSL
-  # findings are unreachable; see the evidence and re-review conditions in runbook section 7.3.
+  # Redis 7.4 uses TCP (and optional TLS), never DTLS or QUIC. This DTLS-only OpenSSL finding is
+  # unreachable; see the evidence and re-review conditions in runbook section 7.3.
   # Keep the Alpine target and package exact so this does not excuse another image or library.
-  "redis:7-alpine	CVE-2026-75804	/scan/image.tar (alpine 3.21.8)	libcrypto3"
-  "redis:7-alpine	CVE-2026-75804	/scan/image.tar (alpine 3.21.8)	libssl3"
   "redis:7-alpine	CVE-2026-84782	/scan/image.tar (alpine 3.21.8)	libcrypto3"
   "redis:7-alpine	CVE-2026-84782	/scan/image.tar (alpine 3.21.8)	libssl3"
 )
