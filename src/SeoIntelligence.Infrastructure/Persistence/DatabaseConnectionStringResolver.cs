@@ -10,7 +10,7 @@ namespace SeoIntelligence.Infrastructure.Persistence;
 /// string via <see cref="NpgsqlConnectionStringBuilder"/>, so passwords never
 /// need hand escaping in env files or Compose YAML); ConnectionStrings:Default
 /// is the fallback used by host development via appsettings. Parts must win:
-/// appsettings.Development.json ships a localhost ConnectionStrings:Default
+/// appsettings.Development.json ships a loopback ConnectionStrings:Default
 /// that would otherwise shadow the container environment.
 /// </summary>
 internal static class DatabaseConnectionStringResolver
