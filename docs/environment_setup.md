@@ -59,14 +59,16 @@ docker compose ps
 
 | サービス | ローカルURL/ポート | 用途 |
 | --- | --- | --- |
-| PostgreSQL | `localhost:5432` | 業務DB、Hangfire PostgreSQL storage。 |
-| Redis | `localhost:6379` | キャッシュ、分散ロック、レート制御、一時状態。 |
+| PostgreSQL | `127.0.0.1:5432` | 業務DB、Hangfire PostgreSQL storage。 |
+| Redis | `127.0.0.1:6379` | キャッシュ、分散ロック、レート制御、一時状態。 |
 | API | `http://localhost:5251` | Minimal API、Health/Readiness、OpenAPI。 |
 | Web | `http://localhost:5295` | Blazor Web App。APIはCompose内部の`http://api:8080`を使用。 |
-| RustFS API | `http://localhost:9000` | adapterの疎通確認用。bucketは`seo-intelligence`。成果物read/writeには使わない。 |
+| RustFS API | `http://127.0.0.1:9000` | adapterの疎通確認用。bucketは`seo-intelligence`。成果物read/writeには使わない。 |
 | RustFS Console | `http://localhost:9001` | ローカルRustFS疎通確認。 |
 
 ローカル公開ポートはすべて`127.0.0.1`へbindする。同じVPS上の別ComposeとDBポートを共有しない本番構成では、PostgreSQL、Redis、APIのホストポート自体を公開しない。
+
+ホストで動かすAPI/Worker/WebからPostgreSQL・Redis・RustFSへ接続する時は、`localhost`ではなく`127.0.0.1`を指定する（各`appsettings.Development.json`の既定値）。`localhost`は`::1`を先に試すが、Composeは`::1`でポートを公開していない。Windowsでは`::1`への接続が拒否されるまで約2秒かかるため、DBの物理接続を開くたびとRedisへの接続ごとに約2秒止まっていた（2026-10-11の実測では、起動直後の`/readyz`が`localhost`で約5.3秒、`127.0.0.1`で約1.2秒）。
 
 MinIOから移行した既存環境では、新しい`rustfs-data` volumeを使用する。旧`minio-data` volumeはComposeから自動削除も再利用もしない。必要な開発データがある場合は、旧環境を保持したままS3 API経由でコピーし、内容を確認してから旧volumeの扱いを決める。暗号化オブジェクトやMinIO固有機能の直接移行は本手順の対象外である。
 
@@ -102,7 +104,7 @@ dotnet run --project src/SeoIntelligence.Worker
 | --- | --- |
 | API | `http://localhost:5251` |
 | Web | `http://localhost:5295`、API接続先 `http://localhost:5251` |
-| Worker | PostgreSQL `localhost:5432`、Redis `localhost:6379` |
+| Worker | PostgreSQL `127.0.0.1:5432`、Redis `127.0.0.1:6379` |
 
 Webだけを起動すると、API未起動時に画面へ `localhost:5251` 接続エラーが表示される。Web画面を確認する場合は、先にAPIを起動する。
 
@@ -187,15 +189,15 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-local.ps1 -Run
 | `DOTNET_ENVIRONMENT` | 実行環境（Composeはこの1変数で全サービスを切り替える） | `Development` |
 | `ASPNETCORE_ENVIRONMENT` | 実行環境（ホスト`dotnet run`時。未設定なら`DOTNET_ENVIRONMENT`を使用） | `Development` |
 | `Database__Host` / `Database__Port` / `Database__Name` / `Database__Username` / `Database__Password` | PostgreSQL接続の個別指定。`Database__Host`設定時は`ConnectionStrings__Default`より優先され、アプリが接続文字列を組み立てるためパスワードに任意の文字を安全に使える。Composeはこちらを使用 | `postgres` / `5432` / `seo` / `seo` / `seo_dev_password` |
-| `ConnectionStrings__Default` | PostgreSQL接続（完全な接続文字列。`Database__Host`未設定時に使用され、ホスト開発のappsettingsが該当） | `Host=localhost;Port=5432;Database=seo;Username=seo;Password=seo_dev_password` |
+| `ConnectionStrings__Default` | PostgreSQL接続（完全な接続文字列。`Database__Host`未設定時に使用され、ホスト開発のappsettingsが該当） | `Host=127.0.0.1;Port=5432;Database=seo;Username=seo;Password=seo_dev_password` |
 | `Database__GssEncryptionMode` | Npgsql GSS暗号化モード（任意GSS探索ログの抑止） | `Disable` |
-| `Redis__ConnectionString` | Redis接続 | `localhost:6379` |
+| `Redis__ConnectionString` | Redis接続 | `127.0.0.1:6379` |
 | `Api__BaseUrl` | WebからAPIへの接続先 | ホスト起動は`http://localhost:5251`、Composeは`http://api:8080` |
 | `DataProtection__KeysPath` | WebのData Protection keys保存先（未設定時はContentRoot配下`.data/data-protection-keys`） | Composeは`/app/.data/data-protection-keys` |
 | `Hangfire__Storage` | Hangfire storage | `PostgreSQL` |
 | `Storage__Provider` | ローデータ/出力保存先 | MVP既定は`Local`。`RustFS`は疎通確認のみ。 |
 | `Storage__BasePath` | ローカル保存先 | `./.data/storage` |
-| `Storage__Endpoint` | RustFS API URL | `http://localhost:9000` |
+| `Storage__Endpoint` | RustFS API URL | `http://127.0.0.1:9000` |
 | `Storage__BucketName` | Storage bucket | `seo-intelligence` |
 | `RUSTFS_API_PORT` / `RUSTFS_CONSOLE_PORT` | 開発用RustFSのhost公開ポート | `9000` / `9001` |
 | `RUSTFS_ACCESS_KEY` / `RUSTFS_SECRET_KEY` / `RUSTFS_RPC_SECRET` | 開発用RustFSのcredentialとinternode RPC secret。Compose既定値はlocalhost限定の開発専用 | 必要時だけ別々の開発用値で上書き |
