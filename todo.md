@@ -2427,9 +2427,28 @@ BrowserE2Eは画面遷移後、`window.Blazor`の存在と500msの待機で、�
 - BrowserE2Eは`BlazorInteractivity.GotoAsync`で`data-interactive="true"`を待つ。`window.Blazor`と500msの待機、プロジェクトの選び直し、ゲストE2EのNetworkIdle待機を削除した。`WaitForEnabledAsync`は`disabled`プロパティではなく`:disabled`で判定する。
 - `E2E_BROWSER_CIRCUIT_START_DELAY_MS`を指定すると、各ブラウザコンテキストがページの`WebSocket`送信を保留する。
 - 修正前のコードで3000msの遅延を入れると、BrowserE2Eの5件すべてが失敗した。モバイル4件はプロジェクト作成、スモークはキーワード探索の操作が失われた。修正後は、遅延なしの`smoke-local.ps1 -RunBrowserTests`と、3000msの遅延ありの実行の両方で、6件（ゲストを含む）が合格した。
-- 遅延ありの1回目では、スモークが`/search-volume`への遷移（15秒）でタイムアウトした（同じ条件の再実行2回は合格）。ローカルのDB接続文字列`Host=localhost`が先に`::1`を試し、Windowsでは拒否まで約2秒かかる。そのためDBの物理接続を開くたびにAPIが約2秒止まる。ゲートとは無関係の既存の環境要因で、Linux（CI）では起きない。
+- 遅延ありの1回目では、スモークが`/search-volume`への遷移（15秒）でタイムアウトした（同じ条件の再実行2回は合格）。ローカルのDB接続文字列`Host=localhost`が先に`::1`を試し、Windowsでは拒否まで約2秒かかる。そのためDBの物理接続を開くたびにAPIが約2秒止まる。ゲートとは無関係の既存の環境要因で、Linux（CI）では起きない（ISSUE-FIX-005で修正）。
 - `WebInteractionGateTests`は、プリレンダーしたログイン画面とキーワード探索画面で、操作欄がゲートの内側にあることを検証する。`Routes`の変更を外すと失敗することを確認した。
 - ログは`artifacts/issue-fix-004/`に保存した（Git管理対象外）。
+
+### ISSUE-FIX-005 ローカル開発の依存サービス接続をIPv4ループバックにする
+
+参照ドキュメント: `docs/environment_setup.md`
+
+GitHub Issue: [#173](https://github.com/Cat5Dog2/seo-intelligence-platform/issues/173)
+
+開発用Composeは、PostgreSQL・Redis・RustFSのポートを`127.0.0.1`だけで公開する。一方、各`appsettings.Development.json`は`localhost`で接続していた。`localhost`は`::1`を先に試し、Windowsでは`::1`への接続が拒否されるまで約2秒かかる。そのため、ホストで動かすAPI/Worker/Webは、DBの物理接続を開くたびとRedisへの接続ごとに約2秒止まっていた。
+
+- [x] API/Worker/Webの`appsettings.Development.json`で、PostgreSQL・Redis・RustFSの接続先を`127.0.0.1`にする。コンテナと本番の`Database__Host`等の設定は変えない。
+- [x] `docs/environment_setup.md`の接続先と理由を更新する。
+- [x] 変更前後の接続時間を実測し、包括スモークで確認する。
+
+実装メモ（2026-10-11）:
+
+- `::1`への接続は、5432・6379・9000のいずれも約2,040msで拒否された。`127.0.0.1`は0msで接続した。
+- 起動直後のAPIで、最初の`/readyz`が5,277msから1,253ms／1,130msに、8並列の`/api/projects`の最大が2,685msから724ms／722msになった。
+- WebからAPIへの`http://localhost:5251`は変えていない。ホストで動かすAPIは`localhost`の`::1`と`127.0.0.1`の両方で待ち受けるためである。
+- 測定ログは`artifacts/local-loopback/`に保存した（Git管理対象外）。
 
 ## Phase 4
 
