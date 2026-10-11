@@ -226,6 +226,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-local.ps1 -Run
 | `E2E_ADMIN_EMAIL` | BrowserE2Eのサインインに使うメールアドレス | `AdminSeed__Email`と同じ値 |
 | `E2E_ADMIN_PASSWORD` | BrowserE2Eのサインインに使うパスワード | `AdminSeed__Password`と同じ値 |
 | `E2E_HEADLESS` | BrowserE2Eのheadless切替 | 通常は未設定。画面表示時のみ`false` |
+| `E2E_BROWSER_CIRCUIT_START_DELAY_MS` | BrowserE2EでBlazor回線の開始を遅らせる時間（ミリ秒）。ページの`WebSocket`送信を保留する | 通常は未設定。遅い回線を再現する時は`3000` |
 
 Compose内のAPI/WorkerはPostgreSQLを`postgres:5432`、Redisを`redis:6379`、Local Storageを`/data/storage`で参照する。VPS用の環境変数とCaddy networkは `.env.production.example` と `docs/docker_deployment.md` を正本とする。
 

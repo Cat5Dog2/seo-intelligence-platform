@@ -27,7 +27,7 @@ internal sealed class BrowserSmokeFlow(
     /// </summary>
     private async Task SignInAsync()
     {
-        await page.GotoAsync($"{webUrl}/login", new PageGotoOptions { WaitUntil = WaitUntilState.NetworkIdle });
+        await NavigateAsync($"{webUrl}/login");
         await page.FillAsync("#email", RequiredEnvironment("E2E_ADMIN_EMAIL"));
         await page.FillAsync("#password", RequiredEnvironment("E2E_ADMIN_PASSWORD"));
 
@@ -50,45 +50,27 @@ internal sealed class BrowserSmokeFlow(
     /// <summary>
     /// Picking an option changes the select's value and text in the browser at once, so neither
     /// shows that the server switched; the page header, rendered from the server's selection, does.
-    /// A pick made before the circuit is interactive never reaches the server, so the flow picks
-    /// again until the header names the project. When the prerendered page already has the
-    /// project selected, the header matches before the circuit is interactive; waiting for
-    /// interactivity itself is ISSUE-FIX-004 in todo.md.
     /// </summary>
     private async Task SelectProjectAsync()
     {
-        const int attempts = 3;
-        var switcher = page.GetByTestId("project-switcher");
         // The whole text, not a substring: another project's name can contain this one's.
         var selectedProjectHeader = page.Locator(".page-header p").Filter(new()
         {
             HasTextRegex = new Regex($@"^\s*選択中プロジェクト: {Regex.Escape(project.Name)}\s*$")
         });
-        for (var attempt = 1; attempt <= attempts; attempt++)
-        {
-            // Waits until the switcher is enabled (it is disabled while the projects load) and
-            // lists the project.
-            await switcher.SelectOptionAsync(project.ProjectId);
-            if (await IsAttachedWithinAsync(selectedProjectHeader, timeoutMilliseconds: 5_000))
-            {
-                return;
-            }
-        }
 
-        throw new TimeoutException(
-            $"The page header did not show project {project.Name} after {attempts} selections. Current page text: {await ReadBodyTextAsync()}");
-    }
-
-    private static async Task<bool> IsAttachedWithinAsync(ILocator locator, float timeoutMilliseconds)
-    {
+        // Waits until the switcher is enabled (it is disabled while the projects load) and lists
+        // the project.
+        await page.GetByTestId("project-switcher").SelectOptionAsync(project.ProjectId);
         try
         {
-            await locator.WaitForAsync(new() { State = WaitForSelectorState.Attached, Timeout = timeoutMilliseconds });
-            return true;
+            await selectedProjectHeader.WaitForAsync(new() { State = WaitForSelectorState.Attached });
         }
-        catch (TimeoutException)
+        catch (TimeoutException exception)
         {
-            return false;
+            throw new TimeoutException(
+                $"The page header did not show project {project.Name}. Current page text: {await ReadBodyTextAsync()}",
+                exception);
         }
     }
 
@@ -236,19 +218,17 @@ internal sealed class BrowserSmokeFlow(
         await SelectProjectAsync();
     }
 
-    private async Task NavigateAsync(string url)
-    {
-        await page.GotoAsync(url, new PageGotoOptions { WaitUntil = WaitUntilState.NetworkIdle });
-        await page.WaitForFunctionAsync("() => typeof window !== 'undefined' && !!window.Blazor");
-        await page.WaitForTimeoutAsync(500);
-    }
+    private Task NavigateAsync(string url)
+        => BlazorInteractivity.GotoAsync(page, url);
 
+    // :disabled, not the disabled property: a control inside a disabled fieldset keeps the
+    // property false.
     private Task WaitForEnabledAsync(string testId, float? timeoutMilliseconds = null)
         => page.WaitForFunctionAsync(
             """
             selector => {
                 const element = document.querySelector(selector);
-                return !!element && !element.disabled;
+                return !!element && !element.matches(':disabled');
             }
             """,
             TestIdSelector(testId),

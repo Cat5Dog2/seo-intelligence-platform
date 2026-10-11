@@ -29,6 +29,7 @@ public sealed class BrowserSmokeTests
             // the download and the assertion would never see a file.
             AcceptDownloads = true
         });
+        await BlazorInteractivity.DelayCircuitStartAsync(context);
         var page = await context.NewPageAsync();
         page.SetDefaultTimeout(15_000);
 

@@ -30,6 +30,7 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | 非同期処理 | 外部APIを伴う重い操作はジョブ登録後に進捗表示へ遷移する。 |
 | 監査対象操作 | APIキー、外部API実行、CSV/Excel出力、AI実行、共有URL操作は完了/失敗を画面上で確認できる。 |
 | 状態表示 | 読込中、空状態、バリデーションエラー、ジョブ進行中、ジョブ失敗、再実行可能状態を共通化する。 |
+| 操作の受付開始 | 全画面はプリレンダー後、Blazor回線の開始でインタラクティブになる。それまでは操作欄を無効にし、利用者の操作が黙って失われないようにする（4章「インタラクティブ化までの操作抑止」）。 |
 | 秘密情報 | APIキーやWebhook URLの実値は再表示しない。保存後はマスク値または`key_ref`のみ表示する。 |
 
 ## 3. 共通レイアウト
@@ -51,6 +52,13 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 ```
 
 ## 4. 共通コンポーネント
+
+### インタラクティブ化までの操作抑止（2026-10-11）
+
+- 全画面（`Routes`）は`InteractiveServer`でプリレンダーされる。プリレンダーのHTMLにはイベントが結び付いておらず、回線開始後の最初の描画でHTMLごと置き換わる。そのため、それまでの選択・クリック・入力・折りたたみの開閉は、サーバーに届かないか、置き換えで消える。
+- `Routes`全体を`InteractionGate`（枠線なしの`fieldset`）で包む。`RendererInfo.IsInteractive`が`false`の間は`disabled`、`aria-busy="true"`、`data-interactive="false"`とし、内部の入力欄・選択欄・ボタンを無効にする。`fieldset`で無効にできない`summary`もクリックを受け付けない。リンクによる遷移は妨げない。
+- インタラクティブに描画されると`disabled`を外し、`aria-busy="false"`、`data-interactive="true"`とする。BrowserE2Eはこの`data-interactive`を待ってから操作する。
+- ログイン・アカウント画面のSSRフォームも対象に含める。回線の開始前に入力した値は置き換えで消えるためである。回線を開始できない場合、操作欄は無効のまま残る。接続の問題は既存の再接続表示とエラー表示で知らせる。
 
 ### UI/UXの改善（2026-09-24）
 
@@ -111,6 +119,7 @@ _SEO Intelligence Platform / SEOインテリジェンス基盤_
 | ErrorSummary | バリデーション/ジョブ/外部APIエラー表示 | validation / external / fatal |
 | GettingStarted | プロジェクト作成と初回調査への案内 | プロジェクト未選択 / 選択済み |
 | ActionFeedback | 保存処理の結果を操作付近へ通知 | 保存中 / 成功 / 失敗 |
+| InteractionGate | インタラクティブ化までページ全体の操作欄を無効化 | プリレンダー（無効） / インタラクティブ（有効） |
 
 各画面の「CSV出力」は出力ジョブを登録する操作であり、生成されたファイルの取得は`JobProgressPanel`のダウンロード導線に集約する。ジョブが`succeeded`で成果物（`data_export`、`article_brief_export`、`report`）を持つ場合にリンクを表示する。リンク先はWebホストの`/downloads/projects/{projectId}/exports|reports/{id}`であり、ブラウザはAPIサービスキーを持たないためAPIへ直接リンクしない。
 
