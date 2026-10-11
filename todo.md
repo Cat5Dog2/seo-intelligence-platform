@@ -2414,10 +2414,22 @@ GitHub Issue: [#167](https://github.com/Cat5Dog2/seo-intelligence-platform/issue
 
 BrowserE2Eは画面遷移後、`window.Blazor`の存在と500msの待機で、インタラクティブ化を待つ代わりにしている。Blazor回線の開始が遅いと、操作がサーバーへ届かずに失われる。ISSUE-FIX-003のプロジェクト選択は、見出しの確認と再選択で検出する。ただし、初期描画で対象プロジェクトが既に選ばれている場合と、管理画面などプロジェクトに属さない画面では検出できない。
 
-- [ ] インタラクティブ化を画面から判定できるようにする（例: `RendererInfo.IsInteractive`になるまで操作欄を無効にする）。利用者がインタラクティブ化の前に操作した内容が失われる問題も合わせて扱う。
-- [ ] BrowserE2Eの画面遷移後の待機を、その判定に置き換える。
-- [ ] Blazor回線の開始を遅らせた状態（ページ内で`WebSocket`の送信を数秒保留する）でも、BrowserE2Eが合格することを確認する。
-- [ ] CIでBrowserE2Eを実行するか（リポジトリ変数`RUN_BROWSER_E2E`）を判断する。
+- [x] インタラクティブ化を画面から判定できるようにする（例: `RendererInfo.IsInteractive`になるまで操作欄を無効にする）。利用者がインタラクティブ化の前に操作した内容が失われる問題も合わせて扱う。
+- [x] BrowserE2Eの画面遷移後の待機を、その判定に置き換える。
+- [x] Blazor回線の開始を遅らせた状態（ページ内で`WebSocket`の送信を数秒保留する）でも、BrowserE2Eが合格することを確認する。
+- [x] CIでBrowserE2Eを実行するか（リポジトリ変数`RUN_BROWSER_E2E`）を判断する。
+
+実装メモ（2026-10-11）:
+
+- CIでもBrowserE2Eを実行することにし、リポジトリ変数`RUN_BROWSER_E2E=true`を設定した。BrowserE2Eが5件とも壊れたまま気づかれなかったためである。ローカルの所要時間は1分33秒で、これにChromiumのインストールが加わる。Linux CIでの初回結果は未確認。ゲストのBrowserE2E（`E2E_GUEST_BROWSER_ENABLED`）はCIでは引き続き実行しない。
+
+- `Routes`全体を`InteractionGate`（枠線なしの`fieldset`）で包んだ。`RendererInfo.IsInteractive`になるまで`disabled`・`aria-busy="true"`・`data-interactive="false"`とし、内部の操作欄を無効にする。`summary`もクリックを受け付けない。プリレンダーのHTMLは回線開始時に置き換わるため、ログイン・アカウント画面のSSRフォームも対象に含めた。
+- BrowserE2Eは`BlazorInteractivity.GotoAsync`で`data-interactive="true"`を待つ。`window.Blazor`と500msの待機、プロジェクトの選び直し、ゲストE2EのNetworkIdle待機を削除した。`WaitForEnabledAsync`は`disabled`プロパティではなく`:disabled`で判定する。
+- `E2E_BROWSER_CIRCUIT_START_DELAY_MS`を指定すると、各ブラウザコンテキストがページの`WebSocket`送信を保留する。
+- 修正前のコードで3000msの遅延を入れると、BrowserE2Eの5件すべてが失敗した。モバイル4件はプロジェクト作成、スモークはキーワード探索の操作が失われた。修正後は、遅延なしの`smoke-local.ps1 -RunBrowserTests`と、3000msの遅延ありの実行の両方で、6件（ゲストを含む）が合格した。
+- 遅延ありの1回目では、スモークが`/search-volume`への遷移（15秒）でタイムアウトした（同じ条件の再実行2回は合格）。ローカルのDB接続文字列`Host=localhost`が先に`::1`を試し、Windowsでは拒否まで約2秒かかる。そのためDBの物理接続を開くたびにAPIが約2秒止まる。ゲートとは無関係の既存の環境要因で、Linux（CI）では起きない。
+- `WebInteractionGateTests`は、プリレンダーしたログイン画面とキーワード探索画面で、操作欄がゲートの内側にあることを検証する。`Routes`の変更を外すと失敗することを確認した。
+- ログは`artifacts/issue-fix-004/`に保存した（Git管理対象外）。
 
 ## Phase 4
 

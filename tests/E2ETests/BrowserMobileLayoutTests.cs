@@ -43,6 +43,7 @@ public sealed class BrowserMobileLayoutTests
         options.IsMobile = true;
         options.HasTouch = true;
         await using var context = await browser.NewContextAsync(options);
+        await BlazorInteractivity.DelayCircuitStartAsync(context);
         var page = await context.NewPageAsync();
         page.SetDefaultTimeout(15_000);
 
@@ -156,7 +157,7 @@ public sealed class BrowserMobileLayoutTests
     }
 
     private static Task NavigateAsync(IPage page, string url)
-        => page.GotoAsync(url, new PageGotoOptions { WaitUntil = WaitUntilState.NetworkIdle });
+        => BlazorInteractivity.GotoAsync(page, url);
 
     private static string RequiredEnvironment(string name)
     {

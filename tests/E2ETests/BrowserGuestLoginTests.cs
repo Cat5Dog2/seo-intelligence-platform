@@ -14,14 +14,15 @@ public sealed class BrowserGuestLoginTests
         using var playwright = await Playwright.CreateAsync();
         await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
         await using var context = await browser.NewContextAsync(new() { AcceptDownloads = true, ViewportSize = new() { Width = 1280, Height = 900 } });
+        await BlazorInteractivity.DelayCircuitStartAsync(context);
         var page = await context.NewPageAsync();
         page.SetDefaultTimeout(15_000);
         await page.GotoAsync(webUrl + "/login");
         await page.GetByRole(AriaRole.Button, new() { Name = "登録不要でデモを試す", Exact = true }).ClickAsync();
         await Expect(page.Locator(".brand-row .guest-mode-badge")).ToHaveTextAsync("ゲスト・Mock");
         await Expect(page.GetByRole(AriaRole.Link, new() { Name = "管理", Exact = true })).ToHaveCountAsync(0);
-        // Wait for the newly signed-in page to finish loading its Blazor circuit before typing.
-        await page.WaitForLoadStateAsync(LoadState.NetworkIdle);
+        // Text typed into the newly signed-in page before its circuit is interactive would be lost.
+        await BlazorInteractivity.WaitForInteractiveAsync(page);
 
         const string projectName = "ブラウザ専用デモ";
         await page.GetByLabel("プロジェクト名（必須）", new() { Exact = true }).FillAsync(projectName);
@@ -63,6 +64,7 @@ public sealed class BrowserGuestLoginTests
         await Expect(page.GetByRole(AriaRole.Button, new() { Name = "登録不要でデモを試す", Exact = true })).ToBeVisibleAsync();
 
         await using var otherContext = await browser.NewContextAsync(new() { ViewportSize = new() { Width = 390, Height = 844 } });
+        await BlazorInteractivity.DelayCircuitStartAsync(otherContext);
         var other = await otherContext.NewPageAsync();
         await other.GotoAsync(webUrl + "/login");
         await other.GetByRole(AriaRole.Button, new() { Name = "登録不要でデモを試す", Exact = true }).ClickAsync();

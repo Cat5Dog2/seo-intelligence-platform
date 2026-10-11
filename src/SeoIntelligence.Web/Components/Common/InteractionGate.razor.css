@@ -1,0 +1,13 @@
+/* Wraps whole pages, so only its disabled state may show. */
+.interaction-gate {
+    border: 0;
+    margin: 0;
+    min-width: 0;
+    padding: 0;
+}
+
+/* A fieldset cannot disable <summary>, and a section opened now closes again when the circuit
+   replaces the markup. */
+.interaction-gate:disabled ::deep summary {
+    pointer-events: none;
+}

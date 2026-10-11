@@ -1,0 +1,16 @@
+@*
+    Every page is prerendered, and nothing done on the prerendered markup reaches the server: the
+    circuit starts afterwards and its first render replaces the markup, so a pick, a click or typed
+    text from before then is silently lost. The gate keeps the controls inside disabled until it
+    renders interactively. data-interactive says the same to the browser tests.
+*@
+<fieldset class="interaction-gate" data-testid="interaction-gate" data-interactive="@(IsInteractive ? "true" : "false")" disabled="@(!IsInteractive)" aria-busy="@(IsInteractive ? "false" : "true")">
+    @ChildContent
+</fieldset>
+
+@code {
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    private bool IsInteractive => RendererInfo.IsInteractive;
+}

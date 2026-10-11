@@ -249,7 +249,16 @@ BrowserE2Eは代表的なユーザーフローの疎通確認に限定し、全A
 | Phase 2 | 順位監視画面から順位チェックジョブを登録できること | 競合、コンテンツ、記事ブリーフ、順位監視、ダッシュボードのIntegration/Contract |
 | Phase 3 | レポート生成ジョブ登録、report_id取得、詳細表示、ダウンロードURL発行、共有URL発行 | AI、リライト、カニバリ、レポート、CSV/Excelインポート、外部連携スタブのIntegration/Contract |
 
-BrowserE2Eの操作は画面の実際の待ち方に合わせる。ログイン画面ではゲストデモのフォームが管理者フォームより前にあるため、管理者サインインは「ログイン」ボタンを名前で指定して押す。画面を開き直すと新しいBlazor回線が最新の有効プロジェクトを選び直し、他のBrowserE2Eは並列でプロジェクトを作るため、プロジェクト配下の画面では毎回テスト自身のプロジェクトを選択する。選択欄の値はブラウザ側で即座に変わるため、選択の反映はサーバー側の選択を表示するページ見出し（`.page-header p`）で確認する。インタラクティブになる前の選択はサーバーに届かないため、見出しに反映されなければ選び直す。キーワード探索は既定で取得ソースが複数のためジョブとして登録され、画面は自動更新しない。ジョブ完了まで「状態更新」を押し、候補語を読み込んでからCSV出力する。検索ボリュームの結果は登録から`SearchVolumeService.PollInterval`（60秒）後のポーリングで揃う。画面は2秒ごとに自動更新するので、CSV出力ボタンは最大120秒待つ。BrowserE2E全体の所要時間には、この待ちが含まれる。
+BrowserE2Eの操作は画面の実際の待ち方に合わせる。画面を開いた後は、ページ全体を包む`InteractionGate`（`data-testid="interaction-gate"`）が`data-interactive="true"`になるまで待ってから操作する（`BlazorInteractivity.GotoAsync`）。プリレンダー中の操作はサーバーに届かず、回線開始時の再描画で失われるため、画面はそれまでフォーム部品を無効にしている（`screen_design.md`の「インタラクティブ化までの操作抑止」）。有効かどうかは`disabled`プロパティではなく`:disabled`で判定する。無効な`fieldset`の中の部品は、`disabled`プロパティが`false`のままになるためである。ログイン画面ではゲストデモのフォームが管理者フォームより前にあるため、管理者サインインは「ログイン」ボタンを名前で指定して押す。画面を開き直すと新しいBlazor回線が最新の有効プロジェクトを選び直し、他のBrowserE2Eは並列でプロジェクトを作るため、プロジェクト配下の画面では毎回テスト自身のプロジェクトを選択する。選択欄の値はブラウザ側で即座に変わるため、選択の反映はサーバー側の選択を表示するページ見出し（`.page-header p`）で確認する。キーワード探索は既定で取得ソースが複数のためジョブとして登録され、画面は自動更新しない。ジョブ完了まで「状態更新」を押し、候補語を読み込んでからCSV出力する。検索ボリュームの結果は登録から`SearchVolumeService.PollInterval`（60秒）後のポーリングで揃う。画面は2秒ごとに自動更新するので、CSV出力ボタンは最大120秒待つ。BrowserE2E全体の所要時間には、この待ちが含まれる。
+
+回線の開始が遅い環境を再現するには、`E2E_BROWSER_CIRCUIT_START_DELAY_MS`にミリ秒を指定する。BrowserE2Eの各ブラウザコンテキストが、ページの`WebSocket`送信を指定時間保留してから順番どおりに送る（Playwright .NET 1.62では、`RouteWebSocketAsync`と`ConnectToServer`の組み合わせが`KeyNotFoundException`で失敗したため）。
+
+```powershell
+$env:E2E_BROWSER_CIRCUIT_START_DELAY_MS = '3000'
+& ./scripts/smoke-local.ps1 -RunBrowserTests -InstallPlaywrightBrowsers
+```
+
+`WebInteractionGateTests`（IntegrationTests）は、実Webホストがプリレンダーしたログイン画面とキーワード探索画面（ゲスト）で、ゲートが1つだけあり、無効・`data-interactive="false"`・`aria-busy="true"`であること、ヘッダーと画面本体の操作欄がその内側にあることを検証する。ゲートがインタラクティブ化で開くことは、実際の回線を使うBrowserE2Eだけが確認する。
 
 既存プロジェクトやDiscordテスト通知を使う場合は、必要に応じて `SMOKE_PROJECT_ID` と `SMOKE_DISCORD_CHANNEL_ID` を指定する。Discord Webhook URLの実値はテストコマンドやログへ出さない。
 
