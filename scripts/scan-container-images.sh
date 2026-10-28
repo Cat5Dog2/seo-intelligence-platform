@@ -87,6 +87,7 @@ RUNTIME_ACCEPTED=(
   "postgres:16-alpine	CVE-2026-78667	usr/local/bin/gosu	stdlib"
   "postgres:16-alpine	CVE-2026-78669	usr/local/bin/gosu	stdlib"
   "postgres:16-alpine	CVE-2026-97031	usr/local/bin/gosu	stdlib"
+  "postgres:16-alpine	CVE-2026-111943	usr/local/bin/gosu	stdlib"
 
   # Redis 7.4 uses TCP (and optional TLS), never DTLS or QUIC. This DTLS-only OpenSSL finding is
   # unreachable; see the evidence and re-review conditions in runbook section 7.3.
