@@ -26,7 +26,11 @@ repo_root="$PWD"
 LIB="scripts/lib/release-candidate-notify.sh"
 WORKFLOW=".github/workflows/release-candidate-notify.yaml"
 CI_WORKFLOW=".github/workflows/ci.yaml"
-EXPECTED_APP_TOKEN_PIN="actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0"
+# A Dependabot bump of this action fails here on purpose: confirm the new SHA
+# is the release tag (`git ls-remote https://github.com/actions/create-github-app-token
+# refs/tags/vX.Y.Z`) and check that the inputs the workflow uses still exist
+# before updating this line.
+EXPECTED_APP_TOKEN_PIN="actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0"
 
 if [[ ! -f "$LIB" ]]; then
   echo "ERROR: $LIB not found." >&2
