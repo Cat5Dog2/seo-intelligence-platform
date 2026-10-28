@@ -2174,6 +2174,14 @@ CI失敗の是正:
 - [x] `bash scripts/verify-runtime-scan.sh` / `bash scripts/verify-scanner-isolation.sh` / `bash scripts/verify-development-image-pins.sh`
 - [ ] main の nightly が緑になる
 
+2026-10-28追加対応:
+
+- [x] nightly（run 40589821644）の `container-scan` 失敗をローカルの実スキャンでも再現した。固定digestの `gosu` / `stdlib` に未受容のHIGH `CVE-2026-111943` が1件検出され、修正前はexit 1になった。
+- [x] 固定imageのlinux/amd64バイナリを実行せずに取り出し、Go脆弱性DB（GO-2026-6809）の影響箇所 `crypto/x509.Certificate.Verify` がリンクされていないことを `.gopclntab` で照合した。image/CVE/target/packageの完全一致で1件だけ受容し、Runbook 7.3にバイナリのハッシュ・根拠・見直し条件を記録した。
+- [x] `bash scripts/scan-container-images.sh runtime` が受容追加後にexit 0になる（PostgreSQLは26件、Redisは2件を受容し、未受容のHIGH/CRITICALは0件）。
+- [x] `bash scripts/verify-runtime-scan.sh` で、未受容の検出・4フィールド不一致・stale受容が引き続き失敗することを確認した（exit 0）。
+- [ ] main の nightly が緑になる。
+
 ### ISSUE-SEC-003 Trivyスキャナの隔離とリソース制限を強化する
 
 参照ドキュメント: `docs/operations_runbook.md` 7.3節, `scripts/scan-container-images.sh`
